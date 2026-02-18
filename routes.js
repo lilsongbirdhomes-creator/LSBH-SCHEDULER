@@ -587,7 +587,7 @@ router.get('/trade-requests', requireAuth, (req, res) => {
 });
 
 // POST /api/trade-requests - Create trade request
-router.post('/trade-requests', requireAuth, (req, res) => {
+router.post('/trade-requests', requireAuth, async (req, res) => {
   const { myShiftId, theirShiftId, note } = req.body;
   
   if (!myShiftId || !theirShiftId) {
