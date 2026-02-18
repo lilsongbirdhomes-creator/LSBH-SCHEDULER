@@ -1,0 +1,777 @@
+// ═══════════════════════════════════════════════════════════
+// GLOBAL STATE
+// ═══════════════════════════════════════════════════════════
+let currentUser = null;
+let viewMode = 'week';
+let viewDate = new Date('2026-02-16'); // Sunday
+let allStaff = [];
+let allShifts = [];
+
+const SHIFT_DEFS = {
+  morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0 },
+  afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0 },
+  overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0 }
+};
+
+// ═══════════════════════════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════════════════════════
+async function apiCall(endpoint, options = {}) {
+  try {
+    const response = await fetch(`/api${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      },
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Request failed');
+    }
+    
+    return await response.json();
+  } catch (err) {
+    console.error('API Error:', err);
+    throw err;
+  }
+}
+
+function showLoading() { document.getElementById('loading').classList.add('show'); }
+function hideLoading() { document.getElementById('loading').classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════
+async function handleLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const errorDiv = document.getElementById('loginError');
+  
+  if (!username || !password) {
+    errorDiv.textContent = 'Please enter username and password';
+    errorDiv.classList.add('show');
+    return;
+  }
+  
+  try {
+    showLoading();
+    const result = await apiCall('/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password })
+    });
+    
+    currentUser = result.user;
+    
+    if (currentUser.mustChangePassword) {
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('passwordModal').classList.add('show');
+      return;
+    }
+    
+    showApp();
+  } catch (err) {
+    errorDiv.textContent = err.message;
+    errorDiv.classList.add('show');
+  } finally {
+    hideLoading();
+  }
+}
+
+function showApp() {
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('userName').textContent = currentUser.fullName;
+  document.getElementById('roleBadge').textContent = currentUser.role === 'admin' ? 'Admin' : 'Staff';
+  
+  if (currentUser.role === 'admin') {
+    document.getElementById('adminPanel').classList.remove('hidden');
+    loadStaff();
+    loadPendingApprovals();
+  } else {
+    document.getElementById('staffDashboard').classList.remove('hidden');
+    loadDashboard();
+  }
+  
+  loadShifts();
+}
+
+async function handleLogout() {
+  try {
+    await apiCall('/logout', { method: 'POST' });
+    location.reload();
+  } catch (err) {
+    console.error('Logout error:', err);
+    location.reload();
+  }
+}
+
+function closePasswordModal() {
+  if (currentUser?.mustChangePassword) {
+    handleLogout();
+  } else {
+    document.getElementById('passwordModal').classList.remove('show');
+  }
+}
+
+async function savePassword() {
+  const newPassword = document.getElementById('newPassword').value;
+  
+  if (newPassword.length < 6) {
+    alert('Password must be at least 6 characters');
+    return;
+  }
+  
+  try {
+    showLoading();
+    await apiCall('/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ newPassword })
+    });
+    
+    currentUser.mustChangePassword = false;
+    document.getElementById('passwordModal').classList.remove('show');
+    showApp();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.a-tab').forEach((t, i) => {
+    t.classList.toggle('active', 
+      (tab === 'schedule' && i === 0) || 
+      (tab === 'staff' && i === 1) || 
+      (tab === 'approvals' && i === 2)
+    );
+  });
+  
+  document.getElementById('scheduleTab').classList.toggle('active', tab === 'schedule');
+  document.getElementById('staffTab').classList.toggle('active', tab === 'staff');
+  document.getElementById('approvalsTab').classList.toggle('active', tab === 'approvals');
+  
+  if (tab === 'approvals') {
+    loadPendingApprovals();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// STAFF MANAGEMENT
+// ═══════════════════════════════════════════════════════════
+async function loadStaff() {
+  try {
+    const result = await apiCall('/staff');
+    allStaff = result.staff;
+    renderStaffList();
+  } catch (err) {
+    console.error('Load staff error:', err);
+  }
+}
+
+function renderStaffList() {
+  const list = document.getElementById('staffList');
+  list.innerHTML = '';
+  
+  allStaff.forEach(staff => {
+    const isOpen = staff.username === '_open';
+    const item = document.createElement('div');
+    item.className = 's-item';
+    item.innerHTML = `
+      <div class="col-dot" style="background:${staff.tile_color};color:${staff.text_color}">
+        ${staff.text_color === 'white' ? 'W' : 'A'}
+      </div>
+      <div class="s-det">
+        <div class="s-nm">${staff.full_name}</div>
+        <div class="s-me">${isOpen ? 'Placeholder for unassigned shifts' : `@${staff.username} • ${staff.job_title}`}</div>
+      </div>
+      <div class="s-act">
+        <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
+        ${!isOpen && staff.username !== 'admin' ? `
+          <button class="bsm b-rpw" onclick="resetPassword(${staff.id})">Reset PW</button>
+          <button class="bsm b-del" onclick="deleteStaff(${staff.id})">Delete</button>
+        ` : ''}
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+async function addStaff() {
+  const username = document.getElementById('newUsername').value.trim();
+  const fullName = document.getElementById('newFullName').value.trim();
+  const role = document.getElementById('newRole').value;
+  const jobTitle = document.getElementById('newJobTitle').value;
+  
+  if (!username || !fullName) {
+    alert('Please enter username and full name');
+    return;
+  }
+  
+  try {
+    showLoading();
+    const result = await apiCall('/staff', {
+      method: 'POST',
+      body: JSON.stringify({ username, fullName, role, jobTitle })
+    });
+    
+    alert(`Staff added!\nUsername: ${username}\nTemp Password: ${result.tempPassword}\n\nThey must change password on first login.`);
+    
+    document.getElementById('newUsername').value = '';
+    document.getElementById('newFullName').value = '';
+    
+    loadStaff();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function openEditStaff(staffId) {
+  const staff = allStaff.find(s => s.id === staffId);
+  if (!staff) return;
+  
+  document.getElementById('editStaffId').value = staffId;
+  document.getElementById('editFullName').value = staff.full_name;
+  document.getElementById('editJobTitle').value = staff.job_title;
+  document.getElementById('editTileColor').value = staff.tile_color;
+  document.getElementById('editTextColor').value = staff.text_color;
+  document.getElementById('editTelegramId').value = staff.telegram_id || '';
+  
+  document.getElementById('editStaffModal').classList.add('show');
+}
+
+function closeEditStaffModal() {
+  document.getElementById('editStaffModal').classList.remove('show');
+}
+
+async function saveStaffEdit() {
+  const staffId = document.getElementById('editStaffId').value;
+  const fullName = document.getElementById('editFullName').value.trim();
+  const jobTitle = document.getElementById('editJobTitle').value;
+  const tileColor = document.getElementById('editTileColor').value;
+  const textColor = document.getElementById('editTextColor').value;
+  const telegramId = document.getElementById('editTelegramId').value.trim();
+  
+  try {
+    showLoading();
+    await apiCall(`/staff/${staffId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ 
+        fullName, 
+        jobTitle, 
+        tileColor, 
+        textColor,
+        telegramId: telegramId || null
+      })
+    });
+    
+    closeEditStaffModal();
+    loadStaff();
+    loadShifts(); // Refresh calendar with new colors
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function resetPassword(staffId) {
+  if (!confirm('Reset password for this staff member?')) return;
+  
+  try {
+    showLoading();
+    const result = await apiCall(`/staff/${staffId}/reset-password`, {
+      method: 'POST'
+    });
+    
+    alert(`Password reset!\nNew temp password: ${result.tempPassword}\n\nUser must change on next login.`);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function deleteStaff(staffId) {
+  if (!confirm('Delete this staff member? This cannot be undone.')) return;
+  
+  try {
+    showLoading();
+    await apiCall(`/staff/${staffId}`, { method: 'DELETE' });
+    loadStaff();
+    loadShifts();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// CALENDAR
+// ═══════════════════════════════════════════════════════════
+function navPrev() {
+  if (viewMode === 'week') {
+    viewDate.setDate(viewDate.getDate() - 7);
+  } else {
+    viewDate.setMonth(viewDate.getMonth() - 1);
+  }
+  loadShifts();
+}
+
+function navNext() {
+  if (viewMode === 'week') {
+    viewDate.setDate(viewDate.getDate() + 7);
+  } else {
+    viewDate.setMonth(viewDate.getMonth() + 1);
+  }
+  loadShifts();
+}
+
+function setView(mode) {
+  viewMode = mode;
+  document.getElementById('vWeek').classList.toggle('active', mode === 'week');
+  document.getElementById('vMonth').classList.toggle('active', mode === 'month');
+  loadShifts();
+}
+
+async function loadShifts() {
+  const startDate = getWeekStart(viewDate);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 6);
+  
+  try {
+    showLoading();
+    const result = await apiCall(`/shifts?startDate=${formatDate(startDate)}&endDate=${formatDate(endDate)}`);
+    allShifts = result.shifts;
+    renderCalendar();
+  } catch (err) {
+    console.error('Load shifts error:', err);
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderCalendar() {
+  const root = document.getElementById('calendarRoot');
+  root.innerHTML = '';
+  
+  const startDate = getWeekStart(viewDate);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 6);
+  
+  document.getElementById('calTitle').textContent = 
+    `${formatDateLong(startDate)} – ${formatDateLong(endDate)}`;
+  
+  const grid = document.createElement('div');
+  grid.className = 'week-grid';
+  
+  // Day headers
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const isWknd = i === 0 || i === 6;
+    
+    const hdr = document.createElement('div');
+    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '');
+    hdr.innerHTML = `<span class="dn">${dayNames[i]}</span><span class="dt">${d.getDate()}</span>`;
+    grid.appendChild(hdr);
+  }
+  
+  // Day columns
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    const dateStr = formatDate(d);
+    const isWknd = i === 0 || i === 6;
+    
+    const col = document.createElement('div');
+    col.className = 'day-col' + (isWknd ? ' wknd' : '');
+    
+    const dayShifts = allShifts
+      .filter(s => s.date === dateStr)
+      .sort((a, b) => {
+        const order = { morning: 1, afternoon: 2, overnight: 3 };
+        return order[a.shift_type] - order[b.shift_type];
+      });
+    
+    dayShifts.forEach(shift => {
+      if (currentUser.role === 'staff' && shift.assigned_to !== currentUser.id && !shift.is_open) {
+        return; // Staff only see their shifts + open shifts
+      }
+      
+      const tile = createShiftTile(shift);
+      col.appendChild(tile);
+    });
+    
+    grid.appendChild(col);
+  }
+  
+  root.appendChild(grid);
+}
+
+function createShiftTile(shift) {
+  const def = SHIFT_DEFS[shift.shift_type];
+  const tile = document.createElement('div');
+  tile.className = 'shift-tile';
+  
+  if (shift.is_open) {
+    tile.style.background = '#f5f5f5';
+    tile.style.color = 'black';
+    tile.innerHTML = `
+      <div>
+        <div class="t-name">Open Shift</div>
+        <div class="t-time">${def.time}</div>
+      </div>
+      <div class="t-foot">
+        ${currentUser.role === 'staff' ? '<button class="bsm b-edit" onclick="requestShift(' + shift.id + ')">Request</button>' : ''}
+      </div>
+    `;
+  } else {
+    const staff = allStaff.find(s => s.id === shift.assigned_to);
+    const bg = staff?.tile_color || '#f5f5f5';
+    const tc = staff?.text_color || 'black';
+    const hours = shift.running_hours || 0;
+    const hClass = hours >= 40 ? 'hrs-over' : hours >= 36 ? 'hrs-warn' : 'hrs-ok';
+    
+    tile.style.background = bg;
+    tile.style.color = tc;
+    tile.innerHTML = `
+      <div>
+        <div class="t-name">${shift.full_name || 'Unknown'}</div>
+        <div class="t-time">${def.time}</div>
+      </div>
+      <div class="t-foot">
+        <span class="t-hrs ${hClass}">${hours.toFixed(1)}/40.0</span>
+      </div>
+    `;
+  }
+  
+  return tile;
+}
+
+async function requestShift(shiftId) {
+  if (!confirm('Request this open shift?')) return;
+  
+  try {
+    showLoading();
+    await apiCall('/shift-requests', {
+      method: 'POST',
+      body: JSON.stringify({ shiftId })
+    });
+    
+    alert('Shift requested! You will be notified when approved.');
+    loadShifts();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// APPROVALS (ADMIN ONLY)
+// ═══════════════════════════════════════════════════════════
+async function loadPendingApprovals() {
+  try {
+    const [shiftReqs, tradeReqs, timeOffReqs] = await Promise.all([
+      apiCall('/shift-requests').catch(() => ({ requests: [] })),
+      apiCall('/trade-requests').catch(() => ({ requests: [] })),
+      apiCall('/time-off-requests').catch(() => ({ requests: [] }))
+    ]);
+    
+    const pending = [
+      ...shiftReqs.requests.filter(r => r.status === 'pending'),
+      ...tradeReqs.requests.filter(r => r.status === 'pending' && r.requester_approved && r.target_approved),
+      ...timeOffReqs.requests.filter(r => r.status === 'pending')
+    ];
+    
+    // Update badge
+    const badge = document.getElementById('approvalBadge');
+    if (pending.length > 0) {
+      badge.textContent = pending.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+    
+    renderApprovalsList(shiftReqs.requests, tradeReqs.requests, timeOffReqs.requests);
+  } catch (err) {
+    console.error('Load approvals error:', err);
+  }
+}
+
+function renderApprovalsList(shiftReqs, tradeReqs, timeOffReqs) {
+  const list = document.getElementById('approvalsList');
+  list.innerHTML = '';
+  
+  const pendingShift = shiftReqs.filter(r => r.status === 'pending');
+  const pendingTrade = tradeReqs.filter(r => r.status === 'pending' && r.requester_approved && r.target_approved);
+  const pendingTimeOff = timeOffReqs.filter(r => r.status === 'pending');
+  
+  if (pendingShift.length === 0 && pendingTrade.length === 0 && pendingTimeOff.length === 0) {
+    list.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No pending approvals</p>';
+    return;
+  }
+  
+  // Shift requests
+  pendingShift.forEach(req => {
+    const item = document.createElement('div');
+    item.className = 'approval-item';
+    item.innerHTML = `
+      <div class="approval-header">
+        <div>
+          <div class="approval-title">Shift Request</div>
+          <div class="approval-meta">${req.requester_name} → ${req.date} ${SHIFT_DEFS[req.shift_type].label}</div>
+        </div>
+      </div>
+      <div class="approval-actions">
+        <button class="btn-approve" onclick="approveShiftRequest(${req.id})">Approve</button>
+        <button class="btn-deny" onclick="denyShiftRequest(${req.id})">Deny</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+  
+  // Trade requests
+  pendingTrade.forEach(req => {
+    const item = document.createElement('div');
+    item.className = 'approval-item';
+    item.innerHTML = `
+      <div class="approval-header">
+        <div>
+          <div class="approval-title">Trade Request (Both Approved)</div>
+          <div class="approval-meta">${req.requester_name} ↔ ${req.target_name}</div>
+          <div class="approval-meta">${req.req_date} ↔ ${req.tgt_date}</div>
+        </div>
+      </div>
+      <div class="approval-actions">
+        <button class="btn-approve" onclick="finalizeTrade(${req.id})">Finalize Trade</button>
+        <button class="btn-deny" onclick="denyTrade(${req.id})">Deny</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+  
+  // Time off requests
+  pendingTimeOff.forEach(req => {
+    const item = document.createElement('div');
+    item.className = 'approval-item';
+    item.innerHTML = `
+      <div class="approval-header">
+        <div>
+          <div class="approval-title">Time Off Request</div>
+          <div class="approval-meta">${req.requester_name} → ${req.start_date || req.shift_date}</div>
+          ${req.reason ? `<div class="approval-meta">Reason: ${req.reason}</div>` : ''}
+        </div>
+      </div>
+      <div class="approval-actions">
+        <button class="btn-approve" onclick="approveTimeOff(${req.id})">Approve</button>
+        <button class="btn-deny" onclick="denyTimeOff(${req.id})">Deny</button>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+async function approveShiftRequest(requestId) {
+  const note = prompt('Optional note for staff member:');
+  try {
+    showLoading();
+    await apiCall(`/shift-requests/${requestId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ note })
+    });
+    alert('Shift request approved! Staff member notified via Telegram.');
+    loadPendingApprovals();
+    loadShifts();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function denyShiftRequest(requestId) {
+  const note = prompt('Reason for denial (optional):');
+  try {
+    showLoading();
+    await apiCall(`/shift-requests/${requestId}/deny`, {
+      method: 'POST',
+      body: JSON.stringify({ note })
+    });
+    alert('Shift request denied.');
+    loadPendingApprovals();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function finalizeTrade(tradeId) {
+  const note = prompt('Optional note:');
+  try {
+    showLoading();
+    await apiCall(`/trade-requests/${tradeId}/finalize`, {
+      method: 'POST',
+      body: JSON.stringify({ note })
+    });
+    alert('Trade finalized! Both staff members notified.');
+    loadPendingApprovals();
+    loadShifts();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function denyTrade(tradeId) {
+  const note = prompt('Reason for denial:');
+  try {
+    showLoading();
+    await apiCall(`/trade-requests/${tradeId}/deny`, {
+      method: 'POST',
+      body: JSON.stringify({ note, status: 'denied' })
+    });
+    alert('Trade denied.');
+    loadPendingApprovals();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function approveTimeOff(requestId) {
+  const note = prompt('Optional note:');
+  try {
+    showLoading();
+    await apiCall(`/time-off-requests/${requestId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ note })
+    });
+    alert('Time off approved!');
+    loadPendingApprovals();
+    loadShifts();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function denyTimeOff(requestId) {
+  const note = prompt('Reason for denial:');
+  try {
+    showLoading();
+    await apiCall(`/time-off-requests/${requestId}/deny`, {
+      method: 'POST',
+      body: JSON.stringify({ note })
+    });
+    alert('Time off denied.');
+    loadPendingApprovals();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD (STAFF)
+// ═══════════════════════════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const result = await apiCall('/dashboard');
+    renderDashboard(result);
+  } catch (err) {
+    console.error('Dashboard error:', err);
+  }
+}
+
+function renderDashboard(data) {
+  const content = document.getElementById('dashboardContent');
+  
+  const upcomingHtml = data.upcomingShifts.map(s => {
+    const def = SHIFT_DEFS[s.shift_type];
+    return `<div style="padding:8px;background:#f8f8f8;border-radius:6px;margin:4px 0;">
+      <strong>${s.date}</strong> - ${def.label} (${def.time})
+    </div>`;
+  }).join('');
+  
+  content.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-label">Hours This Week</div>
+        <div class="stat-value">${data.weeklyHours.toFixed(1)}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Pending Requests</div>
+        <div class="stat-value">${data.pendingRequests}</div>
+      </div>
+    </div>
+    <div style="margin-top:16px;">
+      <strong>Upcoming Shifts:</strong>
+      ${upcomingHtml || '<p style="color:#888;margin-top:8px;">No upcoming shifts</p>'}
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════
+// UTILITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+function getWeekStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day;
+  return new Date(d.setDate(diff));
+}
+
+function formatDate(date) {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateLong(date) {
+  return new Date(date).toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric' 
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// EVENT LISTENERS
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Enter key on login
+  document.getElementById('username').addEventListener('keypress', e => {
+    if (e.key === 'Enter') handleLogin();
+  });
+  document.getElementById('password').addEventListener('keypress', e => {
+    if (e.key === 'Enter') handleLogin();
+  });
+  
+  // Check if already logged in
+  apiCall('/me').then(result => {
+    currentUser = result.user;
+    showApp();
+  }).catch(() => {
+    // Not logged in, show login screen
+  });
+});
+
