@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LilSongBirdHomes Scheduler</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" class="login-wrap">
+  <div class="login-head">
+    <h1>🎵 LilSongBirdHomes</h1>
+    <p>Staff Scheduling System</p>
+  </div>
+  <div class="login-body">
+    <div id="loginError" class="err-msg"></div>
+    <div class="fg">
+      <label>Username</label>
+      <input type="text" id="username" placeholder="Enter username" autocomplete="username">
+    </div>
+    <div class="fg">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="Enter password" autocomplete="current-password">
+    </div>
+    <button class="login-btn" onclick="handleLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="app hidden">
+  <div class="app-hdr">
+    <div>
+      <h1>🎵 LilSongBirdHomes</h1>
+      <div class="sub">Logged in as: <span id="userName"></span></div>
+    </div>
+    <div class="hdr-right">
+      <div class="badge" id="roleBadge">Staff</div>
+      <button class="lo-btn" onclick="handleLogout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- Admin Panel -->
+    <div id="adminPanel" class="hidden">
+      <div class="admin-tabs">
+        <button class="a-tab active" onclick="switchTab('schedule')">Schedule</button>
+        <button class="a-tab" onclick="switchTab('staff')">Manage Staff</button>
+        <button class="a-tab" onclick="switchTab('approvals')">
+          Approvals <span id="approvalBadge" class="approval-badge hidden">0</span>
+        </button>
+      </div>
+
+      <!-- Staff Management Tab -->
+      <div id="staffTab" class="tab-pane">
+        <div class="staff-mgmt">
+          <h3>Add New Staff Member</h3>
+          <div class="add-form">
+            <div class="frow">
+              <input type="text" id="newUsername" placeholder="Username">
+              <input type="text" id="newFullName" placeholder="Full Name">
+              <select id="newRole">
+                <option value="staff">Staff</option>
+                <option value="admin">Admin</option>
+              </select>
+              <select id="newJobTitle">
+                <option value="Caregiver">Caregiver</option>
+                <option value="Nurse">Nurse</option>
+                <option value="House Manager">House Manager</option>
+              </select>
+              <button class="add-s-btn" onclick="addStaff()">Add Staff</button>
+            </div>
+          </div>
+          <h3>Current Staff</h3>
+          <div class="s-list" id="staffList"></div>
+        </div>
+      </div>
+
+      <!-- Approvals Tab -->
+      <div id="approvalsTab" class="tab-pane">
+        <div class="approvals-section">
+          <h3>Pending Approvals</h3>
+          <div id="approvalsList"></div>
+        </div>
+      </div>
+
+      <div id="scheduleTab" class="tab-pane active"></div>
+    </div>
+
+    <!-- Calendar Navigation -->
+    <div class="cal-nav">
+      <div class="cal-nav-left">
+        <button class="nav-arrow" onclick="navPrev()">◄</button>
+        <span class="cal-title" id="calTitle"></span>
+        <button class="nav-arrow" onclick="navNext()">►</button>
+      </div>
+      <div class="view-toggle">
+        <button class="v-btn active" id="vWeek" onclick="setView('week')">Week</button>
+        <button class="v-btn" id="vMonth" onclick="setView('month')">Month</button>
+      </div>
+    </div>
+
+    <!-- Calendar Display -->
+    <div class="cal-scroll">
+      <div id="calendarRoot"></div>
+    </div>
+
+    <!-- Staff Dashboard -->
+    <div id="staffDashboard" class="hidden">
+      <div class="dashboard-card">
+        <h3>📊 Your Dashboard</h3>
+        <div id="dashboardContent"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Change Password Modal -->
+<div id="passwordModal" class="ov">
+  <div class="modal">
+    <h3>🔒 Change Password</h3>
+    <div class="fg">
+      <label>New Password (min 6 characters)</label>
+      <input type="password" id="newPassword" placeholder="Enter new password">
+    </div>
+    <div class="mbtn-row">
+      <button class="mc" onclick="closePasswordModal()">Cancel</button>
+      <button class="mok" onclick="savePassword()">Change Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Staff Modal -->
+<div id="editStaffModal" class="ov">
+  <div class="modal">
+    <h3>✏️ Edit Staff Member</h3>
+    <input type="hidden" id="editStaffId">
+    <div class="fg">
+      <label>Full Name</label>
+      <input type="text" id="editFullName">
+    </div>
+    <div class="fg">
+      <label>Job Title</label>
+      <select id="editJobTitle">
+        <option value="Caregiver">Caregiver</option>
+        <option value="Nurse">Nurse</option>
+        <option value="House Manager">House Manager</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Tile Color</label>
+      <input type="color" id="editTileColor">
+    </div>
+    <div class="fg">
+      <label>Text Color</label>
+      <select id="editTextColor">
+        <option value="black">Black</option>
+        <option value="white">White</option>
+      </select>
+    </div>
+    <div class="fg">
+      <label>Telegram ID (for notifications)</label>
+      <input type="text" id="editTelegramId" placeholder="Leave blank if not linked">
+    </div>
+    <div class="mbtn-row">
+      <button class="mc" onclick="closeEditStaffModal()">Cancel</button>
+      <button class="mok" onclick="saveStaffEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Indicator -->
+<div id="loading" class="loading-overlay hidden">
+  <div class="spinner"></div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
