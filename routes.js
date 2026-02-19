@@ -624,7 +624,6 @@ router.post('/trade-requests', requireAuth, async (req, res) => {
     `).run(myShiftId, theirShiftId, req.session.userId, theirShift.assigned_to, note);
     
     // Notify target
-   // await notify.notifyTradeRequestReceived(req.db, theirShift.assigned_to, result.lastInsertRowid);
     
     res.json({ success: true, requestId: result.lastInsertRowid });
   } catch (err) {
