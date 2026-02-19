@@ -344,9 +344,19 @@ function setView(mode) {
 }
 
 async function loadShifts() {
-  const startDate = getWeekStart(viewDate);
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 6);
+  let startDate, endDate;
+  
+  if (viewMode === 'month') {
+    // Get first day of month
+    startDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    // Get last day of month
+    endDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+  } else {
+    // Week view
+    startDate = getWeekStart(viewDate);
+    endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 6);
+  }
   
   try {
     showLoading();
@@ -361,6 +371,14 @@ async function loadShifts() {
 }
 
 function renderCalendar() {
+  if (viewMode === 'month') {
+    renderMonthView();
+  } else {
+    renderWeekView();
+  }
+}
+
+function renderWeekView() {
   const root = document.getElementById('calendarRoot');
   root.innerHTML = '';
   
@@ -409,7 +427,7 @@ function renderCalendar() {
         return; // Staff only see their shifts + open shifts
       }
       
-      const tile = createShiftTile(shift);
+      const tile = createShiftTile(shift, 'week');
       col.appendChild(tile);
     });
     
@@ -419,23 +437,115 @@ function renderCalendar() {
   root.appendChild(grid);
 }
 
-function createShiftTile(shift) {
+function renderMonthView() {
+  const root = document.getElementById('calendarRoot');
+  root.innerHTML = '';
+  
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  
+  document.getElementById('calTitle').textContent = monthName;
+  
+  const grid = document.createElement('div');
+  grid.className = 'month-grid';
+  
+  // Day headers
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  dayNames.forEach(day => {
+    const hdr = document.createElement('div');
+    hdr.className = 'month-day-hdr';
+    hdr.textContent = day;
+    grid.appendChild(hdr);
+  });
+  
+  // Get first day of month and its day of week
+  const firstDay = new Date(year, month, 1);
+  const startDay = firstDay.getDay();
+  
+  // Get last day of month
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  
+  // Add empty cells for days before month starts
+  for (let i = 0; i < startDay; i++) {
+    const emptyCell = document.createElement('div');
+    emptyCell.className = 'month-day-cell empty';
+    grid.appendChild(emptyCell);
+  }
+  
+  // Add cells for each day of month
+  for (let day = 1; day <= lastDay; day++) {
+    const d = new Date(year, month, day);
+    const dateStr = formatDate(d);
+    const isToday = dateStr === formatDate(new Date());
+    const isWknd = d.getDay() === 0 || d.getDay() === 6;
+    
+    const cell = document.createElement('div');
+    cell.className = 'month-day-cell' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
+    
+    const dayNum = document.createElement('div');
+    dayNum.className = 'month-day-num';
+    dayNum.textContent = day;
+    cell.appendChild(dayNum);
+    
+    const shiftsContainer = document.createElement('div');
+    shiftsContainer.className = 'month-shifts';
+    
+    const dayShifts = allShifts
+      .filter(s => s.date === dateStr)
+      .sort((a, b) => {
+        const order = { morning: 1, afternoon: 2, overnight: 3 };
+        return order[a.shift_type] - order[b.shift_type];
+      });
+    
+    dayShifts.forEach(shift => {
+      if (currentUser.role === 'staff' && shift.assigned_to !== currentUser.id && !shift.is_open) {
+        return;
+      }
+      
+      const tile = createShiftTile(shift, 'month');
+      shiftsContainer.appendChild(tile);
+    });
+    
+    cell.appendChild(shiftsContainer);
+    grid.appendChild(cell);
+  }
+  
+  root.appendChild(grid);
+}
+
+function createShiftTile(shift, viewType = 'week') {
   const def = SHIFT_DEFS[shift.shift_type];
   const tile = document.createElement('div');
-  tile.className = 'shift-tile';
+  tile.className = viewType === 'month' ? 'month-shift-tile' : 'shift-tile';
+  
+  // Add click handler for admin reassignment
+  if (currentUser.role === 'admin' && !shift.is_open) {
+    tile.style.cursor = 'pointer';
+    tile.onclick = () => showReassignModal(shift);
+  }
   
   if (shift.is_open) {
     tile.style.background = '#f5f5f5';
     tile.style.color = 'black';
-    tile.innerHTML = `
-      <div>
-        <div class="t-name">Open Shift</div>
-        <div class="t-time">${def.time}</div>
-      </div>
-      <div class="t-foot">
-        ${currentUser.role === 'staff' ? '<button class="bsm b-edit" onclick="requestShift(' + shift.id + ')">Request</button>' : ''}
-      </div>
-    `;
+    
+    if (viewType === 'month') {
+      tile.innerHTML = `<div class="month-shift-label">Open ${def.icon}</div>`;
+      if (currentUser.role === 'staff') {
+        tile.onclick = () => requestShift(shift.id);
+        tile.style.cursor = 'pointer';
+      }
+    } else {
+      tile.innerHTML = `
+        <div>
+          <div class="t-name">Open Shift</div>
+          <div class="t-time">${def.time}</div>
+        </div>
+        <div class="t-foot">
+          ${currentUser.role === 'staff' ? '<button class="bsm b-edit" onclick="requestShift(' + shift.id + '); event.stopPropagation();">Request</button>' : ''}
+        </div>
+      `;
+    }
   } else {
     const staff = allStaff.find(s => s.id === shift.assigned_to);
     const bg = staff?.tile_color || '#f5f5f5';
@@ -445,18 +555,114 @@ function createShiftTile(shift) {
     
     tile.style.background = bg;
     tile.style.color = tc;
-    tile.innerHTML = `
-      <div>
-        <div class="t-name">${shift.full_name || 'Unknown'}</div>
-        <div class="t-time">${def.time}</div>
-      </div>
-      <div class="t-foot">
-        <span class="t-hrs ${hClass}">${hours.toFixed(1)}/40.0</span>
-      </div>
-    `;
+    
+    if (viewType === 'month') {
+      const initials = (shift.full_name || 'Unknown').split(' ').map(n => n[0]).join('');
+      tile.innerHTML = `<div class="month-shift-label">${initials} ${def.icon}</div>`;
+      tile.title = `${shift.full_name} - ${def.time}`;
+    } else {
+      tile.innerHTML = `
+        <div>
+          <div class="t-name">${shift.full_name || 'Unknown'}</div>
+          <div class="t-time">${def.time}</div>
+        </div>
+        <div class="t-foot">
+          <span class="t-hrs ${hClass}">${hours.toFixed(1)}/40.0</span>
+        </div>
+      `;
+    }
   }
   
   return tile;
+}
+
+// Modal for admin reassignment
+function showReassignModal(shift) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+  
+  const def = SHIFT_DEFS[shift.shift_type];
+  const currentStaff = allStaff.find(s => s.id === shift.assigned_to);
+  
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.innerHTML = `
+    <h3>Reassign Shift</h3>
+    <p><strong>Date:</strong> ${new Date(shift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+    <p><strong>Type:</strong> ${def.icon} ${shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)} (${def.time})</p>
+    <p><strong>Currently:</strong> ${currentStaff?.full_name || 'Unknown'}</p>
+    <hr>
+    <label>Reassign to:</label>
+    <select id="reassignSelect" class="inp">
+      <option value="">-- Select Staff --</option>
+      <option value="OPEN">Make Open Shift</option>
+      ${allStaff.filter(s => s.role === 'staff').map(s => 
+        `<option value="${s.id}" ${s.id === shift.assigned_to ? 'selected' : ''}>${s.full_name}</option>`
+      ).join('')}
+    </select>
+    <div class="modal-actions">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="saveReassignment(${shift.id})">Save</button>
+    </div>
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+  
+  setTimeout(() => document.getElementById('reassignSelect').focus(), 100);
+}
+
+async function saveReassignment(shiftId) {
+  const select = document.getElementById('reassignSelect');
+  const newAssignee = select.value;
+  
+  if (!newAssignee) {
+    alert('Please select a staff member');
+    return;
+  }
+  
+  try {
+    showLoading();
+    
+    if (newAssignee === 'OPEN') {
+      // Make it an open shift
+      await apiCall(`/shifts/${shiftId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ 
+          assigned_to: null,
+          is_open: true
+        })
+      });
+    } else {
+      // Assign to specific staff
+      await apiCall(`/shifts/${shiftId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ 
+          assigned_to: parseInt(newAssignee),
+          is_open: false
+        })
+      });
+    }
+    
+    document.querySelector('.modal-overlay').remove();
+    await loadShifts();
+    showSuccess('Shift reassigned successfully!');
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function showSuccess(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'toast-success';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
 }
 
 async function requestShift(shiftId) {
