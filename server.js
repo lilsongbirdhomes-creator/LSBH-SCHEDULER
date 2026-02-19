@@ -27,15 +27,17 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 // Session configuration
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'change-this-secret-in-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
+     secret: process.env.SESSION_SECRET || 'fallback-secret-key',
+     resave: false,
+     saveUninitialized: false,
+     proxy: true,
+     cookie: { 
+       httpOnly: true,
+       secure: true,
+       sameSite: 'lax',
+       maxAge: 24 * 60 * 60 * 1000
+     }
+   }));
 
 // Make database available to routes
 app.use((req, res, next) => {
