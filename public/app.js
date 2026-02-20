@@ -530,7 +530,10 @@ function createShiftTile(shift, viewType = 'week') {
     tile.style.color = 'black';
     
     if (viewType === 'month') {
-      tile.innerHTML = `<div class="month-shift-label">Open ${def.icon}</div>`;
+      tile.innerHTML = `
+        <div class="month-shift-name">Open Shift</div>
+        <div class="month-shift-time">${def.icon} ${def.time}</div>
+      `;
       if (currentUser.role === 'staff') {
         tile.onclick = () => requestShift(shift.id);
         tile.style.cursor = 'pointer';
@@ -557,9 +560,11 @@ function createShiftTile(shift, viewType = 'week') {
     tile.style.color = tc;
     
     if (viewType === 'month') {
-      const initials = (shift.full_name || 'Unknown').split(' ').map(n => n[0]).join('');
-      tile.innerHTML = `<div class="month-shift-label">${initials} ${def.icon}</div>`;
-      tile.title = `${shift.full_name} - ${def.time}`;
+      tile.innerHTML = `
+        <div class="month-shift-name">${shift.full_name || staff?.full_name || 'Unknown'}</div>
+        <div class="month-shift-time">${def.icon} ${def.time}</div>
+        <div class="month-shift-hours ${hClass}">${hours.toFixed(1)}/40</div>
+      `;
     } else {
       tile.innerHTML = `
         <div>
@@ -647,8 +652,13 @@ async function saveReassignment(shiftId) {
       });
     }
     
+    // Close modal
     document.querySelector('.modal-overlay').remove();
+    
+    // Reload shifts to refresh the calendar
     await loadShifts();
+    
+    // Show success message
     showSuccess('Shift reassigned successfully!');
   } catch (err) {
     alert('Error: ' + err.message);
