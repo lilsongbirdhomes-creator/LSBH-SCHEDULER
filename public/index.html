@@ -176,5 +176,169 @@
 </div>
 
 <script src="/app.js"></script>
+
+<!-- ADD THIS TO index.html AFTER THE OTHER MODALS -->
+
+<!-- Shift Generator Modal -->
+<div id="shiftGeneratorModal" class="modal-overlay">
+  <div class="modal-content shift-gen-modal">
+    <h3>🗓️ Shift Generator</h3>
+    
+    <!-- Tab Selection -->
+    <div class="gen-tabs">
+      <button class="gen-tab active" onclick="switchGenTab('create')">Create Shifts</button>
+      <button class="gen-tab" onclick="switchGenTab('copy')">Copy Shifts</button>
+      <button class="gen-tab" onclick="switchGenTab('templates')">Edit Templates</button>
+    </div>
+    
+    <!-- CREATE SHIFTS TAB -->
+    <div id="genTabCreate" class="gen-tab-content active">
+      <h4>Create New Shifts</h4>
+      
+      <div class="gen-section">
+        <label>Date Range:</label>
+        <div class="date-range">
+          <input type="date" id="genStartDate" class="inp">
+          <span>to</span>
+          <input type="date" id="genEndDate" class="inp">
+        </div>
+      </div>
+      
+      <div class="gen-section">
+        <label>Which Days:</label>
+        <div class="day-checkboxes">
+          <label><input type="checkbox" id="daySun" checked> Sun</label>
+          <label><input type="checkbox" id="dayMon" checked> Mon</label>
+          <label><input type="checkbox" id="dayTue" checked> Tue</label>
+          <label><input type="checkbox" id="dayWed" checked> Wed</label>
+          <label><input type="checkbox" id="dayThu" checked> Thu</label>
+          <label><input type="checkbox" id="dayFri" checked> Fri</label>
+          <label><input type="checkbox" id="daySat" checked> Sat</label>
+        </div>
+      </div>
+      
+      <div class="gen-section">
+        <label>Which Shift Types:</label>
+        <div class="shift-checkboxes">
+          <label><input type="checkbox" id="shiftMorning" checked> 🌅 Morning</label>
+          <label><input type="checkbox" id="shiftAfternoon" checked> 🌆 Afternoon</label>
+          <label><input type="checkbox" id="shiftOvernight" checked> 🌙 Overnight</label>
+        </div>
+      </div>
+      
+      <div class="gen-section">
+        <label>Assignment Pattern:</label>
+        <select id="genPattern" class="inp" onchange="togglePatternOptions()">
+          <option value="open">Leave as Open Shifts</option>
+          <option value="specific">Assign to Specific Staff</option>
+          <option value="rotate">Rotate Through Staff</option>
+        </select>
+        
+        <div id="specificStaffOption" class="pattern-option" style="display:none;">
+          <label>Assign all to:</label>
+          <select id="genSpecificStaff" class="inp">
+            <option value="">-- Select Staff --</option>
+          </select>
+        </div>
+        
+        <div id="rotateStaffOption" class="pattern-option" style="display:none;">
+          <label>Rotation Order (drag to reorder):</label>
+          <div id="rotationList" class="rotation-list"></div>
+        </div>
+      </div>
+      
+      <div class="gen-preview">
+        <strong>Preview:</strong> <span id="genPreviewText">Select options above</span>
+      </div>
+      
+      <div class="modal-actions">
+        <button class="b-can" onclick="closeShiftGenerator()">Cancel</button>
+        <button class="b-pri" onclick="generateShifts()">Generate Shifts</button>
+      </div>
+    </div>
+    
+    <!-- COPY SHIFTS TAB -->
+    <div id="genTabCopy" class="gen-tab-content">
+      <h4>Copy Existing Shifts</h4>
+      
+      <div class="gen-section">
+        <label>Copy From:</label>
+        <div class="copy-from-options">
+          <label><input type="radio" name="copyFrom" value="day" checked> Single Day</label>
+          <label><input type="radio" name="copyFrom" value="week"> Full Week</label>
+          <label><input type="radio" name="copyFrom" value="month"> Full Month</label>
+        </div>
+        <input type="date" id="copySourceDate" class="inp">
+      </div>
+      
+      <div class="gen-section">
+        <label>Copy To:</label>
+        <input type="date" id="copyTargetDate" class="inp">
+        <small>Shifts will be copied starting from this date</small>
+      </div>
+      
+      <div class="gen-section">
+        <label>Options:</label>
+        <label><input type="checkbox" id="copyKeepAssignments" checked> Keep staff assignments</label>
+        <label><input type="checkbox" id="copySkipExisting" checked> Skip if shift already exists</label>
+      </div>
+      
+      <div class="gen-preview">
+        <strong>Preview:</strong> <span id="copyPreviewText">Select dates above</span>
+      </div>
+      
+      <div class="modal-actions">
+        <button class="b-can" onclick="closeShiftGenerator()">Cancel</button>
+        <button class="b-pri" onclick="copyShifts()">Copy Shifts</button>
+      </div>
+    </div>
+    
+    <!-- EDIT TEMPLATES TAB -->
+    <div id="genTabTemplates" class="gen-tab-content">
+      <h4>Edit Shift Templates</h4>
+      
+      <div class="template-editor">
+        <div class="template-item">
+          <h5>🌅 Morning Shift</h5>
+          <label>Label:</label>
+          <input type="text" id="tmplMorningLabel" class="inp" value="Morning">
+          <label>Time:</label>
+          <input type="text" id="tmplMorningTime" class="inp" value="7:00 AM – 3:00 PM">
+          <label>Hours:</label>
+          <input type="number" id="tmplMorningHours" class="inp" value="8.0" step="0.5">
+        </div>
+        
+        <div class="template-item">
+          <h5>🌆 Afternoon Shift</h5>
+          <label>Label:</label>
+          <input type="text" id="tmplAfternoonLabel" class="inp" value="Afternoon">
+          <label>Time:</label>
+          <input type="text" id="tmplAfternoonTime" class="inp" value="3:00 PM – 7:00 PM">
+          <label>Hours:</label>
+          <input type="number" id="tmplAfternoonHours" class="inp" value="4.0" step="0.5">
+        </div>
+        
+        <div class="template-item">
+          <h5>🌙 Overnight Shift</h5>
+          <label>Label:</label>
+          <input type="text" id="tmplOvernightLabel" class="inp" value="Overnight">
+          <label>Time:</label>
+          <input type="text" id="tmplOvernightTime" class="inp" value="7:00 PM – 7:00 AM">
+          <label>Hours:</label>
+          <input type="number" id="tmplOvernightHours" class="inp" value="12.0" step="0.5">
+        </div>
+      </div>
+      
+      <p class="template-note">⚠️ Note: Templates are saved locally in your browser. They don't sync across devices.</p>
+      
+      <div class="modal-actions">
+        <button class="b-can" onclick="closeShiftGenerator()">Cancel</button>
+        <button class="b-pri" onclick="saveTemplates()">Save Templates</button>
+      </div>
+    </div>
+    
+  </div>
+</div>
+  
 </body>
 </html>
