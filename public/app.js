@@ -72,7 +72,7 @@ async function handleLogin() {
       return;
     }
     
-    showApp();
+    await showApp();
   } catch (err) {
     errorDiv.textContent = err.message;
     errorDiv.classList.add('show');
@@ -81,7 +81,7 @@ async function handleLogin() {
   }
 }
 
-function showApp() {
+async function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('userName').textContent = currentUser.fullName;
@@ -92,7 +92,7 @@ function showApp() {
   
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
-    loadStaff();
+    await loadStaff(); // Wait for staff to load before showing UI
     loadPendingApprovals();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
@@ -627,6 +627,9 @@ function createShiftTile(shift, viewType = 'week') {
 
 // Admin assign open shift modal
 function showAssignOpenShiftModal(shift) {
+  console.log('showAssignOpenShiftModal - allStaff:', allStaff);
+  console.log('Filtered staff:', allStaff.filter(s => s.role === 'staff' && s.username !== '_open'));
+  
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.onclick = (e) => {
