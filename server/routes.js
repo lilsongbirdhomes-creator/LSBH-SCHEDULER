@@ -375,6 +375,155 @@ router.post('/shifts', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/shifts/bulk - Create multiple shifts (admin only)
+router.post('/shifts/bulk', requireAdmin, async (req, res) => {
+  const { shifts } = req.body;
+  
+  if (!Array.isArray(shifts) || shifts.length === 0) {
+    return res.status(400).json({ error: 'Shifts array required' });
+  }
+  
+  let created = 0;
+  let skipped = 0;
+  const errors = [];
+  
+  try {
+    for (const shift of shifts) {
+      const { date, shiftType, assignedTo, isOpen } = shift;
+      
+      // Check if shift already exists
+      const existing = req.db.prepare(`
+        SELECT id FROM shifts WHERE date = ? AND shift_type = ?
+      `).get(date, shiftType);
+      
+      if (existing) {
+        skipped++;
+        continue;
+      }
+      
+      // Check hours limit if assigning
+      if (assignedTo && !isOpen) {
+        const check = checkHoursLimit(req.db, assignedTo, date, shiftType);
+        if (check.wouldExceed) {
+          errors.push(`${date} ${shiftType}: Would exceed 40-hour limit for staff`);
+          skipped++;
+          continue;
+        }
+      }
+      
+      // Create shift
+      req.db.prepare(`
+        INSERT INTO shifts (date, shift_type, assigned_to, is_open, created_by)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        date,
+        shiftType,
+        isOpen ? null : assignedTo,
+        isOpen ? 1 : 0,
+        req.session.userId
+      );
+      
+      created++;
+    }
+    
+    res.json({ 
+      success: true, 
+      created, 
+      skipped,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (err) {
+    console.error('Bulk create error:', err);
+    res.status(500).json({ error: 'Failed to create shifts' });
+  }
+});
+
+// POST /api/shifts/copy - Copy shifts from one date range to another (admin only)
+router.post('/shifts/copy', requireAdmin, async (req, res) => {
+  const { sourceDate, targetDate, copyType, keepAssignments, skipExisting } = req.body;
+  
+  if (!sourceDate || !targetDate) {
+    return res.status(400).json({ error: 'Source and target dates required' });
+  }
+  
+  try {
+    // Calculate date range based on copy type
+    let sourceStart, sourceEnd;
+    const src = new Date(sourceDate);
+    
+    if (copyType === 'day') {
+      sourceStart = sourceDate;
+      sourceEnd = sourceDate;
+    } else if (copyType === 'week') {
+      // Get Sunday of the week
+      const day = src.getDay();
+      const diff = src.getDate() - day;
+      sourceStart = new Date(src.setDate(diff)).toISOString().split('T')[0];
+      sourceEnd = new Date(src.setDate(diff + 6)).toISOString().split('T')[0];
+    } else if (copyType === 'month') {
+      sourceStart = new Date(src.getFullYear(), src.getMonth(), 1).toISOString().split('T')[0];
+      sourceEnd = new Date(src.getFullYear(), src.getMonth() + 1, 0).toISOString().split('T')[0];
+    }
+    
+    // Get source shifts
+    const sourceShifts = req.db.prepare(`
+      SELECT date, shift_type, assigned_to, is_open
+      FROM shifts
+      WHERE date >= ? AND date <= ?
+      ORDER BY date, shift_type
+    `).all(sourceStart, sourceEnd);
+    
+    if (sourceShifts.length === 0) {
+      return res.json({ success: true, copied: 0, message: 'No shifts found in source range' });
+    }
+    
+    // Calculate date offset
+    const srcDate = new Date(sourceStart);
+    const tgtDate = new Date(targetDate);
+    const dayOffset = Math.floor((tgtDate - srcDate) / (1000 * 60 * 60 * 24));
+    
+    let copied = 0;
+    let skipped = 0;
+    
+    for (const shift of sourceShifts) {
+      const shiftDate = new Date(shift.date);
+      shiftDate.setDate(shiftDate.getDate() + dayOffset);
+      const newDate = shiftDate.toISOString().split('T')[0];
+      
+      // Check if shift already exists
+      if (skipExisting) {
+        const existing = req.db.prepare(`
+          SELECT id FROM shifts WHERE date = ? AND shift_type = ?
+        `).get(newDate, shift.shift_type);
+        
+        if (existing) {
+          skipped++;
+          continue;
+        }
+      }
+      
+      // Create copied shift
+      req.db.prepare(`
+        INSERT OR REPLACE INTO shifts (date, shift_type, assigned_to, is_open, created_by)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        newDate,
+        shift.shift_type,
+        keepAssignments ? shift.assigned_to : null,
+        keepAssignments ? shift.is_open : 1,
+        req.session.userId
+      );
+      
+      copied++;
+    }
+    
+    res.json({ success: true, copied, skipped });
+  } catch (err) {
+    console.error('Copy shifts error:', err);
+    res.status(500).json({ error: 'Failed to copy shifts' });
+  }
+});
+
 // PUT /api/shifts/:id - Update shift
 router.put('/shifts/:id', requireAdmin, async (req, res) => {
   const shiftId = parseInt(req.params.id);
