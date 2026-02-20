@@ -640,8 +640,8 @@ async function saveReassignment(shiftId) {
       await apiCall(`/shifts/${shiftId}`, {
         method: 'PUT',
         body: JSON.stringify({ 
-          assigned_to: null,
-          is_open: true
+          assignedTo: null,
+          isOpen: true
         })
       });
     } else {
@@ -649,8 +649,8 @@ async function saveReassignment(shiftId) {
       await apiCall(`/shifts/${shiftId}`, {
         method: 'PUT',
         body: JSON.stringify({ 
-          assigned_to: parseInt(newAssignee),
-          is_open: false
+          assignedTo: parseInt(newAssignee),
+          isOpen: false
         })
       });
     }
