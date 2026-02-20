@@ -8,9 +8,9 @@ let allStaff = [];
 let allShifts = [];
 
 const SHIFT_DEFS = {
-  morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0 },
-  afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0 },
-  overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0 }
+  morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
+  afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0, icon: '🌆' },
+  overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0, icon: '🌙' }
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -629,6 +629,9 @@ async function saveReassignment(shiftId) {
     return;
   }
   
+  // Remember current view mode before reload
+  const savedViewMode = viewMode;
+  
   try {
     showLoading();
     
@@ -655,8 +658,14 @@ async function saveReassignment(shiftId) {
     // Close modal
     document.querySelector('.modal-overlay').remove();
     
-    // Reload shifts to refresh the calendar
+    // Reload both staff (to get updated names) and shifts (to get updated assignments)
+    await loadStaff();
     await loadShifts();
+    
+    // Restore view mode if it changed during reload
+    if (viewMode !== savedViewMode) {
+      setView(savedViewMode);
+    }
     
     // Show success message
     showSuccess('Shift reassigned successfully!');
