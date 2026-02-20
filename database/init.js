@@ -2,13 +2,27 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
-// Initialize database
+
 const dbPath = path.join(__dirname, 'scheduler.db');
 
-// Remove old database if exists
+// Check if database already exists and has data
 if (fs.existsSync(dbPath)) {
-  fs.unlinkSync(dbPath);
-  console.log('🗑️  Removed old database');
+  console.log('📦 Database file exists, checking if initialized...');
+  const db = new Database(dbPath);
+  
+  try {
+    const adminExists = db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin');
+    if (adminExists && adminExists.count > 0) {
+      console.log('✅ Database already initialized with admin user');
+      console.log('   Skipping initialization to preserve existing data');
+      db.close();
+      process.exit(0);
+    }
+  } catch (err) {
+    console.log('⚠️  Database exists but appears empty or corrupted, reinitializing...');
+    db.close();
+    fs.unlinkSync(dbPath);
+  }
 }
 
 const db = new Database(dbPath);
