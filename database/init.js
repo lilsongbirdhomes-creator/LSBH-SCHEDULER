@@ -2,7 +2,7 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
-
+// Initialize database
 const dbPath = path.join(__dirname, 'scheduler.db');
 
 // Remove old database if exists
