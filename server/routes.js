@@ -271,14 +271,8 @@ router.get('/shifts', requireAuth, (req, res) => {
     params.push(parseInt(userId));
   }
   
-  if (includeOpen === 'true') {
-    query += ' AND (s.is_open = 1 OR s.assigned_to = ?)';
-    params.push(req.session.userId);
-  } else if (!isAdmin) {
-    // Non-admin can only see their own shifts plus open shifts
-    query += ' AND (s.assigned_to = ? OR s.is_open = 1)';
-    params.push(req.session.userId);
-  }
+  // Staff can see ALL shifts (removed filtering)
+  // Frontend toggle handles "only my shifts" view
   
   query += ' ORDER BY s.date ASC, CASE s.shift_type WHEN \'morning\' THEN 1 WHEN \'afternoon\' THEN 2 WHEN \'overnight\' THEN 3 END';
   
@@ -301,6 +295,25 @@ router.get('/shifts', requireAuth, (req, res) => {
   });
   
   res.json({ shifts: shiftsWithHours });
+});
+
+// GET /api/hours-check - Check if assignment would exceed 40-hour limit
+router.get('/hours-check', requireAuth, (req, res) => {
+  const { staffId, date, shiftType, excludeShiftId } = req.query;
+  
+  if (!staffId || !date || !shiftType) {
+    return res.status(400).json({ error: 'staffId, date, and shiftType required' });
+  }
+  
+  const check = checkHoursLimit(
+    req.db, 
+    parseInt(staffId), 
+    date, 
+    shiftType,
+    excludeShiftId ? parseInt(excludeShiftId) : undefined
+  );
+  
+  res.json(check);
 });
 
 // POST /api/shifts - Create shift (admin only)
