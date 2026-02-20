@@ -1246,3 +1246,357 @@ function getPayPeriodStart(date) {
 function formatDateShort(date) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
+// ADD THIS TO app.js
+
+// ═══════════════════════════════════════════════════════════
+// SHIFT GENERATOR
+// ═══════════════════════════════════════════════════════════
+
+function openShiftGenerator() {
+  // Load templates from localStorage
+  loadTemplates();
+  
+  // Populate staff dropdowns
+  populateStaffDropdowns();
+  
+  // Set default dates (today and 2 weeks ahead)
+  const today = new Date();
+  const twoWeeks = new Date(today);
+  twoWeeks.setDate(twoWeeks.getDate() + 14);
+  
+  document.getElementById('genStartDate').value = formatDate(today);
+  document.getElementById('genEndDate').value = formatDate(twoWeeks);
+  document.getElementById('copySourceDate').value = formatDate(today);
+  document.getElementById('copyTargetDate').value = formatDate(twoWeeks);
+  
+  // Show modal
+  document.getElementById('shiftGeneratorModal').style.display = 'flex';
+  
+  // Default to create tab
+  switchGenTab('create');
+  updateGeneratorPreview();
+}
+
+function closeShiftGenerator() {
+  document.getElementById('shiftGeneratorModal').style.display = 'none';
+}
+
+function switchGenTab(tabName) {
+  // Update tab buttons
+  document.querySelectorAll('.gen-tab').forEach(btn => btn.classList.remove('active'));
+  event.target.classList.add('active');
+  
+  // Update tab content
+  document.querySelectorAll('.gen-tab-content').forEach(content => content.classList.remove('active'));
+  document.getElementById('genTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1)).classList.add('active');
+}
+
+function populateStaffDropdowns() {
+  const activeStaff = allStaff.filter(s => s.role === 'staff' && s.username !== '_open');
+  
+  // Specific staff dropdown
+  const specificSelect = document.getElementById('genSpecificStaff');
+  specificSelect.innerHTML = '<option value="">-- Select Staff --</option>';
+  activeStaff.forEach(s => {
+    specificSelect.innerHTML += `<option value="${s.id}">${s.full_name}</option>`;
+  });
+  
+  // Rotation list
+  const rotationList = document.getElementById('rotationList');
+  rotationList.innerHTML = '';
+  activeStaff.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'rotation-item';
+    item.draggable = true;
+    item.dataset.staffId = s.id;
+    item.innerHTML = `
+      <span class="drag-handle">⋮⋮</span>
+      <label>
+        <input type="checkbox" checked data-staff-id="${s.id}">
+        ${s.full_name}
+      </label>
+    `;
+    rotationList.appendChild(item);
+  });
+  
+  // Add drag and drop handlers
+  setupRotationDragDrop();
+}
+
+function setupRotationDragDrop() {
+  const items = document.querySelectorAll('.rotation-item');
+  let draggedItem = null;
+  
+  items.forEach(item => {
+    item.addEventListener('dragstart', function() {
+      draggedItem = this;
+      this.style.opacity = '0.5';
+    });
+    
+    item.addEventListener('dragend', function() {
+      this.style.opacity = '1';
+    });
+    
+    item.addEventListener('dragover', function(e) {
+      e.preventDefault();
+    });
+    
+    item.addEventListener('drop', function(e) {
+      e.preventDefault();
+      if (this !== draggedItem) {
+        const allItems = [...this.parentNode.children];
+        const draggedIndex = allItems.indexOf(draggedItem);
+        const targetIndex = allItems.indexOf(this);
+        
+        if (draggedIndex < targetIndex) {
+          this.parentNode.insertBefore(draggedItem, this.nextSibling);
+        } else {
+          this.parentNode.insertBefore(draggedItem, this);
+        }
+      }
+    });
+  });
+}
+
+function togglePatternOptions() {
+  const pattern = document.getElementById('genPattern').value;
+  
+  document.getElementById('specificStaffOption').style.display = pattern === 'specific' ? 'block' : 'none';
+  document.getElementById('rotateStaffOption').style.display = pattern === 'rotate' ? 'block' : 'none';
+  
+  updateGeneratorPreview();
+}
+
+function updateGeneratorPreview() {
+  const startDate = new Date(document.getElementById('genStartDate').value);
+  const endDate = new Date(document.getElementById('genEndDate').value);
+  
+  if (isNaN(startDate) || isNaN(endDate)) {
+    document.getElementById('genPreviewText').textContent = 'Select dates';
+    return;
+  }
+  
+  // Count selected days
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const selectedDays = days.filter((_, i) => document.getElementById('day' + days[i]).checked);
+  
+  // Count selected shift types
+  const shiftTypes = [];
+  if (document.getElementById('shiftMorning').checked) shiftTypes.push('Morning');
+  if (document.getElementById('shiftAfternoon').checked) shiftTypes.push('Afternoon');
+  if (document.getElementById('shiftOvernight').checked) shiftTypes.push('Overnight');
+  
+  // Calculate days in range
+  const dayCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+  const pattern = document.getElementById('genPattern').value;
+  
+  const estimatedShifts = selectedDays.length * shiftTypes.length * Math.ceil(dayCount / 7);
+  
+  let patternText = pattern === 'open' ? 'as open shifts' : 
+                   pattern === 'specific' ? 'assigned to selected staff' : 
+                   'rotating through staff';
+  
+  document.getElementById('genPreviewText').textContent = 
+    `Will create ~${estimatedShifts} shifts (${selectedDays.length} days/week × ${shiftTypes.length} shift types × ${Math.ceil(dayCount/7)} weeks) ${patternText}`;
+}
+
+async function generateShifts() {
+  const startDate = new Date(document.getElementById('genStartDate').value);
+  const endDate = new Date(document.getElementById('genEndDate').value);
+  const pattern = document.getElementById('genPattern').value;
+  
+  // Get selected days
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const selectedDays = days.map((day, i) => 
+    document.getElementById('day' + day).checked ? i : -1
+  ).filter(i => i !== -1);
+  
+  // Get selected shift types
+  const shiftTypes = [];
+  if (document.getElementById('shiftMorning').checked) shiftTypes.push('morning');
+  if (document.getElementById('shiftAfternoon').checked) shiftTypes.push('afternoon');
+  if (document.getElementById('shiftOvernight').checked) shiftTypes.push('overnight');
+  
+  if (shiftTypes.length === 0) {
+    alert('Please select at least one shift type');
+    return;
+  }
+  
+  // Get assignment info
+  let assignedTo = null;
+  let rotationStaff = [];
+  
+  if (pattern === 'specific') {
+    assignedTo = parseInt(document.getElementById('genSpecificStaff').value);
+    if (!assignedTo) {
+      alert('Please select a staff member');
+      return;
+    }
+  } else if (pattern === 'rotate') {
+    const checkboxes = document.querySelectorAll('#rotationList input[type="checkbox"]:checked');
+    rotationStaff = [...checkboxes].map(cb => parseInt(cb.dataset.staffId));
+    if (rotationStaff.length === 0) {
+      alert('Please select at least one staff member for rotation');
+      return;
+    }
+  }
+  
+  if (!confirm(`This will create shifts from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}. Continue?`)) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    
+    const shifts = [];
+    let rotationIndex = 0;
+    
+    // Generate shifts for each day in range
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dayOfWeek = d.getDay();
+      
+      // Skip if this day not selected
+      if (!selectedDays.includes(dayOfWeek)) continue;
+      
+      const dateStr = formatDate(d);
+      
+      // Create each shift type for this day
+      for (const shiftType of shiftTypes) {
+        const shift = {
+          date: dateStr,
+          shiftType: shiftType,
+          isOpen: pattern === 'open',
+          assignedTo: null
+        };
+        
+        if (pattern === 'specific') {
+          shift.assignedTo = assignedTo;
+        } else if (pattern === 'rotate') {
+          shift.assignedTo = rotationStaff[rotationIndex % rotationStaff.length];
+          rotationIndex++;
+        }
+        
+        shifts.push(shift);
+      }
+    }
+    
+    // Send to API
+    const result = await apiCall('/shifts/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ shifts })
+    });
+    
+    closeShiftGenerator();
+    showSuccess(`${result.created} shifts created successfully!`);
+    loadShifts();
+    
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function copyShifts() {
+  const copyFrom = document.querySelector('input[name="copyFrom"]:checked').value;
+  const sourceDate = new Date(document.getElementById('copySourceDate').value);
+  const targetDate = new Date(document.getElementById('copyTargetDate').value);
+  const keepAssignments = document.getElementById('copyKeepAssignments').checked;
+  const skipExisting = document.getElementById('copySkipExisting').checked;
+  
+  if (isNaN(sourceDate) || isNaN(targetDate)) {
+    alert('Please select both source and target dates');
+    return;
+  }
+  
+  if (!confirm(`Copy shifts from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}?`)) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    
+    const result = await apiCall('/shifts/copy', {
+      method: 'POST',
+      body: JSON.stringify({
+        sourceDate: formatDate(sourceDate),
+        targetDate: formatDate(targetDate),
+        copyType: copyFrom,
+        keepAssignments,
+        skipExisting
+      })
+    });
+    
+    closeShiftGenerator();
+    showSuccess(`${result.copied} shifts copied successfully!`);
+    loadShifts();
+    
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// Template management
+function loadTemplates() {
+  const templates = JSON.parse(localStorage.getItem('shiftTemplates') || '{}');
+  
+  document.getElementById('tmplMorningLabel').value = templates.morningLabel || 'Morning';
+  document.getElementById('tmplMorningTime').value = templates.morningTime || '7:00 AM – 3:00 PM';
+  document.getElementById('tmplMorningHours').value = templates.morningHours || '8.0';
+  
+  document.getElementById('tmplAfternoonLabel').value = templates.afternoonLabel || 'Afternoon';
+  document.getElementById('tmplAfternoonTime').value = templates.afternoonTime || '3:00 PM – 7:00 PM';
+  document.getElementById('tmplAfternoonHours').value = templates.afternoonHours || '4.0';
+  
+  document.getElementById('tmplOvernightLabel').value = templates.overnightLabel || 'Overnight';
+  document.getElementById('tmplOvernightTime').value = templates.overnightTime || '7:00 PM – 7:00 AM';
+  document.getElementById('tmplOvernightHours').value = templates.overnightHours || '12.0';
+}
+
+function saveTemplates() {
+  const templates = {
+    morningLabel: document.getElementById('tmplMorningLabel').value,
+    morningTime: document.getElementById('tmplMorningTime').value,
+    morningHours: parseFloat(document.getElementById('tmplMorningHours').value),
+    
+    afternoonLabel: document.getElementById('tmplAfternoonLabel').value,
+    afternoonTime: document.getElementById('tmplAfternoonTime').value,
+    afternoonHours: parseFloat(document.getElementById('tmplAfternoonHours').value),
+    
+    overnightLabel: document.getElementById('tmplOvernightLabel').value,
+    overnightTime: document.getElementById('tmplOvernightTime').value,
+    overnightHours: parseFloat(document.getElementById('tmplOvernightHours').value)
+  };
+  
+  localStorage.setItem('shiftTemplates', JSON.stringify(templates));
+  
+  // Update SHIFT_DEFS with new values
+  SHIFT_DEFS.morning.label = templates.morningLabel;
+  SHIFT_DEFS.morning.time = templates.morningTime;
+  SHIFT_DEFS.morning.hours = templates.morningHours;
+  
+  SHIFT_DEFS.afternoon.label = templates.afternoonLabel;
+  SHIFT_DEFS.afternoon.time = templates.afternoonTime;
+  SHIFT_DEFS.afternoon.hours = templates.afternoonHours;
+  
+  SHIFT_DEFS.overnight.label = templates.overnightLabel;
+  SHIFT_DEFS.overnight.time = templates.overnightTime;
+  SHIFT_DEFS.overnight.hours = templates.overnightHours;
+  
+  showSuccess('Templates saved! Refresh to see changes in calendar.');
+  closeShiftGenerator();
+}
+
+// Add event listeners for preview updates
+document.addEventListener('DOMContentLoaded', function() {
+  const genInputs = ['genStartDate', 'genEndDate', 'daySun', 'dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 
+                     'shiftMorning', 'shiftAfternoon', 'shiftOvernight', 'genPattern'];
+  genInputs.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', updateGeneratorPreview);
+    }
+  });
+});
