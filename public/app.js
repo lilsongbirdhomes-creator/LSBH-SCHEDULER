@@ -6,6 +6,7 @@ let viewMode = 'week';
 let viewDate = new Date('2026-02-16'); // Sunday
 let allStaff = [];
 let allShifts = [];
+let showOnlyMyShifts = false; // Staff can toggle this
 
 const SHIFT_DEFS = {
   morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
@@ -392,6 +393,11 @@ async function loadShifts() {
     const result = await apiCall(`/shifts?startDate=${formatDate(startDate)}&endDate=${formatDate(endDate)}`);
     allShifts = result.shifts;
     renderCalendar();
+    
+    // Render pay period summary for staff
+    if (currentUser && currentUser.role === 'staff') {
+      renderPayPeriodSummary();
+    }
   } catch (err) {
     console.error('Load shifts error:', err);
   } finally {
@@ -452,8 +458,8 @@ function renderWeekView() {
       });
     
     dayShifts.forEach(shift => {
-      if (currentUser.role === 'staff' && shift.assigned_to !== currentUser.id && !shift.is_open) {
-        return; // Staff only see their shifts + open shifts
+      if (currentUser.role === 'staff' && showOnlyMyShifts && shift.assigned_to !== currentUser.id && !shift.is_open) {
+        return; // Staff in "only my shifts" mode - hide others' shifts
       }
       
       const tile = createShiftTile(shift, 'week');
@@ -528,8 +534,8 @@ function renderMonthView() {
       });
     
     dayShifts.forEach(shift => {
-      if (currentUser.role === 'staff' && shift.assigned_to !== currentUser.id && !shift.is_open) {
-        return;
+      if (currentUser.role === 'staff' && showOnlyMyShifts && shift.assigned_to !== currentUser.id && !shift.is_open) {
+        return; // Staff in "only my shifts" mode - hide others' shifts
       }
       
       const tile = createShiftTile(shift, 'month');
@@ -548,33 +554,32 @@ function createShiftTile(shift, viewType = 'week') {
   const tile = document.createElement('div');
   tile.className = viewType === 'month' ? 'month-shift-tile' : 'shift-tile';
   
-  // Add click handler for admin reassignment
-  if (currentUser.role === 'admin' && !shift.is_open) {
-    tile.style.cursor = 'pointer';
-    tile.onclick = () => showReassignModal(shift);
-  }
-  
   if (shift.is_open) {
     tile.style.background = '#f5f5f5';
     tile.style.color = 'black';
+    tile.style.cursor = 'pointer';
+    
+    // Admin can assign, staff can request
+    if (currentUser.role === 'admin') {
+      tile.onclick = () => showAssignOpenShiftModal(shift);
+    } else {
+      tile.onclick = () => confirmRequestShift(shift.id);
+    }
     
     if (viewType === 'month') {
       tile.innerHTML = `
         <div class="month-shift-name">Open Shift</div>
         <div class="month-shift-time">${def.icon} ${def.time}</div>
+        <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Click to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
       `;
-      if (currentUser.role === 'staff') {
-        tile.onclick = () => requestShift(shift.id);
-        tile.style.cursor = 'pointer';
-      }
     } else {
       tile.innerHTML = `
         <div>
           <div class="t-name">Open Shift</div>
           <div class="t-time">${def.time}</div>
         </div>
-        <div class="t-foot">
-          ${currentUser.role === 'staff' ? '<button class="bsm b-edit" onclick="requestShift(' + shift.id + '); event.stopPropagation();">Request</button>' : ''}
+        <div class="t-foot" style="font-size:10px;opacity:0.7;">
+          Click to ${currentUser.role === 'admin' ? 'assign' : 'request'}
         </div>
       `;
     }
@@ -587,6 +592,12 @@ function createShiftTile(shift, viewType = 'week') {
     
     tile.style.background = bg;
     tile.style.color = tc;
+    
+    // Admin can reassign
+    if (currentUser.role === 'admin') {
+      tile.style.cursor = 'pointer';
+      tile.onclick = () => showReassignModal(shift);
+    }
     
     if (viewType === 'month') {
       tile.innerHTML = `
@@ -608,6 +619,123 @@ function createShiftTile(shift, viewType = 'week') {
   }
   
   return tile;
+}
+
+// Admin assign open shift modal
+function showAssignOpenShiftModal(shift) {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+  
+  const def = SHIFT_DEFS[shift.shift_type];
+  
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.innerHTML = `
+    <h3>Assign Open Shift</h3>
+    <p><strong>Date:</strong> ${new Date(shift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+    <p><strong>Type:</strong> ${def.icon} ${shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)} (${def.time})</p>
+    <hr>
+    <label>Assign to:</label>
+    <select id="assignStaffSelect" class="inp">
+      <option value="">-- Select Staff --</option>
+      ${allStaff.filter(s => s.role === 'staff' && s.username !== '_open').map(s => 
+        `<option value="${s.id}">${s.full_name}</option>`
+      ).join('')}
+    </select>
+    <div id="assignHoursWarning" style="display:none;margin-top:8px;padding:8px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;"></div>
+    <div class="modal-actions">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="confirmAssignOpenShift(${shift.id})">Assign</button>
+    </div>
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+  
+  // Add change handler to check hours
+  document.getElementById('assignStaffSelect').onchange = async function() {
+    const staffId = parseInt(this.value);
+    if (!staffId) return;
+    
+    try {
+      const check = await apiCall(`/hours-check?staffId=${staffId}&date=${shift.date}&shiftType=${shift.shift_type}`);
+      const warning = document.getElementById('assignHoursWarning');
+      if (check.wouldExceed) {
+        warning.textContent = `⚠️ Warning: This would give them ${check.newTotal.toFixed(1)} hours for the week (exceeds 40-hour limit)`;
+        warning.style.display = 'block';
+        warning.style.background = '#f8d7da';
+        warning.style.color = '#721c24';
+      } else if (check.newTotal >= 36) {
+        warning.textContent = `⚠️ Notice: This would give them ${check.newTotal.toFixed(1)} hours for the week (approaching 40-hour limit)`;
+        warning.style.display = 'block';
+        warning.style.background = '#fff3cd';
+        warning.style.color = '#856404';
+      } else {
+        warning.style.display = 'none';
+      }
+    } catch (err) {
+      console.error('Hours check error:', err);
+    }
+  };
+}
+
+async function confirmAssignOpenShift(shiftId) {
+  const select = document.getElementById('assignStaffSelect');
+  const staffId = parseInt(select.value);
+  
+  if (!staffId) {
+    alert('Please select a staff member');
+    return;
+  }
+  
+  try {
+    showLoading();
+    await apiCall(`/shifts/${shiftId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        assignedTo: staffId,
+        isOpen: false
+      })
+    });
+    
+    document.querySelector('.modal-overlay').remove();
+    await loadStaff();
+    await loadShifts();
+    showSuccess('Shift assigned successfully!');
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// Staff request open shift with confirmation
+async function confirmRequestShift(shiftId) {
+  const shift = allShifts.find(s => s.id === shiftId);
+  const def = SHIFT_DEFS[shift.shift_type];
+  const dateStr = new Date(shift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  
+  if (!confirm(`Request this open shift?\n\n${dateStr}\n${def.icon} ${def.label} (${def.time})\n${def.hours} hours\n\nRequires admin approval.`)) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    await apiCall('/shift-requests', {
+      method: 'POST',
+      body: JSON.stringify({ shiftId })
+    });
+    
+    showSuccess('Shift requested! You will be notified when approved.');
+    loadShifts();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
 }
 
 // Modal for admin reassignment
@@ -1029,3 +1157,92 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+
+// Toggle staff view filter
+function toggleMyShiftsOnly() {
+  showOnlyMyShifts = !showOnlyMyShifts;
+  const btn = document.getElementById('toggleMyShiftsBtn');
+  if (btn) {
+    btn.textContent = showOnlyMyShifts ? 'Show All Shifts' : 'Show Only My Shifts';
+    btn.style.background = showOnlyMyShifts ? '#667eea' : '#f8f9fa';
+    btn.style.color = showOnlyMyShifts ? 'white' : '#495057';
+  }
+  renderCalendar();
+}
+
+// Pay period summary
+function renderPayPeriodSummary() {
+  const container = document.getElementById('payPeriodSummary');
+  if (!container) return;
+  
+  const today = new Date();
+  const currentPeriodStart = getPayPeriodStart(today);
+  const currentPeriodEnd = new Date(currentPeriodStart);
+  currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 6);
+  
+  const nextPeriodStart = new Date(currentPeriodEnd);
+  nextPeriodStart.setDate(nextPeriodStart.getDate() + 1);
+  const nextPeriodEnd = new Date(nextPeriodStart);
+  nextPeriodEnd.setDate(nextPeriodEnd.getDate() + 6);
+  
+  // Get shifts for current and next period
+  const currentShifts = allShifts.filter(s => {
+    const date = new Date(s.date);
+    return s.assigned_to === currentUser.id && date >= currentPeriodStart && date <= currentPeriodEnd;
+  });
+  
+  const nextShifts = allShifts.filter(s => {
+    const date = new Date(s.date);
+    return s.assigned_to === currentUser.id && date >= nextPeriodStart && date <= nextPeriodEnd;
+  });
+  
+  const currentHours = currentShifts.reduce((sum, s) => sum + (SHIFT_DEFS[s.shift_type]?.hours || 0), 0);
+  const nextHours = nextShifts.reduce((sum, s) => sum + (SHIFT_DEFS[s.shift_type]?.hours || 0), 0);
+  
+  const currentHoursClass = currentHours >= 40 ? 'hrs-over' : currentHours >= 36 ? 'hrs-warn' : 'hrs-ok';
+  const nextHoursClass = nextHours >= 40 ? 'hrs-over' : nextHours >= 36 ? 'hrs-warn' : 'hrs-ok';
+  
+  container.innerHTML = `
+    <div class="period-summary-card">
+      <h4>Current Pay Period</h4>
+      <div class="period-dates">${formatDateShort(currentPeriodStart)} – ${formatDateShort(currentPeriodEnd)}</div>
+      <div class="period-shifts">${currentShifts.length} shift${currentShifts.length !== 1 ? 's' : ''}</div>
+      <div class="period-hours ${currentHoursClass}">${currentHours.toFixed(1)} hours</div>
+      ${currentShifts.length > 0 ? `
+        <div class="period-list">
+          ${currentShifts.slice(0, 3).map(s => {
+            const def = SHIFT_DEFS[s.shift_type];
+            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}</div>`;
+          }).join('')}
+          ${currentShifts.length > 3 ? `<div class="period-more">+${currentShifts.length - 3} more</div>` : ''}
+        </div>
+      ` : '<div class="period-empty">No shifts scheduled</div>'}
+    </div>
+    <div class="period-summary-card">
+      <h4>Next Pay Period</h4>
+      <div class="period-dates">${formatDateShort(nextPeriodStart)} – ${formatDateShort(nextPeriodEnd)}</div>
+      <div class="period-shifts">${nextShifts.length} shift${nextShifts.length !== 1 ? 's' : ''}</div>
+      <div class="period-hours ${nextHoursClass}">${nextHours.toFixed(1)} hours</div>
+      ${nextShifts.length > 0 ? `
+        <div class="period-list">
+          ${nextShifts.slice(0, 3).map(s => {
+            const def = SHIFT_DEFS[s.shift_type];
+            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}</div>`;
+          }).join('')}
+          ${nextShifts.length > 3 ? `<div class="period-more">+${nextShifts.length - 3} more</div>` : ''}
+        </div>
+      ` : '<div class="period-empty">No shifts scheduled</div>'}
+    </div>
+  `;
+}
+
+function getPayPeriodStart(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day;
+  return new Date(d.setDate(diff));
+}
+
+function formatDateShort(date) {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
