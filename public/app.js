@@ -87,6 +87,9 @@ function showApp() {
   document.getElementById('userName').textContent = currentUser.fullName;
   document.getElementById('roleBadge').textContent = currentUser.role === 'admin' ? 'Admin' : 'Staff';
   
+  // Load shift templates from database
+  loadTemplates();
+  
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
     loadStaff();
@@ -234,7 +237,8 @@ async function addStaff() {
     document.getElementById('newUsername').value = '';
     document.getElementById('newFullName').value = '';
     
-    loadStaff();
+    // Await loadStaff to ensure allStaff array is updated
+    await loadStaff();
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
@@ -1539,54 +1543,85 @@ async function copyShifts() {
 }
 
 // Template management
-function loadTemplates() {
-  const templates = JSON.parse(localStorage.getItem('shiftTemplates') || '{}');
-  
-  document.getElementById('tmplMorningLabel').value = templates.morningLabel || 'Morning';
-  document.getElementById('tmplMorningTime').value = templates.morningTime || '7:00 AM – 3:00 PM';
-  document.getElementById('tmplMorningHours').value = templates.morningHours || '8.0';
-  
-  document.getElementById('tmplAfternoonLabel').value = templates.afternoonLabel || 'Afternoon';
-  document.getElementById('tmplAfternoonTime').value = templates.afternoonTime || '3:00 PM – 7:00 PM';
-  document.getElementById('tmplAfternoonHours').value = templates.afternoonHours || '4.0';
-  
-  document.getElementById('tmplOvernightLabel').value = templates.overnightLabel || 'Overnight';
-  document.getElementById('tmplOvernightTime').value = templates.overnightTime || '7:00 PM – 7:00 AM';
-  document.getElementById('tmplOvernightHours').value = templates.overnightHours || '12.0';
+async function loadTemplates() {
+  try {
+    const templates = await apiCall('/shift-templates');
+    
+    document.getElementById('tmplMorningLabel').value = templates.morning?.label || 'Morning';
+    document.getElementById('tmplMorningTime').value = templates.morning?.time || '7:00 AM – 3:00 PM';
+    document.getElementById('tmplMorningHours').value = templates.morning?.hours || '8.0';
+    
+    document.getElementById('tmplAfternoonLabel').value = templates.afternoon?.label || 'Afternoon';
+    document.getElementById('tmplAfternoonTime').value = templates.afternoon?.time || '3:00 PM – 7:00 PM';
+    document.getElementById('tmplAfternoonHours').value = templates.afternoon?.hours || '4.0';
+    
+    document.getElementById('tmplOvernightLabel').value = templates.overnight?.label || 'Overnight';
+    document.getElementById('tmplOvernightTime').value = templates.overnight?.time || '7:00 PM – 7:00 AM';
+    document.getElementById('tmplOvernightHours').value = templates.overnight?.hours || '12.0';
+    
+    // Update SHIFT_DEFS with loaded values
+    if (templates.morning) {
+      SHIFT_DEFS.morning.label = templates.morning.label;
+      SHIFT_DEFS.morning.time = templates.morning.time;
+      SHIFT_DEFS.morning.hours = templates.morning.hours;
+    }
+    if (templates.afternoon) {
+      SHIFT_DEFS.afternoon.label = templates.afternoon.label;
+      SHIFT_DEFS.afternoon.time = templates.afternoon.time;
+      SHIFT_DEFS.afternoon.hours = templates.afternoon.hours;
+    }
+    if (templates.overnight) {
+      SHIFT_DEFS.overnight.label = templates.overnight.label;
+      SHIFT_DEFS.overnight.time = templates.overnight.time;
+      SHIFT_DEFS.overnight.hours = templates.overnight.hours;
+    }
+  } catch (err) {
+    console.error('Load templates error:', err);
+    // Use defaults if loading fails
+  }
 }
 
-function saveTemplates() {
+async function saveTemplates() {
   const templates = {
-    morningLabel: document.getElementById('tmplMorningLabel').value,
-    morningTime: document.getElementById('tmplMorningTime').value,
-    morningHours: parseFloat(document.getElementById('tmplMorningHours').value),
-    
-    afternoonLabel: document.getElementById('tmplAfternoonLabel').value,
-    afternoonTime: document.getElementById('tmplAfternoonTime').value,
-    afternoonHours: parseFloat(document.getElementById('tmplAfternoonHours').value),
-    
-    overnightLabel: document.getElementById('tmplOvernightLabel').value,
-    overnightTime: document.getElementById('tmplOvernightTime').value,
-    overnightHours: parseFloat(document.getElementById('tmplOvernightHours').value)
+    morning: {
+      label: document.getElementById('tmplMorningLabel').value,
+      time: document.getElementById('tmplMorningTime').value,
+      hours: parseFloat(document.getElementById('tmplMorningHours').value),
+      icon: '🌅'
+    },
+    afternoon: {
+      label: document.getElementById('tmplAfternoonLabel').value,
+      time: document.getElementById('tmplAfternoonTime').value,
+      hours: parseFloat(document.getElementById('tmplAfternoonHours').value),
+      icon: '🌆'
+    },
+    overnight: {
+      label: document.getElementById('tmplOvernightLabel').value,
+      time: document.getElementById('tmplOvernightTime').value,
+      hours: parseFloat(document.getElementById('tmplOvernightHours').value),
+      icon: '🌙'
+    }
   };
   
-  localStorage.setItem('shiftTemplates', JSON.stringify(templates));
-  
-  // Update SHIFT_DEFS with new values
-  SHIFT_DEFS.morning.label = templates.morningLabel;
-  SHIFT_DEFS.morning.time = templates.morningTime;
-  SHIFT_DEFS.morning.hours = templates.morningHours;
-  
-  SHIFT_DEFS.afternoon.label = templates.afternoonLabel;
-  SHIFT_DEFS.afternoon.time = templates.afternoonTime;
-  SHIFT_DEFS.afternoon.hours = templates.afternoonHours;
-  
-  SHIFT_DEFS.overnight.label = templates.overnightLabel;
-  SHIFT_DEFS.overnight.time = templates.overnightTime;
-  SHIFT_DEFS.overnight.hours = templates.overnightHours;
-  
-  showSuccess('Templates saved! Refresh to see changes in calendar.');
-  closeShiftGenerator();
+  try {
+    showLoading();
+    await apiCall('/shift-templates', {
+      method: 'POST',
+      body: JSON.stringify(templates)
+    });
+    
+    // Update SHIFT_DEFS with new values
+    SHIFT_DEFS.morning = templates.morning;
+    SHIFT_DEFS.afternoon = templates.afternoon;
+    SHIFT_DEFS.overnight = templates.overnight;
+    
+    showSuccess('Templates saved for all admins! Refresh to see changes in calendar.');
+    closeShiftGenerator();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
 }
 
 // Add event listeners for preview updates
