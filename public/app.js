@@ -181,20 +181,27 @@ function renderStaffList() {
   
   allStaff.forEach(staff => {
     const isOpen = staff.username === '_open';
+    const isActive = staff.is_active === 1 || staff.is_active === undefined;
     const item = document.createElement('div');
-    item.className = 's-item';
+    item.className = 's-item' + (!isActive ? ' inactive' : '');
     item.innerHTML = `
-      <div class="col-dot" style="background:${staff.tile_color};color:${staff.text_color}">
+      <div class="col-dot" style="background:${staff.tile_color};color:${staff.text_color};${!isActive ? 'opacity:0.5;' : ''}">
         ${staff.text_color === 'white' ? 'W' : 'A'}
       </div>
       <div class="s-det">
-        <div class="s-nm">${staff.full_name}</div>
+        <div class="s-nm">
+          ${staff.full_name}
+          ${!isActive ? '<span class="inactive-badge">Inactive</span>' : ''}
+        </div>
         <div class="s-me">${isOpen ? 'Placeholder for unassigned shifts' : `@${staff.username} • ${staff.job_title}`}</div>
       </div>
       <div class="s-act">
         <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
         ${!isOpen && staff.username !== 'admin' ? `
           <button class="bsm b-rpw" onclick="resetPassword(${staff.id})">Reset PW</button>
+          <button class="bsm ${isActive ? 'b-deact' : 'b-act'}" onclick="toggleStaffActive(${staff.id}, ${!isActive})">
+            ${isActive ? 'Deactivate' : 'Activate'}
+          </button>
           <button class="bsm b-del" onclick="deleteStaff(${staff.id})">Delete</button>
         ` : ''}
       </div>
@@ -293,6 +300,28 @@ async function resetPassword(staffId) {
     });
     
     alert(`Password reset!\nNew temp password: ${result.tempPassword}\n\nUser must change on next login.`);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function toggleStaffActive(staffId, makeActive) {
+  const action = makeActive ? 'activate' : 'deactivate';
+  const staff = allStaff.find(s => s.id === staffId);
+  
+  if (!confirm(`${makeActive ? 'Activate' : 'Deactivate'} ${staff.full_name}?\n\n${makeActive ? 'They will be able to login again.' : 'They will NOT be able to login.'}`)) return;
+  
+  try {
+    showLoading();
+    await apiCall(`/staff/${staffId}/toggle-active`, {
+      method: 'POST',
+      body: JSON.stringify({ isActive: makeActive })
+    });
+    
+    showSuccess(`Staff ${makeActive ? 'activated' : 'deactivated'} successfully!`);
+    loadStaff();
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
