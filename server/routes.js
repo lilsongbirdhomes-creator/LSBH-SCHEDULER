@@ -212,6 +212,30 @@ router.post('/staff/:id/reset-password', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/staff/:id/toggle-active (admin only) - Activate/Deactivate staff
+router.post('/staff/:id/toggle-active', requireAdmin, (req, res) => {
+  const staffId = parseInt(req.params.id);
+  const { isActive } = req.body;
+  
+  // Can't deactivate admin
+  const user = req.db.prepare('SELECT role FROM users WHERE id = ?').get(staffId);
+  if (user && user.role === 'admin') {
+    return res.status(400).json({ error: 'Cannot deactivate admin users' });
+  }
+  
+  try {
+    req.db.prepare(`
+      UPDATE users 
+      SET is_active = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(isActive ? 1 : 0, staffId);
+    
+    res.json({ success: true, isActive: isActive ? 1 : 0 });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update staff status' });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════
 // SHIFT ROUTES
 // ═══════════════════════════════════════════════════════════
@@ -615,6 +639,39 @@ router.post('/trade-requests', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Target shift is not assigned' });
   }
   
+  // Check 40-hour limit for BOTH staff members BEFORE creating request
+  // Requester will GIVE their shift and GET the target's shift
+  const requesterCheck = checkHoursLimit(
+    req.db,
+    req.session.userId,
+    theirShift.date,
+    theirShift.shift_type,
+    myShiftId // Exclude their current shift since they're giving it away
+  );
+  
+  if (requesterCheck.wouldExceed) {
+    return res.status(400).json({
+      error: 'Trade request denied: You would exceed 40-hour weekly limit',
+      details: requesterCheck
+    });
+  }
+  
+  // Target will GIVE their shift and GET the requester's shift
+  const targetCheck = checkHoursLimit(
+    req.db,
+    theirShift.assigned_to,
+    myShift.date,
+    myShift.shift_type,
+    theirShiftId // Exclude their current shift since they're giving it away
+  );
+  
+  if (targetCheck.wouldExceed) {
+    return res.status(400).json({
+      error: 'Trade request denied: Target staff would exceed 40-hour weekly limit',
+      details: targetCheck
+    });
+  }
+  
   try {
     const result = req.db.prepare(`
       INSERT INTO trade_requests (
@@ -714,8 +771,12 @@ router.post('/trade-requests/:id/finalize', requireAdmin, async (req, res) => {
     SELECT 
       tr.requester_shift_id, tr.target_shift_id,
       tr.requester_id, tr.target_id,
-      tr.requester_approved, tr.target_approved
+      tr.requester_approved, tr.target_approved,
+      s1.date as requester_shift_date, s1.shift_type as requester_shift_type,
+      s2.date as target_shift_date, s2.shift_type as target_shift_type
     FROM trade_requests tr
+    JOIN shifts s1 ON tr.requester_shift_id = s1.id
+    JOIN shifts s2 ON tr.target_shift_id = s2.id
     WHERE tr.id = ?
   `).get(requestId);
   
@@ -727,14 +788,49 @@ router.post('/trade-requests/:id/finalize', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Both parties must approve first' });
   }
   
+  // Check 40-hour limit for BOTH staff members in affected pay periods
+  // Requester will LOSE their shift and GAIN the target's shift
+  const requesterCheck = checkHoursLimit(
+    req.db, 
+    trade.requester_id, 
+    trade.target_shift_date, 
+    trade.target_shift_type,
+    trade.requester_shift_id // Exclude their current shift since they're giving it away
+  );
+  
+  if (requesterCheck.wouldExceed) {
+    return res.status(400).json({ 
+      error: `Trade denied: ${trade.requester_id === req.session.userId ? 'You' : 'Requester'} would exceed 40-hour limit`,
+      details: requesterCheck,
+      staffMember: 'requester'
+    });
+  }
+  
+  // Target will LOSE their shift and GAIN the requester's shift
+  const targetCheck = checkHoursLimit(
+    req.db,
+    trade.target_id,
+    trade.requester_shift_date,
+    trade.requester_shift_type,
+    trade.target_shift_id // Exclude their current shift since they're giving it away
+  );
+  
+  if (targetCheck.wouldExceed) {
+    return res.status(400).json({ 
+      error: `Trade denied: Target staff would exceed 40-hour limit`,
+      details: targetCheck,
+      staffMember: 'target'
+    });
+  }
+  
   try {
     // Swap shift assignments
     req.db.prepare(`
-      UPDATE shifts SET assigned_to = ? WHERE id = ?
+      UPDATE shifts SET assigned_to = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).run(trade.requester_id, trade.target_shift_id);
     
     req.db.prepare(`
-      UPDATE shifts SET assigned_to = ? WHERE id = ?
+      UPDATE shifts SET assigned_to = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
     `).run(trade.target_id, trade.requester_shift_id);
     
     // Update trade status
