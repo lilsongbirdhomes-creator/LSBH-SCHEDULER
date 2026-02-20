@@ -208,3 +208,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .trade-shift strong{display:block;margin-bottom:4px;color:#495057;}
 .trade-actions{display:flex;gap:6px;margin-top:8px;}
 .trade-actions button{padding:6px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;}
+
+/* STAFF VIEW TOGGLE */
+.view-controls{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+#toggleMyShiftsBtn{padding:6px 14px;border:2px solid #dee2e6;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#f8f9fa;color:#495057;transition:all .2s;}
+#toggleMyShiftsBtn:hover{border-color:#667eea;}
+
+/* PAY PERIOD SUMMARY */
+.pay-period-summary{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.period-summary-card{flex:1;min-width:280px;background:white;border:2px solid #e9ecef;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.period-summary-card h4{margin:0 0 8px 0;font-size:15px;color:#495057;}
+.period-dates{font-size:13px;color:#888;margin-bottom:8px;}
+.period-shifts{font-size:12px;color:#666;margin-bottom:4px;}
+.period-hours{font-size:24px;font-weight:700;margin:8px 0;}
+.period-hours.hrs-ok{color:#28a745;}
+.period-hours.hrs-warn{color:#ffc107;}
+.period-hours.hrs-over{color:#dc3545;}
+.period-list{margin-top:12px;padding-top:12px;border-top:1px solid #eee;}
+.period-shift-item{font-size:12px;color:#666;padding:4px 0;}
+.period-more{font-size:11px;color:#888;font-style:italic;padding:4px 0;}
+.period-empty{font-size:13px;color:#aaa;font-style:italic;padding:8px 0;}
