@@ -727,8 +727,6 @@ async function confirmAssignOpenShift(shiftId) {
     hideLoading();
   }
 }
-  }
-}
 
 // Staff request open shift with confirmation
 async function confirmRequestShift(shiftId) {
