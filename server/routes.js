@@ -1432,3 +1432,71 @@ router.post('/import-data', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to import data: ' + err.message });
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// SHIFT TEMPLATES
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/shift-templates - Get shift templates
+router.get('/shift-templates', requireAuth, (req, res) => {
+  try {
+    // Create settings table if it doesn't exist
+    req.db.prepare(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    const result = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('shift_templates');
+    
+    if (result) {
+      res.json(JSON.parse(result.value));
+    } else {
+      // Return defaults
+      res.json({
+        morning: { label: 'Morning', time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
+        afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0, icon: '🌆' },
+        overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0, icon: '🌙' }
+      });
+    }
+  } catch (err) {
+    console.error('Get templates error:', err);
+    res.status(500).json({ error: 'Failed to get templates' });
+  }
+});
+
+// POST /api/shift-templates - Save shift templates (admin only)
+router.post('/shift-templates', requireAdmin, (req, res) => {
+  const { morning, afternoon, overnight } = req.body;
+  
+  if (!morning || !afternoon || !overnight) {
+    return res.status(400).json({ error: 'All shift templates required' });
+  }
+  
+  try {
+    // Create settings table if it doesn't exist
+    req.db.prepare(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    
+    const templates = { morning, afternoon, overnight };
+    
+    req.db.prepare(`
+      INSERT OR REPLACE INTO settings (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `).run('shift_templates', JSON.stringify(templates));
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Save templates error:', err);
+    res.status(500).json({ error: 'Failed to save templates' });
+  }
+});
+
+module.exports = router;
