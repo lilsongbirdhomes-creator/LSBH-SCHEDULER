@@ -81,7 +81,7 @@ async function handleLogin() {
   }
 }
 
-function showApp() {
+async function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('userName').textContent = currentUser.fullName;
@@ -92,7 +92,7 @@ function showApp() {
   
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
-    loadStaff();
+    await loadStaff();
     loadPendingApprovals();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
