@@ -276,3 +276,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 /* Button to open generator in admin panel */
 .gen-trigger-btn{padding:10px 20px;background:#667eea;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:16px;}
 .gen-trigger-btn:hover{background:#5568d3;}
+/* ADD THIS TO styles.css */
+
+/* EXPORT/IMPORT BUTTONS */
+.data-backup-section{margin:20px 0;padding:16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #667eea;}
+.data-backup-section h4{margin:0 0 12px 0;font-size:14px;color:#495057;}
+.data-backup-section p{margin:0 0 12px 0;font-size:13px;color:#666;}
+.data-backup-buttons{display:flex;gap:8px;}
+.btn-export,.btn-import{padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.btn-export{background:#28a745;color:white;}
+.btn-export:hover{background:#218838;}
+.btn-import{background:#667eea;color:white;}
+.btn-import:hover{background:#5568d3;}
+
+/* IMPORT MODAL */
+.import-instructions{background:#e3f2fd;padding:12px;border-radius:6px;margin-bottom:16px;}
+.import-instructions ul{margin:8px 0 0 20px;font-size:13px;}
+.import-instructions li{margin:4px 0;}
+#importFileInput{width:100%;padding:10px;border:2px dashed #dee2e6;border-radius:6px;margin:12px 0;cursor:pointer;}
+#importFileInput:hover{border-color:#667eea;background:#f8f9fa;}
+.import-preview{background:#d4edda;border:1px solid #c3e6cb;border-radius:6px;padding:12px;margin:12px 0;}
+.import-preview h4{margin:0 0 8px 0;color:#155724;}
+.import-preview p{margin:4px 0;font-size:13px;color:#155724;}
+.import-warning{background:#fff3cd;border:1px solid #ffc107;padding:8px;border-radius:4px;margin-top:8px;font-size:12px;color:#856404;}
