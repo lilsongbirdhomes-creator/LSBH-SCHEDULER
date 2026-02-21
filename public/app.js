@@ -72,7 +72,7 @@ async function handleLogin() {
       return;
     }
     
-    await showApp();
+    showApp();
   } catch (err) {
     errorDiv.textContent = err.message;
     errorDiv.classList.add('show');
@@ -81,7 +81,7 @@ async function handleLogin() {
   }
 }
 
-async function showApp() {
+function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('userName').textContent = currentUser.fullName;
@@ -92,7 +92,7 @@ async function showApp() {
   
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
-    await loadStaff(); // Wait for staff to load before showing UI
+    loadStaff();
     loadPendingApprovals();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
@@ -627,9 +627,6 @@ function createShiftTile(shift, viewType = 'week') {
 
 // Admin assign open shift modal
 function showAssignOpenShiftModal(shift) {
-  console.log('showAssignOpenShiftModal - allStaff:', allStaff);
-  console.log('Filtered staff:', allStaff.filter(s => s.role === 'staff' && s.username !== '_open'));
-  
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.onclick = (e) => {
@@ -1638,3 +1635,116 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 });
+// ADD THIS TO public/app.js (at the end, before closing)
+
+// ═══════════════════════════════════════════════════════════
+// DATA EXPORT/IMPORT
+// ═══════════════════════════════════════════════════════════
+
+async function exportData() {
+  if (!confirm('Export all staff and shifts to a backup file?\n\nThis creates a JSON file you can use to restore data after redeploys.')) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    const data = await apiCall('/export-data');
+    
+    // Create downloadable JSON file
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `scheduler-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showSuccess(`Exported ${data.staff.length} staff and ${data.shifts.length} shifts!`);
+  } catch (err) {
+    alert('Export failed: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function openImportDialog() {
+  document.getElementById('importDataModal').style.display = 'flex';
+}
+
+function closeImportDialog() {
+  document.getElementById('importDataModal').style.display = 'none';
+  document.getElementById('importFileInput').value = '';
+  document.getElementById('importPreview').innerHTML = '';
+}
+
+function handleImportFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      
+      // Validate data structure
+      if (!data.staff || !data.shifts) {
+        alert('Invalid backup file format!');
+        return;
+      }
+      
+      // Show preview
+      const preview = document.getElementById('importPreview');
+      preview.innerHTML = `
+        <div class="import-preview">
+          <h4>✅ Valid Backup File</h4>
+          <p><strong>Export Date:</strong> ${new Date(data.exportDate).toLocaleString()}</p>
+          <p><strong>Staff Members:</strong> ${data.staff.length}</p>
+          <p><strong>Shifts:</strong> ${data.shifts.length}</p>
+          ${data.templates ? '<p><strong>Templates:</strong> Included</p>' : ''}
+          <div class="import-warning">
+            ⚠️ This will add missing staff and shifts. Existing data will not be deleted.
+          </div>
+        </div>
+      `;
+      
+      // Store data for import
+      window.importData = data;
+      document.getElementById('importButton').disabled = false;
+    } catch (err) {
+      alert('Error reading file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+async function confirmImport() {
+  if (!window.importData) {
+    alert('Please select a backup file first');
+    return;
+  }
+  
+  if (!confirm('Import data from backup file?\n\nThis will add any missing staff and shifts.')) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    const result = await apiCall('/import-data', {
+      method: 'POST',
+      body: JSON.stringify(window.importData)
+    });
+    
+    closeImportDialog();
+    showSuccess(result.message);
+    
+    // Reload data
+    await loadStaff();
+    await loadShifts();
+  } catch (err) {
+    alert('Import failed: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
