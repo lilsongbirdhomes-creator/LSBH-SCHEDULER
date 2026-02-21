@@ -1249,70 +1249,186 @@ router.get('/dashboard', requireAuth, (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════
-// SHIFT TEMPLATES (stored as JSON in a simple key-value table)
-// ═══════════════════════════════════════════════════════════
-
-// GET /api/shift-templates - Get shift templates
-router.get('/shift-templates', requireAuth, (req, res) => {
-  try {
-    // Create settings table if it doesn't exist
-    req.db.prepare(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-    
-    const result = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('shift_templates');
-    
-    if (result) {
-      res.json(JSON.parse(result.value));
-    } else {
-      // Return defaults
-      res.json({
-        morning: { label: 'Morning', time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
-        afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0, icon: '🌆' },
-        overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0, icon: '🌙' }
-      });
-    }
-  } catch (err) {
-    console.error('Get templates error:', err);
-    res.status(500).json({ error: 'Failed to get templates' });
-  }
-});
-
-// POST /api/shift-templates - Save shift templates (admin only)
-router.post('/shift-templates', requireAdmin, (req, res) => {
-  const { morning, afternoon, overnight } = req.body;
-  
-  if (!morning || !afternoon || !overnight) {
-    return res.status(400).json({ error: 'All shift templates required' });
-  }
-  
-  try {
-    // Create settings table if it doesn't exist
-    req.db.prepare(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-    
-    const templates = { morning, afternoon, overnight };
-    
-    req.db.prepare(`
-      INSERT OR REPLACE INTO settings (key, value, updated_at)
-      VALUES (?, ?, CURRENT_TIMESTAMP)
-    `).run('shift_templates', JSON.stringify(templates));
-    
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Save templates error:', err);
-    res.status(500).json({ error: 'Failed to save templates' });
-  }
-});
-
 module.exports = router;
+// ADD THIS TO server/routes.js BEFORE module.exports
+
+// ═══════════════════════════════════════════════════════════
+// DATA EXPORT/IMPORT (for database persistence workaround)
+// ═══════════════════════════════════════════════════════════
+
+// GET /api/export-data - Export all staff and shifts (admin only)
+router.get('/export-data', requireAdmin, (req, res) => {
+  try {
+    // Export all staff (except system accounts)
+    const staff = req.db.prepare(`
+      SELECT id, username, full_name, role, job_title, 
+             tile_color, text_color, email, phone, telegram_id,
+             is_approved, is_active
+      FROM users
+      WHERE username != '_open'
+      ORDER BY id
+    `).all();
+    
+    // Export all shifts
+    const shifts = req.db.prepare(`
+      SELECT s.id, s.date, s.shift_type, s.assigned_to, s.is_open, 
+             s.is_preliminary, s.notes,
+             u.username as assigned_username
+      FROM shifts s
+      LEFT JOIN users u ON s.assigned_to = u.id
+      ORDER BY s.date, s.shift_type
+    `).all();
+    
+    // Export shift templates if they exist
+    let templates = null;
+    try {
+      const templatesRow = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('shift_templates');
+      if (templatesRow) {
+        templates = JSON.parse(templatesRow.value);
+      }
+    } catch (err) {
+      // Settings table might not exist yet
+    }
+    
+    const exportData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      staff: staff,
+      shifts: shifts,
+      templates: templates
+    };
+    
+    res.json(exportData);
+  } catch (err) {
+    console.error('Export error:', err);
+    res.status(500).json({ error: 'Failed to export data' });
+  }
+});
+
+// POST /api/import-data - Import staff and shifts (admin only)
+router.post('/import-data', requireAdmin, async (req, res) => {
+  const { staff, shifts, templates } = req.body;
+  
+  if (!staff || !shifts) {
+    return res.status(400).json({ error: 'Invalid import data' });
+  }
+  
+  try {
+    let staffImported = 0;
+    let shiftsImported = 0;
+    let staffIdMap = {}; // Map old IDs to new IDs
+    
+    // Import staff members
+    for (const person of staff) {
+      // Skip if username already exists
+      const existing = req.db.prepare('SELECT id FROM users WHERE username = ?').get(person.username);
+      
+      if (existing) {
+        // User exists, map the ID
+        staffIdMap[person.id] = existing.id;
+        continue;
+      }
+      
+      // Create new staff member with temporary password
+      const tempPassword = await bcrypt.hash('temp' + Math.random().toString(36).slice(2, 8), 10);
+      
+      const result = req.db.prepare(`
+        INSERT INTO users (username, password, full_name, role, job_title, 
+                          tile_color, text_color, email, phone, telegram_id,
+                          is_approved, is_active, must_change_password)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        person.username,
+        tempPassword,
+        person.full_name,
+        person.role,
+        person.job_title,
+        person.tile_color,
+        person.text_color,
+        person.email,
+        person.phone,
+        person.telegram_id,
+        person.is_approved !== undefined ? person.is_approved : 1,
+        person.is_active !== undefined ? person.is_active : 1,
+        1 // Force password change
+      );
+      
+      staffIdMap[person.id] = result.lastInsertRowid;
+      staffImported++;
+    }
+    
+    // Import shifts
+    for (const shift of shifts) {
+      // Check if shift already exists
+      const existing = req.db.prepare(`
+        SELECT id FROM shifts WHERE date = ? AND shift_type = ?
+      `).get(shift.date, shift.shift_type);
+      
+      if (existing) {
+        shiftsImported++; // Count as imported (already exists)
+        continue;
+      }
+      
+      // Map the assigned_to ID
+      let assignedTo = null;
+      if (shift.assigned_to && !shift.is_open) {
+        assignedTo = staffIdMap[shift.assigned_to];
+        if (!assignedTo) {
+          // Try to find by username
+          if (shift.assigned_username) {
+            const user = req.db.prepare('SELECT id FROM users WHERE username = ?').get(shift.assigned_username);
+            if (user) {
+              assignedTo = user.id;
+            }
+          }
+        }
+      }
+      
+      req.db.prepare(`
+        INSERT INTO shifts (date, shift_type, assigned_to, is_open, is_preliminary, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        shift.date,
+        shift.shift_type,
+        assignedTo,
+        shift.is_open ? 1 : 0,
+        shift.is_preliminary ? 1 : 0,
+        shift.notes,
+        req.session.userId
+      );
+      
+      shiftsImported++;
+    }
+    
+    // Import templates if provided
+    if (templates) {
+      try {
+        // Create settings table if it doesn't exist
+        req.db.prepare(`
+          CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run();
+        
+        req.db.prepare(`
+          INSERT OR REPLACE INTO settings (key, value, updated_at)
+          VALUES (?, ?, CURRENT_TIMESTAMP)
+        `).run('shift_templates', JSON.stringify(templates));
+      } catch (err) {
+        console.error('Template import error:', err);
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      staffImported,
+      shiftsImported,
+      message: `Imported ${staffImported} staff and ${shiftsImported} shifts`
+    });
+  } catch (err) {
+    console.error('Import error:', err);
+    res.status(500).json({ error: 'Failed to import data: ' + err.message });
+  }
+});
