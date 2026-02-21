@@ -218,7 +218,7 @@ function renderStaffList() {
 async function addStaff() {
   const username = document.getElementById('newUsername').value.trim();
   const fullName = document.getElementById('newFullName').value.trim();
-  const role = "staff"; // All users are staff, admin access by username
+  const role = "staff"; // All users are staff except admin
   const jobTitle = document.getElementById('newJobTitle').value;
   
   if (!username || !fullName) {
@@ -629,10 +629,11 @@ function createShiftTile(shift, viewType = 'week') {
 // Admin assign open shift modal
 function showAssignOpenShiftModal(shift) {
   console.log("🔍 Opening assign modal - allStaff:", allStaff.length, "members");
-  console.log("🔍 Opening assign modal - allStaff:", allStaff.length, "members");
   console.log("📋 All staff details:", allStaff.map(s => ({id: s.id, name: s.full_name, role: s.role, username: s.username})));
   const filtered = allStaff.filter(s => s.username !== '_open' && s.username !== 'admin');
-  console.log("✅ Filtered staff for dropdown:", filtered.length, "members:", filtered.map(s => ({name: s.full_name, role: s.role})));
+  console.log("✅ Filtered staff for dropdown:", filtered.length, "members");
+  
+  const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.onclick = (e) => {
     if (e.target === modal) modal.remove();
@@ -651,11 +652,8 @@ function showAssignOpenShiftModal(shift) {
     <select id="assignStaffSelect" class="inp">
       <option value="">-- Select Assignment --</option>
       <option value="OPEN">📭 Make Open Shift</option>
-      ${allStaff.filter(s => s.username !== "_open" && s.username !== "admin").map(s => 
-      <option value="OPEN">Make Open Shift</option>
-      ${allStaff.filter(s => s.username !== '_open'       <option value="">-- Select Staff --</option>      <option value="">-- Select Staff --</option> s.username !== 'admin').map(s => 
       ${allStaff.filter(s => s.username !== '_open' && s.username !== 'admin').map(s => 
-        `<option value="${s.id}">${s.full_name}</option>`
+        `<option value="${s.id}">${s.full_name} (${s.job_title})</option>`
       ).join('')}
     </select>
     <div id="assignHoursWarning" style="display:none;margin-top:8px;padding:8px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;"></div>
@@ -670,9 +668,13 @@ function showAssignOpenShiftModal(shift) {
   
   // Add change handler to check hours
   document.getElementById('assignStaffSelect').onchange = async function() {
-    const staffId = parseInt(this.value);
-    if (!staffId) return;
+    const value = this.value;
+    if (!value || value === 'OPEN') {
+      document.getElementById('assignHoursWarning').style.display = 'none';
+      return;
+    }
     
+    const staffId = parseInt(value);
     try {
       const check = await apiCall(`/hours-check?staffId=${staffId}&date=${shift.date}&shiftType=${shift.shift_type}`);
       const warning = document.getElementById('assignHoursWarning');
@@ -694,7 +696,6 @@ function showAssignOpenShiftModal(shift) {
     }
   };
 }
-
 async function confirmAssignOpenShift(shiftId) {
   const select = document.getElementById('assignStaffSelect');
   const value = select.value;
@@ -726,6 +727,7 @@ async function confirmAssignOpenShift(shiftId) {
     hideLoading();
   }
 }
+  }
 }
 
 // Staff request open shift with confirmation
