@@ -174,6 +174,7 @@ async function loadStaff() {
     const result = await apiCall('/staff');
     allStaff = result.staff;
     renderStaffList();
+    console.log("✅ Staff loaded:", allStaff.length, "members");
   } catch (err) {
     console.error('Load staff error:', err);
   }
@@ -286,7 +287,7 @@ async function saveStaffEdit() {
     });
     
     closeEditStaffModal();
-    loadStaff();
+    await loadStaff();
     loadShifts(); // Refresh calendar with new colors
   } catch (err) {
     alert('Error: ' + err.message);
@@ -326,7 +327,7 @@ async function toggleStaffActive(staffId, makeActive) {
     });
     
     showSuccess(`Staff ${makeActive ? 'activated' : 'deactivated'} successfully!`);
-    loadStaff();
+    await loadStaff();
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
@@ -340,7 +341,7 @@ async function deleteStaff(staffId) {
   try {
     showLoading();
     await apiCall(`/staff/${staffId}`, { method: 'DELETE' });
-    loadStaff();
+    await loadStaff();
     loadShifts();
   } catch (err) {
     alert('Error: ' + err.message);
@@ -627,6 +628,8 @@ function createShiftTile(shift, viewType = 'week') {
 
 // Admin assign open shift modal
 function showAssignOpenShiftModal(shift) {
+  console.log("🔍 Opening assign modal - allStaff:", allStaff.length, "members");
+  console.log("📋 Staff list:", allStaff.filter(s => s.role === "staff" && s.username !== "_open"));
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
   modal.onclick = (e) => {
