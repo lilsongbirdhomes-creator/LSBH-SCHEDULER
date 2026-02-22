@@ -1,4 +1,3 @@
-
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
@@ -1266,7 +1265,7 @@ router.get('/export-data', requireAdmin, (req, res) => {
              tile_color, text_color, email, phone, telegram_id,
              is_approved, is_active
       FROM users
-      WHERE username != '_open'
+      WHERE username != '_open' AND username != 'admin'
       ORDER BY id
     `).all();
     
@@ -1321,6 +1320,12 @@ router.post('/import-data', requireAdmin, async (req, res) => {
     
     // Import staff members
     for (const person of staff) {
+      // Skip system users (admin and _open are hard-coded)
+      if (person.username === "admin" || person.username === "_open") {
+        const existing = req.db.prepare("SELECT id FROM users WHERE username = ?").get(person.username);
+        if (existing) staffIdMap[person.id] = existing.id;
+        continue;
+      }
       // Skip if username already exists
       const existing = req.db.prepare('SELECT id FROM users WHERE username = ?').get(person.username);
       
@@ -1501,3 +1506,59 @@ router.post('/shift-templates', requireAdmin, (req, res) => {
 });
 
 module.exports = router;
+
+// POST /api/send-schedule-notifications - Send notifications for schedule changes
+router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
+  const { changes } = req.body;
+  
+  if (!changes || !Array.isArray(changes)) {
+    return res.status(400).json({ error: 'Changes array required' });
+  }
+  
+  try {
+    const affectedStaff = new Set();
+    
+    // Collect all affected staff from changes
+    for (const change of changes) {
+      if (change.details && change.details.staffId) {
+        affectedStaff.add(change.details.staffId);
+      }
+    }
+    
+    // Send notifications to each affected staff member
+    let notified = 0;
+    for (const staffId of affectedStaff) {
+      try {
+        const staff = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(staffId);
+        
+        if (staff && staff.telegram_id) {
+          const relevantChanges = changes.filter(c => c.details?.staffId === staffId);
+          
+          let message = `📅 Schedule Update for ${staff.full_name}:\n\n`;
+          relevantChanges.forEach(change => {
+            const { date, shiftType } = change.details;
+            const readableDate = new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            
+            if (change.type === 'assign') {
+              message += `✅ Assigned: ${shiftType} shift on ${readableDate}\n`;
+            } else if (change.type === 'unassign') {
+              message += `📭 Shift made open: ${shiftType} on ${readableDate}\n`;
+            } else if (change.type === 'reassign') {
+              message += `🔄 Reassigned: ${shiftType} shift on ${readableDate}\n`;
+            }
+          });
+          
+          await notify.sendTelegramMessage(staff.telegram_id, message);
+          notified++;
+        }
+      } catch (err) {
+        console.error(`Failed to notify staff ${staffId}:`, err);
+      }
+    }
+    
+    res.json({ success: true, notified, totalChanges: changes.length });
+  } catch (err) {
+    console.error('Send notifications error:', err);
+    res.status(500).json({ error: 'Failed to send notifications' });
+  }
+});
