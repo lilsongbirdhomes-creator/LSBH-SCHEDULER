@@ -815,13 +815,20 @@ async function saveReassignment(shiftId) {
     return;
   }
   
+  // Get old state BEFORE making changes
+  const shift = allShifts.find(s => s.id === shiftId);
+  const oldStaffId = shift ? shift.assigned_to : null;
+  
   // Remember current view mode before reload
   const savedViewMode = viewMode;
   
   try {
     showLoading();
     
-    if (newAssignee === 'OPEN') {
+    const isOpen = (newAssignee === 'OPEN');
+    const newStaffId = isOpen ? null : parseInt(newAssignee);
+    
+    if (isOpen) {
       // Make it an open shift
       await apiCall(`/shifts/${shiftId}`, {
         method: 'PUT',
@@ -835,10 +842,15 @@ async function saveReassignment(shiftId) {
       await apiCall(`/shifts/${shiftId}`, {
         method: 'PUT',
         body: JSON.stringify({ 
-          assignedTo: parseInt(newAssignee),
+          assignedTo: newStaffId,
           isOpen: false
         })
       });
+    }
+    
+    // Track the change with old and new state
+    if (shift) {
+      trackChange('reassign', shift, oldStaffId, newStaffId);
     }
     
     // Close modal
