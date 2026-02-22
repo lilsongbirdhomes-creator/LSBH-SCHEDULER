@@ -1517,7 +1517,6 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
     
     // Process each change and group by affected staff
     for (const change of changes) {
-    console.log("📊 Grouped notifications by staff:", notifications);
       const { originalStaffId, newStaffId, date, shiftType, isOpen } = change;
       
       // Notify staff who was unassigned
@@ -1539,12 +1538,16 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
           shiftType
         });
       }
+    console.log("📊 Grouped notifications by staff:", notifications);
     }
+    console.log("📋 Staff IDs to notify:", Object.keys(notifications));
     
     // Send notifications
     let notified = 0;
     for (const [staffId, staffChanges] of Object.entries(notifications)) {
       try {
+        console.log("🔍 Looking up staff ID:", staffId);
+        console.log("🔍 Staff found:", staff);
         const staff = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(parseInt(staffId));
         
         if (staff && staff.telegram_id) {
