@@ -57,6 +57,16 @@
         <!-- Shift Generator Button -->
         <button class="gen-trigger-btn" onclick="openShiftGenerator()">
           🗓️ Shift Generator
+        
+        <!-- Notification Button -->
+        <div class="notification-section">
+          <button id="sendNotificationsBtn" class="btn-notify" onclick="sendScheduleNotifications()" disabled style="opacity:0.5;">
+            📧 Send Notifications
+          </button>
+          <button class="btn-clear-changes" onclick="clearScheduleChanges()">
+            🗑️ Clear Changes
+          </button>
+        </div>
         </button>
       </div>
 
