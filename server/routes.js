@@ -562,9 +562,6 @@ router.put('/shifts/:id', requireAdmin, async (req, res) => {
       SET ${updates.join(', ')}
       WHERE id = ?
     `).run(...values);
-    
-    // Notify if newly assigned
-    if (assignedTo && assignedTo !== shift.assigned_to && !isOpen) {
       await notify.notifyShiftAssigned(req.db, assignedTo, shift.date, shift.shift_type);
     }
     
@@ -1512,6 +1509,7 @@ module.exports = router;
 router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
   const { changes } = req.body;
   
+  console.log("📤 Received changes to notify:", JSON.stringify(changes, null, 2));
   if (!changes || !Array.isArray(changes)) {
     return res.status(400).json({ error: 'Changes array required' });
   }
@@ -1521,6 +1519,7 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
     
     // Process each change and group by affected staff
     for (const change of changes) {
+    console.log("📊 Grouped notifications by staff:", notifications);
       const { originalStaffId, newStaffId, date, shiftType, isOpen } = change;
       
       // Notify staff who was unassigned
@@ -1573,6 +1572,7 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
           message += process.env.APP_URL || "https://your-app.railway.app";
           await notify.sendTelegramMessage(staff.telegram_id, message);
           notified++;
+          console.log("📧 Sending to", staff.full_name, ":", message);
         }
       } catch (err) {
         console.error(`Failed to notify staff ${staffId}:`, err);
