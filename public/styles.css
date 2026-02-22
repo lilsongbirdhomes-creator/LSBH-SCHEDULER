@@ -302,3 +302,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 
 /* EMPTY STATE */
 .empty-state{padding:40px 20px;text-align:center;color:#888;font-size:15px;background:#f8f9fa;border-radius:8px;margin-top:20px;}
+
+/* NOTIFICATION SECTION */
+.notification-section{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;}
+.btn-notify{padding:10px 20px;background:#28a745;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .3s;}
+.btn-notify:hover:not(:disabled){background:#218838;transform:translateY(-1px);}
+.btn-notify:disabled{cursor:not-allowed;background:#6c757d;}
+.btn-clear-changes{padding:10px 20px;background:#dc3545;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+.btn-clear-changes:hover{background:#c82333;}
