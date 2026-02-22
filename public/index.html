@@ -51,29 +51,31 @@
           Approvals <span id="approvalBadge" class="approval-badge hidden">0</span>
         </button>
       </div>
-      
-      <!-- Shift Generator Button -->
-      <button class="gen-trigger-btn" onclick="openShiftGenerator()">
-        🗓️ Shift Generator
-      </button>
-      
-      <!-- Data Backup Section -->
-      <div class="data-backup-section">
-        <h4>💾 Data Backup & Restore</h4>
-        <p>Export your data before deploying, then import it back to restore staff and shifts.</p>
-        <div class="data-backup-buttons">
-          <button class="btn-export" onclick="exportData()">
-            📥 Export Data
-          </button>
-          <button class="btn-import" onclick="openImportDialog()">
-            📤 Import Data
-          </button>
-        </div>
+
+      <!-- SCHEDULE TAB -->
+      <div id="scheduleTab" class="tab-pane active">
+        <!-- Shift Generator Button -->
+        <button class="gen-trigger-btn" onclick="openShiftGenerator()">
+          🗓️ Shift Generator
+        </button>
       </div>
 
-
-      <!-- Staff Management Tab -->
+      <!-- STAFF MANAGEMENT TAB -->
       <div id="staffTab" class="tab-pane">
+        <!-- Data Backup Section -->
+        <div class="data-backup-section">
+          <h4>💾 Data Backup & Restore</h4>
+          <p>Export your data before deploying, then import it back to restore staff and shifts.</p>
+          <div class="data-backup-buttons">
+            <button class="btn-export" onclick="exportData()">
+              📥 Export Data
+            </button>
+            <button class="btn-import" onclick="openImportDialog()">
+              📤 Import Data
+            </button>
+          </div>
+        </div>
+
         <div class="staff-mgmt">
           <h3>Add New Staff Member</h3>
           <div class="add-form">
@@ -89,20 +91,22 @@
               <button class="add-s-btn" onclick="addStaff()">Add Staff</button>
             </div>
           </div>
+          <h3>Current Staff</h3>
+          <div id="staffList"></div>
+        </div>
+      </div>
 
-      <!-- Approvals Tab -->
+      <!-- APPROVALS TAB -->
       <div id="approvalsTab" class="tab-pane">
         <div class="approvals-section">
           <h3>Pending Approvals</h3>
           <div id="approvalsList"></div>
+          <div id="noApprovalsMsg" class="empty-state">
+            ✅ No pending approvals
+          </div>
         </div>
       </div>
-
-      <div id="scheduleTab" class="tab-pane active"></div>
     </div>
-
-    <!-- Calendar Navigation -->
-    <div class="cal-nav">
       <div class="cal-nav-left">
         <button class="nav-arrow" onclick="navPrev()">◄</button>
         <span class="cal-title" id="calTitle"></span>
