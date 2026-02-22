@@ -719,7 +719,20 @@ async function confirmAssignOpenShift(shiftId) {
       })
     });
     
-    document.querySelector('.modal-overlay').remove();
+    const modal = document.querySelector(".modal-overlay");
+    
+    // Track the change
+    const shift = allShifts.find(s => s.id === shiftId);
+    if (shift) {
+      const staffName = isOpen ? "Open Shift" : allStaff.find(s => s.id === staffId)?.full_name || "Unknown";
+      trackChange(isOpen ? "unassign" : "assign", shiftId, {
+        staffId: staffId,
+        staffName: staffName,
+        date: shift.date,
+        shiftType: shift.shift_type
+      });
+    }
+    if (modal) modal.remove();
     await loadShifts();
     showSuccess(isOpen ? 'Shift marked as open!' : 'Shift assigned successfully!');
   } catch (err) {
@@ -1763,5 +1776,81 @@ async function confirmImport() {
     alert('Import failed: ' + err.message);
   } finally {
     hideLoading();
+  }
+}
+// ADD THIS TO app.js - Change Tracking System
+
+// Global change tracking
+let scheduleChanges = [];
+
+function trackChange(changeType, shiftId, details) {
+  const change = {
+    id: Date.now() + Math.random(),
+    timestamp: new Date().toISOString(),
+    type: changeType, // 'assign', 'unassign', 'delete', 'create', 'swap'
+    shiftId: shiftId,
+    details: details
+  };
+  
+  scheduleChanges.push(change);
+  updateNotificationButton();
+  console.log('📝 Change tracked:', change);
+}
+
+function updateNotificationButton() {
+  const btn = document.getElementById('sendNotificationsBtn');
+  if (!btn) return;
+  
+  const count = scheduleChanges.length;
+  
+  if (count === 0) {
+    btn.disabled = true;
+    btn.textContent = '📧 Send Notifications';
+    btn.style.opacity = '0.5';
+  } else {
+    btn.disabled = false;
+    btn.textContent = `📧 Send Notifications (${count} ${count === 1 ? 'change' : 'changes'})`;
+    btn.style.opacity = '1';
+  }
+}
+
+async function sendScheduleNotifications() {
+  if (scheduleChanges.length === 0) {
+    alert('No changes to notify about');
+    return;
+  }
+  
+  if (!confirm(`Send notifications for ${scheduleChanges.length} schedule changes?`)) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    
+    const result = await apiCall('/send-schedule-notifications', {
+      method: 'POST',
+      body: JSON.stringify({ changes: scheduleChanges })
+    });
+    
+    showSuccess(`Notifications sent to ${result.notified} staff member(s)!`);
+    
+    // Clear changes after sending
+    scheduleChanges = [];
+    updateNotificationButton();
+    
+  } catch (err) {
+    alert('Error sending notifications: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function clearScheduleChanges() {
+  if (scheduleChanges.length === 0) return;
+  
+  if (confirm('Clear change tracking without sending notifications?')) {
+    scheduleChanges = [];
+    updateNotificationButton();
+    showSuccess('Changes cleared');
   }
 }
