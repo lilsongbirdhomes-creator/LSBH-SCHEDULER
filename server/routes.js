@@ -1518,11 +1518,13 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
     
     // Process each change and group by affected staff
     for (const change of changes) {
+      console.log("🔍 Processing change:", {originalStaffId, newStaffId, date, shiftType});
       const { originalStaffId, newStaffId, date, shiftType, isOpen } = change;
       
       // Notify staff who was unassigned
       if (originalStaffId && originalStaffId !== newStaffId) {
         if (!notifications[originalStaffId]) notifications[originalStaffId] = [];
+        console.log(">>> Will notify REMOVED for staff ID:", originalStaffId);
         notifications[originalStaffId].push({
           type: 'removed',
           date,
@@ -1533,6 +1535,7 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
       // Notify staff who was assigned
       if (newStaffId && newStaffId !== originalStaffId) {
         if (!notifications[newStaffId]) notifications[newStaffId] = [];
+        console.log(">>> Will notify ASSIGNED for staff ID:", newStaffId);
         notifications[newStaffId].push({
           type: 'assigned',
           date,
