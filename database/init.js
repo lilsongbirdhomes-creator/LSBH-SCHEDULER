@@ -1,3 +1,4 @@
+// database/init.js - Initialize SQLite Database with System Users
 const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
@@ -11,7 +12,7 @@ if (fs.existsSync(dbPath)) {
   const db = new Database(dbPath);
   
   try {
-    const adminExists = db.prepare('SELECT COUNT(*) as count FROM users WHERE role = ?').get('admin');
+    const adminExists = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
     if (adminExists && adminExists.count > 0) {
       console.log('✅ Database already initialized with admin user');
       console.log('   Skipping initialization to preserve existing data');
@@ -33,45 +34,48 @@ const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 db.exec(schema);
 console.log('✅ Schema created');
 
-// Helper function to hash passwords
+// Hash password function
 const hashPassword = (password) => bcrypt.hashSync(password, 10);
 
-// Insert admin user
+// SYSTEM USER 1: Admin (System Administrator)
 db.prepare(`
-  INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, must_change_password, is_approved)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, must_change_password, is_approved, is_active)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
   'admin',
   hashPassword('password123'),
-  'Admin User',
+  'System Administrator',
   'admin',
-  'Administrator',
+  'Admin',
   '#dce8ff',
   'black',
-  0,
-  1
+  0, // Don't force password change
+  1, // Approved
+  1  // Active
 );
-console.log('✅ Admin user created (username: admin, password: password123)');
+console.log('✅ System Administrator created (username: admin, password: password123)');
 
-// Insert Open Shift placeholder
+// SYSTEM USER 2: Open Shift Placeholder (NOT assignable, NOT countable)
 db.prepare(`
   INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, must_change_password, is_approved, is_active)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
   '_open',
-  hashPassword(Math.random().toString()),
+  hashPassword(Math.random().toString()), // Random unguessable password
   'Open Shift',
   'system',
   'Open Shift',
   '#f5f5f5',
-  'black',
-  0,
-  1,
-  0
+  '#666',
+  0, // No password change needed (can't login anyway)
+  1, // Approved
+  0  // INACTIVE - cannot login
 );
-console.log('✅ Open shift placeholder created');
-
-console.log('\n🎉 Database initialization complete!\n');
-console.log('📝 You can now add your staff members through the admin interface\n');
+console.log('✅ Open Shift placeholder created (system user, no hours counted)');
 
 db.close();
+console.log('\n🎉 Database initialization complete!\n');
+console.log('📝 System users created:');
+console.log('   - admin / password123 (System Administrator)');
+console.log('   - _open (Open Shift placeholder - not assignable)\n');
+console.log('📝 You can now add your staff members through the admin interface\n');
