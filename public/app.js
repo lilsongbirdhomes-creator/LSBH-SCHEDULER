@@ -181,8 +181,9 @@ async function loadStaff() {
 }
 
 function renderStaffList() {
-  const list = document.getElementById('staffList');
-  list.innerHTML = '';
+  const list = document.getElementById("staffList");
+  if (!list) return; // Staff tab not visible for non-admin
+  list.innerHTML = "";
   
   allStaff.forEach(staff => {
     const isOpen = staff.username === '_open';
