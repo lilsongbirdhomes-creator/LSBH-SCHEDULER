@@ -1548,8 +1548,8 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
     for (const [staffId, staffChanges] of Object.entries(notifications)) {
       try {
         console.log("🔍 Looking up staff ID:", staffId);
+        const staff = req.db.prepare("SELECT telegram_id, full_name FROM users WHERE id = ?").get(parseInt(staffId));
         console.log("🔍 Staff found:", staff);
-        const staff = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(parseInt(staffId));
         
         if (staff && staff.telegram_id) {
           let message = `📅 Schedule Update for ${staff.full_name}:\n\n`;
