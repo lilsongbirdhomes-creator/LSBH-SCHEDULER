@@ -8,7 +8,7 @@ let isEnabled = false;
 // Initialize bot if token is configured
 if (token && token !== 'your-telegram-bot-token-here') {
   try {
-    bot = new TelegramBot(token, { polling: true });
+    bot = new TelegramBot(token, { polling: false });
     isEnabled = true;
     
     // Handle /start command
