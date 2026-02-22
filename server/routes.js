@@ -562,8 +562,6 @@ router.put('/shifts/:id', requireAdmin, async (req, res) => {
       SET ${updates.join(', ')}
       WHERE id = ?
     `).run(...values);
-      await notify.notifyShiftAssigned(req.db, assignedTo, shift.date, shift.shift_type);
-    }
     
     res.json({ success: true });
   } catch (err) {
