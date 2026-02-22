@@ -722,16 +722,18 @@ async function confirmAssignOpenShift(shiftId) {
     const modal = document.querySelector(".modal-overlay");
     
     // Track the change
+    
+    // Track the change with old and new staff IDs
     const shift = allShifts.find(s => s.id === shiftId);
     if (shift) {
-      const staffName = isOpen ? "Open Shift" : allStaff.find(s => s.id === staffId)?.full_name || "Unknown";
-      trackChange(isOpen ? "unassign" : "assign", shiftId, {
-        staffId: staffId,
-        staffName: staffName,
-        date: shift.date,
-        shiftType: shift.shift_type
-      });
+      const oldStaffId = shift.assigned_to;
+      const newStaffId = isOpen ? null : staffId;
+      trackChange("assign", shift, oldStaffId, newStaffId);
     }
+    
+    if (modal) modal.remove();
+    await loadShifts();
+    showSuccess(isOpen ? "Shift marked as open!" : "Shift assigned successfully!");
     if (modal) modal.remove();
     await loadShifts();
     showSuccess(isOpen ? 'Shift marked as open!' : 'Shift assigned successfully!');
@@ -1781,27 +1783,90 @@ async function confirmImport() {
 // ADD THIS TO app.js - Change Tracking System
 
 // Global change tracking
-let scheduleChanges = [];
+// REPLACE CHANGE TRACKING SYSTEM - Smart consolidation
 
-function trackChange(changeType, shiftId, details) {
-  const change = {
-    id: Date.now() + Math.random(),
-    timestamp: new Date().toISOString(),
-    type: changeType, // 'assign', 'unassign', 'delete', 'create', 'swap'
-    shiftId: shiftId,
-    details: details
-  };
+let scheduleChanges = {}; // Changed to object for easier consolidation
+let changeTimer = null;
+
+function trackChange(changeType, shift, oldStaffId, newStaffId) {
+  const shiftKey = `${shift.date}_${shift.shift_type}`;
   
-  scheduleChanges.push(change);
+  // If this shift already has a tracked change, update it
+  if (scheduleChanges[shiftKey]) {
+    const existing = scheduleChanges[shiftKey];
+    
+    // Update to final state
+    existing.newStaffId = newStaffId;
+    existing.newStaffName = newStaffId ? (allStaff.find(s => s.id === newStaffId)?.full_name || 'Unknown') : null;
+    existing.isOpen = !newStaffId;
+    existing.timestamp = new Date().toISOString();
+    
+    // If final state equals original state, remove the change
+    if (existing.originalStaffId === existing.newStaffId) {
+      delete scheduleChanges[shiftKey];
+      console.log('📝 Change cancelled out:', shiftKey);
+    } else {
+      console.log('📝 Change updated:', shiftKey, existing);
+    }
+  } else {
+    // New change
+    scheduleChanges[shiftKey] = {
+      shiftId: shift.id,
+      date: shift.date,
+      shiftType: shift.shift_type,
+      originalStaffId: oldStaffId,
+      originalStaffName: oldStaffId ? (allStaff.find(s => s.id === oldStaffId)?.full_name || 'Unknown') : null,
+      newStaffId: newStaffId,
+      newStaffName: newStaffId ? (allStaff.find(s => s.id === newStaffId)?.full_name || 'Unknown') : null,
+      isOpen: !newStaffId,
+      timestamp: new Date().toISOString()
+    };
+    console.log('📝 Change tracked:', shiftKey, scheduleChanges[shiftKey]);
+  }
+  
   updateNotificationButton();
-  console.log('📝 Change tracked:', change);
+  startReminderTimer();
+}
+
+function startReminderTimer() {
+  // Clear existing timer
+  if (changeTimer) {
+    clearTimeout(changeTimer);
+  }
+  
+  // Set 30-minute reminder if there are unsent changes
+  const changeCount = Object.keys(scheduleChanges).length;
+  if (changeCount > 0) {
+    changeTimer = setTimeout(() => {
+      remindAdminToNotify();
+    }, 30 * 60 * 1000); // 30 minutes
+    console.log('⏰ Reminder timer set for 30 minutes');
+  }
+}
+
+async function remindAdminToNotify() {
+  const changeCount = Object.keys(scheduleChanges).length;
+  if (changeCount === 0) return; // Changes were sent
+  
+  try {
+    // Send reminder to current admin via Telegram
+    await apiCall('/remind-admin-notifications', {
+      method: 'POST',
+      body: JSON.stringify({ changeCount })
+    });
+    
+    // Show browser notification too
+    showWarning(`⏰ Reminder: You have ${changeCount} unsent schedule change${changeCount > 1 ? 's' : ''}`);
+  } catch (err) {
+    console.error('Reminder error:', err);
+  }
 }
 
 function updateNotificationButton() {
   const btn = document.getElementById('sendNotificationsBtn');
   if (!btn) return;
   
-  const count = scheduleChanges.length;
+  const count = Object.keys(scheduleChanges).length;
   
   if (count === 0) {
     btn.disabled = true;
@@ -1815,12 +1880,14 @@ function updateNotificationButton() {
 }
 
 async function sendScheduleNotifications() {
-  if (scheduleChanges.length === 0) {
+  const changes = Object.values(scheduleChanges);
+  
+  if (changes.length === 0) {
     alert('No changes to notify about');
     return;
   }
   
-  if (!confirm(`Send notifications for ${scheduleChanges.length} schedule changes?`)) {
+  if (!confirm(`Send notifications for ${changes.length} schedule ${changes.length === 1 ? 'change' : 'changes'}?`)) {
     return;
   }
   
@@ -1829,13 +1896,17 @@ async function sendScheduleNotifications() {
     
     const result = await apiCall('/send-schedule-notifications', {
       method: 'POST',
-      body: JSON.stringify({ changes: scheduleChanges })
+      body: JSON.stringify({ changes })
     });
     
     showSuccess(`Notifications sent to ${result.notified} staff member(s)!`);
     
-    // Clear changes after sending
-    scheduleChanges = [];
+    // Clear changes and timer after sending
+    scheduleChanges = {};
+    if (changeTimer) {
+      clearTimeout(changeTimer);
+      changeTimer = null;
+    }
     updateNotificationButton();
     
   } catch (err) {
@@ -1846,11 +1917,29 @@ async function sendScheduleNotifications() {
 }
 
 function clearScheduleChanges() {
-  if (scheduleChanges.length === 0) return;
+  const count = Object.keys(scheduleChanges).length;
+  if (count === 0) return;
   
-  if (confirm('Clear change tracking without sending notifications?')) {
-    scheduleChanges = [];
+  if (confirm(`Clear ${count} tracked ${count === 1 ? 'change' : 'changes'} without sending notifications?`)) {
+    scheduleChanges = {};
+    if (changeTimer) {
+      clearTimeout(changeTimer);
+      changeTimer = null;
+    }
     updateNotificationButton();
     showSuccess('Changes cleared');
   }
+}
+
+function showWarning(message) {
+  // Create temporary warning banner
+  const warning = document.createElement('div');
+  warning.className = 'warning-banner';
+  warning.textContent = message;
+  warning.style.cssText = 'position:fixed;top:20px;right:20px;background:#ffc107;color:#000;padding:16px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;font-weight:600;';
+  document.body.appendChild(warning);
+  
+  setTimeout(() => {
+    warning.remove();
+  }, 10000); // Remove after 10 seconds
 }
