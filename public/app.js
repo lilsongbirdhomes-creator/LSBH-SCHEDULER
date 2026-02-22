@@ -709,6 +709,10 @@ async function confirmAssignOpenShift(shiftId) {
   const isOpen = (value === 'OPEN');
   const staffId = isOpen ? null : parseInt(value);
   
+  // Get old state before making the change
+  const shift = allShifts.find(s => s.id === shiftId);
+  const oldStaffId = shift ? shift.assigned_to : null;
+  
   try {
     showLoading();
     await apiCall(`/shifts/${shiftId}`, {
@@ -719,22 +723,14 @@ async function confirmAssignOpenShift(shiftId) {
       })
     });
     
-    const modal = document.querySelector(".modal-overlay");
-    
-    // Track the change
-    
-    // Track the change with old and new staff IDs
-    const shift = allShifts.find(s => s.id === shiftId);
+    // Track the change with old and new state
     if (shift) {
-      const oldStaffId = shift.assigned_to;
-      const newStaffId = isOpen ? null : staffId;
-      trackChange("assign", shift, oldStaffId, newStaffId);
+      trackChange('assign', shift, oldStaffId, staffId);
     }
     
+    const modal = document.querySelector('.modal-overlay');
     if (modal) modal.remove();
-    await loadShifts();
-    showSuccess(isOpen ? "Shift marked as open!" : "Shift assigned successfully!");
-    if (modal) modal.remove();
+    
     await loadShifts();
     showSuccess(isOpen ? 'Shift marked as open!' : 'Shift assigned successfully!');
   } catch (err) {
@@ -743,6 +739,7 @@ async function confirmAssignOpenShift(shiftId) {
     hideLoading();
   }
 }
+
 
 // Staff request open shift with confirmation
 async function confirmRequestShift(shiftId) {
@@ -1783,16 +1780,19 @@ async function confirmImport() {
 // ADD THIS TO app.js - Change Tracking System
 
 // Global change tracking
-// REPLACE CHANGE TRACKING SYSTEM - Smart consolidation
+// CHANGE TRACKING SYSTEM - With Debug Logging
 
-let scheduleChanges = {}; // Changed to object for easier consolidation
+let scheduleChanges = {}; // Object for consolidation
 let changeTimer = null;
 
 function trackChange(changeType, shift, oldStaffId, newStaffId) {
+  console.log('🔵 trackChange called:', { changeType, shift, oldStaffId, newStaffId });
+  
   const shiftKey = `${shift.date}_${shift.shift_type}`;
   
   // If this shift already has a tracked change, update it
   if (scheduleChanges[shiftKey]) {
+    console.log('🟡 Updating existing change for:', shiftKey);
     const existing = scheduleChanges[shiftKey];
     
     // Update to final state
@@ -1804,11 +1804,12 @@ function trackChange(changeType, shift, oldStaffId, newStaffId) {
     // If final state equals original state, remove the change
     if (existing.originalStaffId === existing.newStaffId) {
       delete scheduleChanges[shiftKey];
-      console.log('📝 Change cancelled out:', shiftKey);
+      console.log('✅ Change cancelled out:', shiftKey);
     } else {
-      console.log('📝 Change updated:', shiftKey, existing);
+      console.log('✅ Change updated:', existing);
     }
   } else {
+    console.log('🟢 Creating new change for:', shiftKey);
     // New change
     scheduleChanges[shiftKey] = {
       shiftId: shift.id,
@@ -1821,20 +1822,19 @@ function trackChange(changeType, shift, oldStaffId, newStaffId) {
       isOpen: !newStaffId,
       timestamp: new Date().toISOString()
     };
-    console.log('📝 Change tracked:', shiftKey, scheduleChanges[shiftKey]);
+    console.log('✅ Change tracked:', scheduleChanges[shiftKey]);
   }
   
+  console.log('📊 Total changes:', Object.keys(scheduleChanges).length);
   updateNotificationButton();
   startReminderTimer();
 }
 
 function startReminderTimer() {
-  // Clear existing timer
   if (changeTimer) {
     clearTimeout(changeTimer);
   }
   
-  // Set 30-minute reminder if there are unsent changes
   const changeCount = Object.keys(scheduleChanges).length;
   if (changeCount > 0) {
     changeTimer = setTimeout(() => {
@@ -1846,16 +1846,14 @@ function startReminderTimer() {
 
 async function remindAdminToNotify() {
   const changeCount = Object.keys(scheduleChanges).length;
-  if (changeCount === 0) return; // Changes were sent
+  if (changeCount === 0) return;
   
   try {
-    // Send reminder to current admin via Telegram
     await apiCall('/remind-admin-notifications', {
       method: 'POST',
       body: JSON.stringify({ changeCount })
     });
     
-    // Show browser notification too
     showWarning(`⏰ Reminder: You have ${changeCount} unsent schedule change${changeCount > 1 ? 's' : ''}`);
   } catch (err) {
     console.error('Reminder error:', err);
@@ -1864,9 +1862,13 @@ async function remindAdminToNotify() {
 
 function updateNotificationButton() {
   const btn = document.getElementById('sendNotificationsBtn');
-  if (!btn) return;
+  if (!btn) {
+    console.log('⚠️ Notification button not found');
+    return;
+  }
   
   const count = Object.keys(scheduleChanges).length;
+  console.log('🔔 Updating button, change count:', count);
   
   if (count === 0) {
     btn.disabled = true;
@@ -1881,6 +1883,7 @@ function updateNotificationButton() {
 
 async function sendScheduleNotifications() {
   const changes = Object.values(scheduleChanges);
+  console.log('📤 Sending notifications for changes:', changes);
   
   if (changes.length === 0) {
     alert('No changes to notify about');
@@ -1899,9 +1902,10 @@ async function sendScheduleNotifications() {
       body: JSON.stringify({ changes })
     });
     
+    console.log('✅ Notifications sent:', result);
     showSuccess(`Notifications sent to ${result.notified} staff member(s)!`);
     
-    // Clear changes and timer after sending
+    // Clear changes and timer
     scheduleChanges = {};
     if (changeTimer) {
       clearTimeout(changeTimer);
@@ -1910,6 +1914,7 @@ async function sendScheduleNotifications() {
     updateNotificationButton();
     
   } catch (err) {
+    console.error('❌ Notification error:', err);
     alert('Error sending notifications: ' + err.message);
   } finally {
     hideLoading();
@@ -1932,7 +1937,6 @@ function clearScheduleChanges() {
 }
 
 function showWarning(message) {
-  // Create temporary warning banner
   const warning = document.createElement('div');
   warning.className = 'warning-banner';
   warning.textContent = message;
@@ -1941,5 +1945,5 @@ function showWarning(message) {
   
   setTimeout(() => {
     warning.remove();
-  }, 10000); // Remove after 10 seconds
+  }, 10000);
 }
