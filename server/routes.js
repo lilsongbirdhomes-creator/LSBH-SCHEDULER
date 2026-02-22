@@ -1507,6 +1507,7 @@ router.post('/shift-templates', requireAdmin, (req, res) => {
 
 module.exports = router;
 
+
 // POST /api/send-schedule-notifications - Send notifications for schedule changes
 router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
   const { changes } = req.body;
@@ -1516,38 +1517,60 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
   }
   
   try {
-    const affectedStaff = new Set();
+    const notifications = {}; // Group by staff ID
     
-    // Collect all affected staff from changes
+    // Process each change and group by affected staff
     for (const change of changes) {
-      if (change.details && change.details.staffId) {
-        affectedStaff.add(change.details.staffId);
+      const { originalStaffId, newStaffId, date, shiftType, isOpen } = change;
+      
+      // Notify staff who was unassigned
+      if (originalStaffId && originalStaffId !== newStaffId) {
+        if (!notifications[originalStaffId]) notifications[originalStaffId] = [];
+        notifications[originalStaffId].push({
+          type: 'removed',
+          date,
+          shiftType
+        });
+      }
+      
+      // Notify staff who was assigned
+      if (newStaffId && newStaffId !== originalStaffId) {
+        if (!notifications[newStaffId]) notifications[newStaffId] = [];
+        notifications[newStaffId].push({
+          type: 'assigned',
+          date,
+          shiftType
+        });
       }
     }
     
-    // Send notifications to each affected staff member
+    // Send notifications
     let notified = 0;
-    for (const staffId of affectedStaff) {
+    for (const [staffId, staffChanges] of Object.entries(notifications)) {
       try {
-        const staff = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(staffId);
+        const staff = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(parseInt(staffId));
         
         if (staff && staff.telegram_id) {
-          const relevantChanges = changes.filter(c => c.details?.staffId === staffId);
-          
           let message = `📅 Schedule Update for ${staff.full_name}:\n\n`;
-          relevantChanges.forEach(change => {
-            const { date, shiftType } = change.details;
-            const readableDate = new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          
+          staffChanges.forEach(change => {
+            const readableDate = new Date(change.date).toLocaleDateString('en-US', { 
+              weekday: 'short', 
+              month: 'short', 
+              day: 'numeric' 
+            });
             
-            if (change.type === 'assign') {
-              message += `✅ Assigned: ${shiftType} shift on ${readableDate}\n`;
-            } else if (change.type === 'unassign') {
-              message += `📭 Shift made open: ${shiftType} on ${readableDate}\n`;
-            } else if (change.type === 'reassign') {
-              message += `🔄 Reassigned: ${shiftType} shift on ${readableDate}\n`;
+            if (change.type === 'assigned') {
+              message += `✅ Assigned: ${change.shiftType} shift on ${readableDate}\n`;
+            } else if (change.type === 'removed') {
+              message += `❌ Removed: ${change.shiftType} shift on ${readableDate}\n`;
             }
           });
           
+          
+          // Add web app link
+          message += "\n🔗 Check the schedule for details:\n";
+          message += process.env.APP_URL || "https://your-app.railway.app";
           await notify.sendTelegramMessage(staff.telegram_id, message);
           notified++;
         }
@@ -1562,3 +1585,26 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to send notifications' });
   }
 });
+
+// POST /api/remind-admin-notifications - Remind admin to send notifications
+router.post('/remind-admin-notifications', requireAdmin, async (req, res) => {
+  const { changeCount } = req.body;
+  const adminId = req.session.userId;
+  
+  try {
+    const admin = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(adminId);
+    
+    if (admin && admin.telegram_id) {
+      const message = `⏰ Reminder: You have ${changeCount} unsent schedule ${changeCount === 1 ? 'change' : 'changes'}.\n\nDon't forget to send notifications!\n\n🔗 ${process.env.APP_URL || 'https://your-app.railway.app'}`;
+      await notify.sendTelegramMessage(admin.telegram_id, message);
+      res.json({ success: true });
+    } else {
+      res.json({ success: false, reason: 'No Telegram ID for admin' });
+    }
+  } catch (err) {
+    console.error('Reminder error:', err);
+    res.status(500).json({ error: 'Failed to send reminder' });
+  }
+});
+
+module.exports = router;
