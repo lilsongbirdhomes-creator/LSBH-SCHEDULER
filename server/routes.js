@@ -1518,9 +1518,9 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
     
     // Process each change and group by affected staff
     for (const change of changes) {
-      console.log("🔍 Processing change:", {originalStaffId, newStaffId, date, shiftType});
       const { originalStaffId, newStaffId, date, shiftType, isOpen } = change;
       
+      console.log("🔍 Processing change:", {originalStaffId, newStaffId, date, shiftType});
       // Notify staff who was unassigned
       if (originalStaffId && originalStaffId !== newStaffId) {
         if (!notifications[originalStaffId]) notifications[originalStaffId] = [];
