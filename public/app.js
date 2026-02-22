@@ -917,10 +917,14 @@ function renderApprovalsList(shiftReqs, tradeReqs, timeOffReqs) {
   const pendingTrade = tradeReqs.filter(r => r.status === 'pending' && r.requester_approved && r.target_approved);
   const pendingTimeOff = timeOffReqs.filter(r => r.status === 'pending');
   
+  const emptyMsg = document.getElementById("noApprovalsMsg");
   if (pendingShift.length === 0 && pendingTrade.length === 0 && pendingTimeOff.length === 0) {
-    list.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No pending approvals</p>';
+    list.style.display = "none";
+    if (emptyMsg) emptyMsg.style.display = "block";
     return;
   }
+  list.style.display = "block";
+  if (emptyMsg) emptyMsg.style.display = "none";
   
   // Shift requests
   pendingShift.forEach(req => {
