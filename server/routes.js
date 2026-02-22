@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const { requireAuth, requireAdmin, login, changePassword, getCurrentUser } = require('./auth');
 const { calculateWeeklyHours, buildRunningTotals, checkHoursLimit, getPayPeriodStart, SHIFT_DEFS } = require('../utils/hours');
 const notify = require('../utils/notifications');
+const telegram = require("../server/telegram");
 
 // ═══════════════════════════════════════════════════════════
 // AUTH ROUTES
@@ -1571,7 +1572,7 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
           // Add web app link
           message += "\n🔗 Check the schedule for details:\n";
           message += process.env.APP_URL || "https://your-app.railway.app";
-          await notify.sendTelegramMessage(staff.telegram_id, message);
+          await telegram.sendNotification(staff.telegram_id, message);
           notified++;
           console.log("📧 Sending to", staff.full_name, ":", message);
         }
@@ -1597,7 +1598,7 @@ router.post('/remind-admin-notifications', requireAdmin, async (req, res) => {
     
     if (admin && admin.telegram_id) {
       const message = `⏰ Reminder: You have ${changeCount} unsent schedule ${changeCount === 1 ? 'change' : 'changes'}.\n\nDon't forget to send notifications!\n\n🔗 ${process.env.APP_URL || 'https://your-app.railway.app'}`;
-      await notify.sendTelegramMessage(admin.telegram_id, message);
+      await telegram.sendNotification(admin.telegram_id, message);
       res.json({ success: true });
     } else {
       res.json({ success: false, reason: 'No Telegram ID for admin' });
