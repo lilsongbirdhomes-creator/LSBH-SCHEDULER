@@ -143,9 +143,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .month-shift-name{font-weight:700;margin-bottom:2px;line-height:1.2;}
 .month-shift-time{font-size:10px;opacity:.9;margin-bottom:2px;line-height:1.2;}
 .month-shift-hours{font-size:9px;font-weight:600;margin-top:1px;line-height:1.2;}
-.month-shift-hours.hrs-ok{opacity:.7;}
-.month-shift-hours.hrs-warn{color:#ff9800;}
-.month-shift-hours.hrs-over{color:#dc3545;}
 
 /* REASSIGN MODAL */
 .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
