@@ -30,7 +30,7 @@ async function login(db, username, password) {
            email, phone, telegram_id
     FROM users 
     WHERE username = ? AND is_active = 1
-  `).get(username);
+  `).get(username.toLowerCase().trim());
 
   if (!user) {
     return { success: false, error: 'Invalid username or password' };
