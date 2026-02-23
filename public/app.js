@@ -182,7 +182,7 @@ async function loadStaff() {
 
 function renderStaffList() {
   const list = document.getElementById("staffList");
-  if (!list) return; // Staff tab not visible for non-admin
+  if (!list) return;
   list.innerHTML = "";
   
   allStaff.forEach(staff => {
@@ -191,9 +191,7 @@ function renderStaffList() {
     const item = document.createElement('div');
     item.className = 's-item' + (!isActive ? ' inactive' : '');
     item.innerHTML = `
-      <div class="col-dot" style="background:${staff.tile_color};color:${staff.text_color};${!isActive ? 'opacity:0.5;' : ''}">
-        ${staff.text_color === 'white' ? 'W' : 'A'}
-      </div>
+      <div class="col-dot" style="background:${staff.tile_color || '#f5f5f5'};${!isActive ? 'opacity:0.5;' : ''}"></div>
       <div class="s-det">
         <div class="s-nm">
           ${staff.full_name}
@@ -248,6 +246,51 @@ async function addStaff() {
   }
 }
 
+const PASTEL_SWATCHES = [
+  // Pinks & Reds
+  '#ffd6d6', '#ffb3b3', '#ffc2c2', '#f9c4d2', '#f7cac9',
+  // Oranges & Peaches
+  '#ffe4c4', '#ffd5a8', '#ffc9a0', '#ffd6a5', '#ffe0b2',
+  // Yellows
+  '#fff9c4', '#fff3b0', '#ffeaa7', '#fde68a', '#fef08a',
+  // Greens
+  '#d4f1d4', '#c8f7c5', '#b8f0b8', '#d1fae5', '#a7f3d0',
+  // Blues
+  '#d0eaff', '#bde0fe', '#c8e6ff', '#dbeafe', '#cfe2ff',
+  // Purples & Lavenders
+  '#e8d5ff', '#ddd6fe', '#ede9fe', '#e9d5ff', '#f3e8ff',
+  // Neutrals & Grays
+  '#f5f5f5', '#e9ecef', '#f8f9fa', '#e2e8f0', '#f0ede6',
+  // Dark (for white text)
+  '#4a5568', '#2d3748', '#1a202c', '#374151', '#1e3a5f',
+];
+
+function buildSwatchGrid(currentColor) {
+  const grid = document.getElementById('swatchGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  PASTEL_SWATCHES.forEach(color => {
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.className = 'swatch' + (color === currentColor ? ' swatch-selected' : '');
+    swatch.style.background = color;
+    swatch.title = color;
+    swatch.onclick = () => selectSwatch(color);
+    grid.appendChild(swatch);
+  });
+}
+
+function selectSwatch(color) {
+  document.getElementById('editTileColor').value = color;
+  // Update selected state
+  document.querySelectorAll('#swatchGrid .swatch').forEach(s => {
+    s.classList.toggle('swatch-selected', s.title === color);
+  });
+  // Auto-set text color based on whether it's a dark swatch
+  const darkSwatches = ['#4a5568','#2d3748','#1a202c','#374151','#1e3a5f'];
+  document.getElementById('editTextColor').value = darkSwatches.includes(color) ? 'white' : 'black';
+}
+
 function openEditStaff(staffId) {
   const staff = allStaff.find(s => s.id === staffId);
   if (!staff) return;
@@ -255,9 +298,11 @@ function openEditStaff(staffId) {
   document.getElementById('editStaffId').value = staffId;
   document.getElementById('editFullName').value = staff.full_name;
   document.getElementById('editJobTitle').value = staff.job_title;
-  document.getElementById('editTileColor').value = staff.tile_color;
-  document.getElementById('editTextColor').value = staff.text_color;
+  document.getElementById('editTileColor').value = staff.tile_color || '#f5f5f5';
+  document.getElementById('editTextColor').value = staff.text_color || 'black';
   document.getElementById('editTelegramId').value = staff.telegram_id || '';
+
+  buildSwatchGrid(staff.tile_color || '#f5f5f5');
   
   document.getElementById('editStaffModal').classList.add('show');
 }
