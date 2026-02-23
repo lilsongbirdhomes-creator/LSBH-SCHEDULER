@@ -191,9 +191,7 @@ function renderStaffList() {
     const item = document.createElement('div');
     item.className = 's-item' + (!isActive ? ' inactive' : '');
     item.innerHTML = `
-      <div class="col-dot" style="background:${staff.tile_color};color:${staff.text_color};${!isActive ? 'opacity:0.5;' : ''}">
-        ${staff.text_color === 'white' ? 'W' : 'A'}
-      </div>
+      <div class="col-dot" style="background:${staff.tile_color || '#f5f5f5'};${!isActive ? 'opacity:0.5;' : ''}"></div>
       <div class="s-det">
         <div class="s-nm">
           ${staff.full_name}
@@ -248,17 +246,55 @@ async function addStaff() {
   }
 }
 
+const PASTEL_SWATCHES = [
+  '#ffd6d6','#ffb3b3','#f9c4d2','#f7cac9',
+  '#ffe4c4','#ffd5a8','#ffd6a5','#ffe0b2',
+  '#fff9c4','#ffeaa7','#fde68a','#fef08a',
+  '#d4f1d4','#c8f7c5','#d1fae5','#a7f3d0',
+  '#d0eaff','#bde0fe','#dbeafe','#cfe2ff',
+  '#e8d5ff','#ddd6fe','#e9d5ff','#f3e8ff',
+  '#f5f5f5','#e9ecef','#f8f9fa','#e2e8f0',
+  '#4a5568','#2d3748','#1a202c','#374151',
+];
+
+const DARK_SWATCHES = ['#4a5568','#2d3748','#1a202c','#374151'];
+
+function buildSwatchGrid(currentColor) {
+  const grid = document.getElementById('swatchGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  PASTEL_SWATCHES.forEach(color => {
+    const swatch = document.createElement('button');
+    swatch.type = 'button';
+    swatch.className = 'swatch' + (color === currentColor ? ' swatch-selected' : '');
+    swatch.style.background = color;
+    swatch.title = color;
+    swatch.onclick = () => selectSwatch(color);
+    grid.appendChild(swatch);
+  });
+}
+
+function selectSwatch(color) {
+  document.getElementById('editTileColor').value = color;
+  document.querySelectorAll('#swatchGrid .swatch').forEach(s => {
+    s.classList.toggle('swatch-selected', s.title === color);
+  });
+  document.getElementById('editTextColor').value = DARK_SWATCHES.includes(color) ? 'white' : 'black';
+}
+
 function openEditStaff(staffId) {
   const staff = allStaff.find(s => s.id === staffId);
   if (!staff) return;
-  
+
   document.getElementById('editStaffId').value = staffId;
   document.getElementById('editFullName').value = staff.full_name;
   document.getElementById('editJobTitle').value = staff.job_title;
-  document.getElementById('editTileColor').value = staff.tile_color;
-  document.getElementById('editTextColor').value = staff.text_color;
+  document.getElementById('editTileColor').value = staff.tile_color || '#f5f5f5';
+  document.getElementById('editTextColor').value = staff.text_color || 'black';
   document.getElementById('editTelegramId').value = staff.telegram_id || '';
-  
+
+  buildSwatchGrid(staff.tile_color || '#f5f5f5');
+
   document.getElementById('editStaffModal').classList.add('show');
 }
 
@@ -478,15 +514,7 @@ function renderWeekView() {
   root.appendChild(grid);
 }
 
-/**
- * Compute per-week running hour tallies for month view entirely client-side.
- * Groups allShifts by staff member and by Sun–Sat pay period.
- * Processes shifts in day+shift order so the running total on each tile
- * reflects hours accumulated up to and including that shift.
- * Writes result directly onto each shift object as shift.running_hours.
- */
 function computeMonthHours(shifts) {
-  // Sort all assigned shifts: by date, then morning→afternoon→overnight
   const shiftOrder = { morning: 1, afternoon: 2, overnight: 3 };
   const assigned = shifts
     .filter(s => s.assigned_to && !s.is_open)
@@ -494,30 +522,21 @@ function computeMonthHours(shifts) {
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
       return shiftOrder[a.shift_type] - shiftOrder[b.shift_type];
     });
-
-  // Track running total per "staffId|weekSunday"
   const accumulators = {};
-
   assigned.forEach(shift => {
-    // Find the Sunday that starts this shift's pay period
     const d = new Date(shift.date + 'T12:00:00');
     const sunday = new Date(d);
     sunday.setDate(d.getDate() - d.getDay());
     const weekKey = `${shift.assigned_to}|${sunday.toISOString().split('T')[0]}`;
-
     if (!accumulators[weekKey]) accumulators[weekKey] = 0;
-
-    // Saturday overnight only counts 5h in this pay period (splits at midnight)
     let hours = SHIFT_DEFS[shift.shift_type]?.hours || 0;
     if (d.getDay() === 6 && shift.shift_type === 'overnight') hours = 5.0;
-
     accumulators[weekKey] += hours;
     shift.running_hours = accumulators[weekKey];
   });
 }
 
 function renderMonthView() {
-  // Compute per-week running hour tallies client-side before building tiles
   computeMonthHours(allShifts);
   const root = document.getElementById('calendarRoot');
   root.innerHTML = '';
