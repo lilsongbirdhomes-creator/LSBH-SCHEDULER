@@ -456,11 +456,15 @@ router.post('/shifts/copy', requireAdmin, async (req, res) => {
       sourceStart = sourceDate;
       sourceEnd = sourceDate;
     } else if (copyType === 'week') {
-      // Get Sunday of the week
+      // Get Sunday of the week - use separate Date objects to avoid mutation
       const day = src.getDay();
-      const diff = src.getDate() - day;
-      sourceStart = new Date(src.setDate(diff)).toISOString().split('T')[0];
-      sourceEnd = new Date(src.setDate(diff + 6)).toISOString().split('T')[0];
+      const sundayDate = src.getDate() - day;
+      const sundayObj = new Date(src);
+      sundayObj.setDate(sundayDate);
+      const saturdayObj = new Date(src);
+      saturdayObj.setDate(sundayDate + 6);
+      sourceStart = sundayObj.toISOString().split('T')[0];
+      sourceEnd = saturdayObj.toISOString().split('T')[0];
     } else if (copyType === 'month') {
       sourceStart = new Date(src.getFullYear(), src.getMonth(), 1).toISOString().split('T')[0];
       sourceEnd = new Date(src.getFullYear(), src.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -1245,9 +1249,6 @@ router.get('/dashboard', requireAuth, (req, res) => {
   }
 });
 
-module.exports = router;
-// ADD THIS TO server/routes.js BEFORE module.exports
-
 // ═══════════════════════════════════════════════════════════
 // DATA EXPORT/IMPORT (for database persistence workaround)
 // ═══════════════════════════════════════════════════════════
@@ -1405,15 +1406,6 @@ router.post('/import-data', requireAdmin, async (req, res) => {
     // Import templates if provided
     if (templates) {
       try {
-        // Create settings table if it doesn't exist
-        req.db.prepare(`
-          CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          )
-        `).run();
-        
         req.db.prepare(`
           INSERT OR REPLACE INTO settings (key, value, updated_at)
           VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -1442,15 +1434,6 @@ router.post('/import-data', requireAdmin, async (req, res) => {
 // GET /api/shift-templates - Get shift templates
 router.get('/shift-templates', requireAuth, (req, res) => {
   try {
-    // Create settings table if it doesn't exist
-    req.db.prepare(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-    
     const result = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('shift_templates');
     
     if (result) {
@@ -1478,15 +1461,6 @@ router.post('/shift-templates', requireAdmin, (req, res) => {
   }
   
   try {
-    // Create settings table if it doesn't exist
-    req.db.prepare(`
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-    
     const templates = { morning, afternoon, overnight };
     
     req.db.prepare(`
@@ -1500,9 +1474,6 @@ router.post('/shift-templates', requireAdmin, (req, res) => {
     res.status(500).json({ error: 'Failed to save templates' });
   }
 });
-
-module.exports = router;
-
 
 // POST /api/send-schedule-notifications - Send notifications for schedule changes
 router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
