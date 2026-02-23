@@ -279,18 +279,11 @@ router.get('/shifts', requireAuth, (req, res) => {
   
   const shifts = req.db.prepare(query).all(...params);
   
-  // Calculate running hours for every pay period (Sun-Sat week) in the date range.
-  // buildRunningTotals resets to 0 each Sunday, so merging multiple weeks is safe —
-  // keys are "date|userId|shiftType" and are unique across weeks.
+  // Calculate running hours if we have a date range
   let runningTotals = {};
   if (startDate) {
-    const end = endDate ? new Date(endDate + 'T12:00:00') : new Date(startDate + 'T12:00:00');
-    let periodSunday = getPayPeriodStart(startDate); // Date object, Sunday on or before startDate
-    while (periodSunday <= end) {
-      Object.assign(runningTotals, buildRunningTotals(req.db, periodSunday));
-      periodSunday = new Date(periodSunday);
-      periodSunday.setDate(periodSunday.getDate() + 7);
-    }
+    const sunday = getPayPeriodStart(startDate);
+    runningTotals = buildRunningTotals(req.db, sunday);
   }
   
   // Add running hours to each shift
