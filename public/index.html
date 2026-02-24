@@ -54,20 +54,22 @@
 
       <!-- SCHEDULE TAB -->
       <div id="scheduleTab" class="tab-pane active">
-        <!-- Shift Generator Button -->
-        <button class="gen-trigger-btn" onclick="openShiftGenerator()">
-          🗓️ Shift Generator
-        
-        <!-- Notification Button -->
-        <div class="notification-section">
-          <button id="sendNotificationsBtn" class="btn-notify" onclick="sendScheduleNotifications()" disabled style="opacity:0.5;">
-            📧 Send Notifications
+        <div class="schedule-toolbar">
+          <!-- Shift Generator Button -->
+          <button class="gen-trigger-btn" onclick="openShiftGenerator()">
+            🗓️ Shift Generator
           </button>
-          <button class="btn-clear-changes" onclick="clearScheduleChanges()">
-            🗑️ Clear Changes
-          </button>
+
+          <!-- Notification Buttons -->
+          <div class="notification-section">
+            <button id="sendNotificationsBtn" class="btn-notify" onclick="sendScheduleNotifications()" disabled style="opacity:0.5;">
+              📧 Send Notifications
+            </button>
+            <button class="btn-clear-changes" onclick="clearScheduleChanges()">
+              🗑️ Clear Changes
+            </button>
+          </div>
         </div>
-        </button>
       </div>
 
       <!-- STAFF MANAGEMENT TAB -->
@@ -117,16 +119,17 @@
         </div>
       </div>
     </div>
-      <div class="cal-nav-left">
-        <button class="nav-arrow" onclick="navPrev()">◄</button>
-        <span class="cal-title" id="calTitle"></span>
-        <button class="nav-arrow" onclick="navNext()">►</button>
+      <div class="cal-nav">
+        <div class="cal-nav-left">
+          <button class="nav-arrow" onclick="navPrev()">◄</button>
+          <span class="cal-title" id="calTitle"></span>
+          <button class="nav-arrow" onclick="navNext()">►</button>
+        </div>
+        <div class="view-toggle">
+          <button class="v-btn active" id="vWeek" onclick="setView('week')">Week</button>
+          <button class="v-btn" id="vMonth" onclick="setView('month')">Month</button>
+        </div>
       </div>
-      <div class="view-toggle">
-        <button class="v-btn active" id="vWeek" onclick="setView('week')">Week</button>
-        <button class="v-btn" id="vMonth" onclick="setView('month')">Month</button>
-      </div>
-    </div>
 
     <!-- Calendar Display -->
     <div class="cal-scroll">
