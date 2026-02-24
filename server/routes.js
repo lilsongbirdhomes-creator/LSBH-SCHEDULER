@@ -1253,10 +1253,11 @@ router.get('/dashboard', requireAuth, (req, res) => {
 router.get('/export-data', requireAdmin, (req, res) => {
   try {
     // Export all staff (except system accounts)
+    // password is the bcrypt hash — safe to store in backup, never plaintext
     const staff = req.db.prepare(`
-      SELECT id, username, full_name, role, job_title, 
+      SELECT id, username, password, full_name, role, job_title,
              tile_color, text_color, email, phone, telegram_id,
-             is_approved, is_active
+             is_approved, is_active, must_change_password
       FROM users
       WHERE username != '_open' AND username != 'admin'
       ORDER BY id
@@ -1328,9 +1329,17 @@ router.post('/import-data', requireAdmin, async (req, res) => {
         continue;
       }
       
-      // Create new staff member with temporary password
-      const tempPassword = await bcrypt.hash('temp' + Math.random().toString(36).slice(2, 8), 10);
-      
+      // Use the exported password hash if present, otherwise generate a temp one
+      // (person.password is a bcrypt hash from the backup — never plaintext)
+      const passwordToStore = person.password
+        ? person.password
+        : await bcrypt.hash('temp' + Math.random().toString(36).slice(2, 8), 10);
+      // If we have a real hash from backup, honour the must_change_password flag from export.
+      // If we had to generate a temp password, force a change on next login.
+      const mustChange = person.password
+        ? (person.must_change_password !== undefined ? person.must_change_password : 0)
+        : 1;
+
       const result = req.db.prepare(`
         INSERT INTO users (username, password, full_name, role, job_title, 
                           tile_color, text_color, email, phone, telegram_id,
@@ -1338,7 +1347,7 @@ router.post('/import-data', requireAdmin, async (req, res) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         person.username,
-        tempPassword,
+        passwordToStore,
         person.full_name,
         person.role,
         person.job_title,
@@ -1349,7 +1358,7 @@ router.post('/import-data', requireAdmin, async (req, res) => {
         person.telegram_id,
         person.is_approved !== undefined ? person.is_approved : 1,
         person.is_active !== undefined ? person.is_active : 1,
-        1 // Force password change
+        mustChange
       );
       
       staffIdMap[person.id] = result.lastInsertRowid;
@@ -1609,5 +1618,166 @@ router.post('/remind-admin-notifications', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to send reminder' });
   }
 });
+
+
+// ═══════════════════════════════════════════════════════════
+// ISSUE REPORTING
+// ═══════════════════════════════════════════════════════════
+
+// POST /api/report-issue - Staff reports a general issue
+router.post('/report-issue', requireAuth, async (req, res) => {
+  const { details, notifyAdmin } = req.body;
+  if (!details || !details.trim()) {
+    return res.status(400).json({ error: 'Details required' });
+  }
+
+  try {
+    // Always notify House Manager
+    const houseManagers = req.db.prepare(`
+      SELECT id, telegram_id, full_name FROM users
+      WHERE job_title = 'House Manager' AND is_active = 1 AND telegram_id IS NOT NULL
+    `).all();
+
+    const admins = notifyAdmin
+      ? req.db.prepare(`
+          SELECT id, telegram_id, full_name FROM users
+          WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+        `).all()
+      : [];
+
+    const reporter = req.db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.userId);
+    const message =
+      `⚠️ <b>Issue Report</b>\n\n` +
+      `<b>Reported by:</b> ${reporter?.full_name || 'Staff'}\n` +
+      `<b>Time:</b> ${new Date().toLocaleString('en-US')}\n\n` +
+      `<b>Details:</b>\n${details}`;
+
+    const recipients = [
+      ...houseManagers,
+      ...(notifyAdmin ? admins : [])
+    ];
+
+    const seen = new Set();
+    let notified = 0;
+    for (const r of recipients) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      if (r.telegram_id) {
+        await telegram.sendNotification(r.telegram_id, message);
+        notified++;
+      }
+    }
+
+    res.json({ success: true, notified });
+  } catch (err) {
+    console.error('Report issue error:', err);
+    res.status(500).json({ error: 'Failed to report issue' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// ENHANCED ABSENCE - notify on-duty staff too
+// Override the existing /api/absences to add on-duty notification
+// ═══════════════════════════════════════════════════════════
+
+// POST /api/absences/enhanced - Enhanced absence with on-duty flag
+router.post('/absences/enhanced', requireAuth, async (req, res) => {
+  const { shiftId, reason, reportedWhileOnDuty } = req.body;
+  if (!shiftId) return res.status(400).json({ error: 'Shift ID required' });
+
+  const shift = req.db.prepare('SELECT id, assigned_to, date, shift_type FROM shifts WHERE id = ?').get(shiftId);
+  if (!shift) return res.status(404).json({ error: 'Shift not found' });
+
+  if (shift.assigned_to !== req.session.userId) {
+    return res.status(403).json({ error: 'Can only report your own absences' });
+  }
+
+  try {
+    req.db.prepare(`
+      INSERT INTO absences (shift_id, user_id, reported_by, reason)
+      VALUES (?, ?, ?, ?)
+    `).run(shiftId, shift.assigned_to, req.session.userId, reason);
+
+    const staffUser = req.db.prepare('SELECT full_name FROM users WHERE id = ?').get(shift.assigned_to);
+    const shiftDef = { morning: 'Morning', afternoon: 'Afternoon', overnight: 'Overnight' }[shift.shift_type];
+    const dateStr = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
+      { weekday: 'short', month: 'short', day: 'numeric' });
+
+    const baseMsg =
+      `🚨 <b>Emergency Absence</b>\n\n` +
+      `<b>Staff:</b> ${staffUser?.full_name}\n` +
+      `<b>Shift:</b> ${dateStr} — ${shiftDef}\n` +
+      `<b>Reason:</b> ${reason}\n\n` +
+      `Immediate coverage needed!`;
+
+    // Always notify House Managers and Admins
+    const houseManagers = req.db.prepare(`
+      SELECT telegram_id FROM users WHERE job_title = 'House Manager' AND is_active = 1 AND telegram_id IS NOT NULL
+    `).all();
+    const admins = req.db.prepare(`
+      SELECT telegram_id FROM users WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+    `).all();
+
+    const notifyList = [...houseManagers, ...admins];
+
+    // If NOT reported while on duty, also notify current shift staff member
+    if (!reportedWhileOnDuty) {
+      const today = new Date().toISOString().split('T')[0];
+      const currentShiftTypes = ['morning', 'afternoon', 'overnight'];
+      const now = new Date();
+      const hour = now.getHours();
+      const currentType = hour < 7 ? 'overnight' : hour < 15 ? 'morning' : hour < 19 ? 'afternoon' : 'overnight';
+
+      const onDuty = req.db.prepare(`
+        SELECT u.telegram_id FROM shifts s
+        JOIN users u ON s.assigned_to = u.id
+        WHERE s.date = ? AND s.shift_type = ? AND s.assigned_to != ? AND u.telegram_id IS NOT NULL
+        LIMIT 1
+      `).get(today, currentType, req.session.userId);
+
+      if (onDuty) notifyList.push(onDuty);
+    }
+
+    const seen = new Set();
+    for (const r of notifyList) {
+      if (!r.telegram_id || seen.has(r.telegram_id)) continue;
+      seen.add(r.telegram_id);
+      await telegram.sendNotification(r.telegram_id, baseMsg);
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Enhanced absence error:', err);
+    res.status(500).json({ error: 'Failed to report absence' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// CONTACT - send Telegram from one staff to another
+// ═══════════════════════════════════════════════════════════
+
+// POST /api/contact-telegram - Send a Telegram message to a staff member
+router.post('/contact-telegram', requireAuth, async (req, res) => {
+  const { targetStaffId, message } = req.body;
+  if (!targetStaffId || !message) {
+    return res.status(400).json({ error: 'targetStaffId and message required' });
+  }
+
+  const sender = req.db.prepare('SELECT full_name FROM users WHERE id = ?').get(req.session.userId);
+  const target = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(targetStaffId);
+
+  if (!target) return res.status(404).json({ error: 'Staff member not found' });
+  if (!target.telegram_id) return res.status(400).json({ error: 'That staff member has no Telegram linked' });
+
+  const fullMsg =
+    `💬 <b>Message from ${sender?.full_name || 'A colleague'}</b>\n\n${message}\n\n` +
+    `<i>(Reply via Telegram or phone)</i>`;
+
+  const sent = await telegram.sendNotification(target.telegram_id, fullMsg);
+  if (!sent) return res.status(500).json({ error: 'Failed to send Telegram message' });
+
+  res.json({ success: true });
+});
+
 
 module.exports = router;
