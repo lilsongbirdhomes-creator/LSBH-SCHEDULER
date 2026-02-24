@@ -313,3 +313,193 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .swatch{width:30px;height:30px;border-radius:6px;border:2px solid rgba(0,0,0,.1);cursor:pointer;padding:0;transition:transform .12s,border-color .12s;flex-shrink:0;}
 .swatch:hover{transform:scale(1.15);border-color:rgba(0,0,0,.3);}
 .swatch-selected{border:3px solid #333 !important;transform:scale(1.15);box-shadow:0 0 0 2px white,0 0 0 4px #333;}
+
+/* ══════════════════════════════════════════════════════
+   STAFF ACTION BAR
+══════════════════════════════════════════════════════ */
+.staff-action-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.staff-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+  color: white;
+  transition: transform .15s, box-shadow .15s;
+  box-shadow: 0 3px 8px rgba(0,0,0,.15);
+}
+.staff-action-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.2); }
+.staff-action-btn:active { transform: translateY(0); }
+.sab-icon { font-size: 22px; }
+.sab-label { text-align: center; line-height: 1.2; }
+.btn-request  { background: linear-gradient(135deg, #667eea, #764ba2); }
+.btn-emergency{ background: linear-gradient(135deg, #dc3545, #c0392b); }
+.btn-contact  { background: linear-gradient(135deg, #28a745, #1e7e34); }
+.btn-settings { background: linear-gradient(135deg, #495057, #343a40); }
+
+@media(max-width:480px) {
+  .staff-action-bar { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ══════════════════════════════════════════════════════
+   PICK MODE
+══════════════════════════════════════════════════════ */
+.pick-mode-bar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  background: #fff3cd;
+  border-bottom: 2px solid #ffc107;
+  padding: 12px 16px;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  font-size: 13px;
+  color: #856404;
+  gap: 12px;
+}
+.pick-mode-bar.show { display: flex; }
+.pick-mode-bar button {
+  background: #dc3545; color: white; border: none;
+  padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600;
+}
+#calendarRoot.pick-mode .shift-tile,
+#calendarRoot.pick-mode .month-shift-tile {
+  outline: 2px dashed #667eea;
+  opacity: .9;
+  transition: outline-color .15s, transform .1s;
+}
+#calendarRoot.pick-mode .shift-tile:hover,
+#calendarRoot.pick-mode .month-shift-tile:hover {
+  outline-color: #764ba2;
+  transform: translateY(-3px);
+}
+
+/* ══════════════════════════════════════════════════════
+   PENDING TILE
+══════════════════════════════════════════════════════ */
+.tile-pending {
+  background: #fff0f0 !important;
+  color: #721c24 !important;
+  border: 2px solid #dc3545 !important;
+}
+.pending-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: #dc3545;
+  color: white;
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-bottom: 3px;
+  display: inline-block;
+}
+
+/* ══════════════════════════════════════════════════════
+   REQUEST OPTIONS BUTTONS
+══════════════════════════════════════════════════════ */
+.request-options { display: flex; flex-direction: column; gap: 10px; }
+.request-option-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 2px solid #dee2e6;
+  border-radius: 10px;
+  background: white;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.request-option-btn:hover { border-color: #667eea; background: #f8f0ff; }
+.emerg-btn:hover { border-color: #dc3545; background: #fff5f5; }
+.rob-icon { font-size: 24px; margin-bottom: 4px; }
+.rob-title { font-weight: 700; font-size: 14px; color: #212529; margin-bottom: 2px; }
+.rob-desc  { font-size: 12px; color: #888; line-height: 1.4; }
+
+/* ══════════════════════════════════════════════════════
+   TRADE PREVIEW
+══════════════════════════════════════════════════════ */
+.trade-preview-wrap { display: flex; gap: 10px; align-items: stretch; margin: 16px 0; }
+.trade-leg { flex: 1; border: 2px solid #dee2e6; border-radius: 10px; padding: 12px; background: #f8f9fa; }
+.trade-leg.give { border-color: #dc3545; }
+.trade-leg.get  { border-color: #28a745; }
+.tl-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.trade-leg.give .tl-label { color: #dc3545; }
+.trade-leg.get  .tl-label { color: #28a745; }
+.tl-date  { font-weight: 700; font-size: 13px; color: #212529; margin-bottom: 2px; }
+.tl-type  { font-size: 13px; color: #495057; margin-bottom: 2px; }
+.tl-time  { font-size: 11px; color: #888; margin-bottom: 2px; }
+.tl-staff { font-size: 11px; color: #667eea; font-weight: 600; }
+.trade-arrow { display: flex; align-items: center; font-size: 22px; color: #667eea; flex-shrink: 0; }
+
+/* ══════════════════════════════════════════════════════
+   PICK CONFIRM BOX
+══════════════════════════════════════════════════════ */
+.pick-confirm-box { margin: 12px 0; }
+.pick-shift-preview {
+  display: flex; gap: 12px; align-items: center;
+  padding: 14px; background: #f8f9fa; border-radius: 10px;
+  border: 2px solid #dee2e6; margin-bottom: 10px;
+}
+.psv-icon { font-size: 28px; flex-shrink: 0; }
+.psv-date { font-weight: 700; font-size: 14px; color: #212529; }
+.psv-type { font-size: 12px; color: #888; margin-top: 2px; }
+.pick-note { font-size: 12px; color: #666; line-height: 1.5; padding: 8px 10px; background: #e3f2fd; border-radius: 6px; }
+
+/* ══════════════════════════════════════════════════════
+   EMERGENCY FORM HELPERS
+══════════════════════════════════════════════════════ */
+.inp-full { width: 100%; padding: 10px 12px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; }
+.inp-full:focus { outline: none; border-color: #667eea; }
+#emergencyTypeSelect, #absenceForm, #issueForm { display: none; }
+#emergencyTypeSelect.show, #absenceForm.show, #issueForm.show { display: block; }
+
+/* ══════════════════════════════════════════════════════
+   CONTACT DIALOG
+══════════════════════════════════════════════════════ */
+.contact-modal { max-width: 520px; max-height: 80vh; overflow-y: auto; }
+.contact-card {
+  border: 1px solid #e9ecef; border-radius: 10px;
+  padding: 14px; margin-bottom: 12px; background: #fafafa;
+}
+.contact-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #888; margin-bottom: 6px; }
+.contact-name { font-size: 16px; font-weight: 700; color: #212529; margin-bottom: 2px; }
+.contact-meta { font-size: 12px; color: #888; margin-bottom: 8px; }
+.contact-no-info { font-size: 11px; color: #aaa; }
+.contact-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.contact-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 14px; border: none; border-radius: 7px;
+  font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none;
+  transition: transform .1s;
+}
+.contact-btn:hover { transform: translateY(-1px); }
+.phone-btn { background: #28a745; color: white; }
+.tg-btn    { background: #2196F3; color: white; }
+.contact-dir-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 260px; overflow-y: auto; }
+.contact-dir-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: white; border-radius: 7px; border: 1px solid #eee; }
+.contact-dir-dot { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; border: 1px solid rgba(0,0,0,.1); }
+.contact-dir-info { flex: 1; min-width: 0; }
+.contact-dir-name { font-weight: 600; font-size: 13px; color: #212529; }
+.contact-dir-role { font-size: 11px; color: #888; }
+.contact-dir-btns { display: flex; gap: 5px; flex-shrink: 0; }
+.contact-btn-sm {
+  padding: 5px 8px; border: none; border-radius: 5px;
+  font-size: 12px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center;
+}
+
+/* ══════════════════════════════════════════════════════
+   SCHEDULE TOOLBAR
+══════════════════════════════════════════════════════ */
+.schedule-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
