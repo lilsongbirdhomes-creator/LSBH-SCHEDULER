@@ -1245,9 +1245,6 @@ router.get('/dashboard', requireAuth, (req, res) => {
   }
 });
 
-module.exports = router;
-// ADD THIS TO server/routes.js BEFORE module.exports
-
 // ═══════════════════════════════════════════════════════════
 // DATA EXPORT/IMPORT (for database persistence workaround)
 // ═══════════════════════════════════════════════════════════
@@ -1501,8 +1498,9 @@ router.post('/shift-templates', requireAdmin, (req, res) => {
   }
 });
 
-module.exports = router;
-
+// ═══════════════════════════════════════════════════════════
+// SCHEDULE NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════
 
 // POST /api/send-schedule-notifications - Send notifications for schedule changes
 router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
