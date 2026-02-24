@@ -410,8 +410,15 @@ function navNext() {
 
 function setView(mode) {
   viewMode = mode;
-  document.getElementById('vWeek').classList.toggle('active', mode === 'week');
-  document.getElementById('vMonth').classList.toggle('active', mode === 'month');
+  // Update whichever set of toggle buttons is in the DOM
+  const vw = document.getElementById('vWeek');
+  const vm = document.getElementById('vMonth');
+  const vws = document.getElementById('vWeekStaff');
+  const vms = document.getElementById('vMonthStaff');
+  if (vw) vw.classList.toggle('active', mode === 'week');
+  if (vm) vm.classList.toggle('active', mode === 'month');
+  if (vws) vws.classList.toggle('active', mode === 'week');
+  if (vms) vms.classList.toggle('active', mode === 'month');
   loadShifts();
 }
 
@@ -459,14 +466,18 @@ function renderCalendar() {
 }
 
 function renderWeekView() {
-  const root = document.getElementById('calendarRoot');
+  const isStaff = currentUser && currentUser.role === 'staff';
+  const rootId = isStaff ? 'calendarRootStaff' : 'calendarRoot';
+  const titleId = isStaff ? 'calTitleStaff' : 'calTitle';
+  const root = document.getElementById(rootId);
+  if (!root) return;
   root.innerHTML = '';
   
   const startDate = getWeekStart(viewDate);
   const endDate = new Date(startDate);
   endDate.setDate(endDate.getDate() + 6);
   
-  document.getElementById('calTitle').textContent = 
+  document.getElementById(titleId).textContent = 
     `${formatDateLong(startDate)} – ${formatDateLong(endDate)}`;
   
   const grid = document.createElement('div');
@@ -541,14 +552,18 @@ function computeMonthHours(shifts) {
 
 function renderMonthView() {
   computeMonthHours(allShifts);
-  const root = document.getElementById('calendarRoot');
+  const isStaff = currentUser && currentUser.role === 'staff';
+  const rootId = isStaff ? 'calendarRootStaff' : 'calendarRoot';
+  const titleId = isStaff ? 'calTitleStaff' : 'calTitle';
+  const root = document.getElementById(rootId);
+  if (!root) return;
   root.innerHTML = '';
   
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
-  document.getElementById('calTitle').textContent = monthName;
+  document.getElementById(titleId).textContent = monthName;
   
   const grid = document.createElement('div');
   grid.className = 'month-grid';
