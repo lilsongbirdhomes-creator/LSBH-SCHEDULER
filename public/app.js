@@ -432,7 +432,10 @@ async function loadShifts() {
   
   try {
     showLoading();
-    const result = await apiCall(`/shifts?startDate=${formatDate(startDate)}&endDate=${formatDate(endDate)}`);
+    const [result] = await Promise.all([
+      apiCall(`/shifts?startDate=${formatDate(startDate)}&endDate=${formatDate(endDate)}`),
+      loadPendingShiftIds()
+    ]);
     allShifts = result.shifts;
     renderCalendar();
     
@@ -618,60 +621,79 @@ function createShiftTile(shift, viewType = 'week') {
   const def = SHIFT_DEFS[shift.shift_type];
   const tile = document.createElement('div');
   tile.className = viewType === 'month' ? 'month-shift-tile' : 'shift-tile';
-  
+
+  // Determine pending state
+  const hasPendingShiftReq = pendingShiftIds.has(shift.id);
+  const hasPendingTrade    = pendingTradeShiftIds.has(shift.id);
+  const isPending          = hasPendingShiftReq || hasPendingTrade;
+
+  // Pick-mode overrides normal click behaviour
+  const inPickMode = !!requestMode;
+
+  if (isPending) {
+    tile.classList.add('tile-pending');
+  }
+
   if (shift.is_open) {
-    tile.style.background = '#f5f5f5';
-    tile.style.color = 'black';
-    tile.style.cursor = 'pointer';
-    
-    // Admin can assign, staff can request
-    if (currentUser.role === 'admin') {
-      tile.onclick = () => showAssignOpenShiftModal(shift);
-    } else {
-      tile.onclick = () => confirmRequestShift(shift.id);
+    if (!isPending) {
+      tile.style.background = '#f5f5f5';
+      tile.style.color = 'black';
     }
-    
+    tile.style.cursor = 'pointer';
+
+    tile.onclick = () => {
+      if (inPickMode) { handleTilePick(shift); return; }
+      if (currentUser.role === 'admin') showAssignOpenShiftModal(shift);
+      else confirmRequestShift(shift.id);
+    };
+
+    const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
     if (viewType === 'month') {
       tile.innerHTML = `
+        ${pendingBadge}
         <div class="month-shift-name">Open Shift</div>
         <div class="month-shift-time">${def.icon} ${def.time}</div>
-        <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Click to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
+        <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
       `;
     } else {
       tile.innerHTML = `
+        ${pendingBadge}
         <div>
           <div class="t-name">Open Shift</div>
           <div class="t-time">${def.time}</div>
         </div>
         <div class="t-foot" style="font-size:10px;opacity:0.7;">
-          Click to ${currentUser.role === 'admin' ? 'assign' : 'request'}
+          Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}
         </div>
       `;
     }
   } else {
     const staff = allStaff.find(s => s.id === shift.assigned_to);
-    const bg = staff?.tile_color || '#f5f5f5';
-    const tc = staff?.text_color || 'black';
     const hours = shift.running_hours || 0;
     const hClass = hours >= 40 ? 'hrs-over' : hours >= 36 ? 'hrs-warn' : 'hrs-ok';
-    
-    tile.style.background = bg;
-    tile.style.color = tc;
-    
-    // Admin can reassign
-    if (currentUser.role === 'admin') {
-      tile.style.cursor = 'pointer';
-      tile.onclick = () => showReassignModal(shift);
+
+    if (!isPending) {
+      tile.style.background = staff?.tile_color || '#f5f5f5';
+      tile.style.color = staff?.text_color || 'black';
     }
-    
+
+    tile.style.cursor = 'pointer';
+    tile.onclick = () => {
+      if (inPickMode) { handleTilePick(shift); return; }
+      if (currentUser.role === 'admin') showReassignModal(shift);
+    };
+
+    const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
     if (viewType === 'month') {
       tile.innerHTML = `
+        ${pendingBadge}
         <div class="month-shift-name">${shift.full_name || staff?.full_name || 'Unknown'}</div>
         <div class="month-shift-time">${def.icon} ${def.time}</div>
         <div class="month-shift-hours ${hClass}">${hours.toFixed(1)}/40</div>
       `;
     } else {
       tile.innerHTML = `
+        ${pendingBadge}
         <div>
           <div class="t-name">${shift.full_name || 'Unknown'}</div>
           <div class="t-time">${def.time}</div>
@@ -682,7 +704,7 @@ function createShiftTile(shift, viewType = 'week') {
       `;
     }
   }
-  
+
   return tile;
 }
 
@@ -2018,3 +2040,512 @@ function showWarning(message) {
     warning.remove();
   }, 10000);
 }
+
+// ═══════════════════════════════════════════════════════════
+// STAFF ACTION BUTTONS (Request Shift/Trade, Emergency, Contact, Settings)
+// ═══════════════════════════════════════════════════════════
+
+// ── REQUEST SHIFT / TRADE ──────────────────────────────────
+
+let requestMode = null; // 'shift' or 'trade'
+let selectedShiftForAction = null; // shift object user tapped in pick mode
+let tradeMyShift = null; // first leg of trade
+
+function openRequestDialog() {
+  document.getElementById('requestDialog').classList.add('show');
+}
+
+function closeRequestDialog() {
+  document.getElementById('requestDialog').classList.remove('show');
+  exitPickMode();
+}
+
+function startShiftRequest() {
+  closeRequestDialog();
+  requestMode = 'shift';
+  enterPickMode('Tap an OPEN SHIFT (grey tile) to request it');
+}
+
+function startTradeRequest() {
+  closeRequestDialog();
+  requestMode = 'trade_step1';
+  tradeMyShift = null;
+  enterPickMode('Step 1 of 2 — Tap YOUR shift that you want to give away');
+}
+
+function enterPickMode(hint) {
+  document.getElementById('pickModeBar').classList.add('show');
+  document.getElementById('pickModeHint').textContent = hint;
+  document.getElementById('calendarRoot').classList.add('pick-mode');
+}
+
+function exitPickMode() {
+  requestMode = null;
+  tradeMyShift = null;
+  document.getElementById('pickModeBar').classList.remove('show');
+  document.getElementById('calendarRoot').classList.remove('pick-mode');
+}
+
+// Called from createShiftTile when in pick mode
+function handleTilePick(shift) {
+  if (!requestMode) return;
+
+  if (requestMode === 'shift') {
+    // Must be an open shift
+    if (!shift.is_open) {
+      showWarning('⚠️ Please tap an open (grey) shift to request it.');
+      return;
+    }
+    exitPickMode();
+    confirmRequestShiftFromPick(shift);
+
+  } else if (requestMode === 'trade_step1') {
+    // Must be the current user's own shift
+    if (shift.assigned_to !== currentUser.id) {
+      showWarning('⚠️ Please tap one of YOUR shifts — the one you want to trade away.');
+      return;
+    }
+    tradeMyShift = shift;
+    requestMode = 'trade_step2';
+    document.getElementById('pickModeHint').textContent =
+      `Step 2 of 2 — Now tap the shift you WANT to receive (currently assigned to someone else)`;
+
+  } else if (requestMode === 'trade_step2') {
+    if (!shift.assigned_to || shift.is_open) {
+      showWarning('⚠️ Please tap an assigned shift belonging to another staff member.');
+      return;
+    }
+    if (shift.assigned_to === currentUser.id) {
+      showWarning('⚠️ You can\'t trade with yourself. Pick a shift belonging to someone else.');
+      return;
+    }
+    exitPickMode();
+    confirmTradeFromPick(tradeMyShift, shift);
+  }
+}
+
+function confirmRequestShiftFromPick(shift) {
+  const def = SHIFT_DEFS[shift.shift_type];
+  const dateStr = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
+    { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const modal = buildSimpleModal(`
+    <h3>📋 Request Open Shift</h3>
+    <div class="pick-confirm-box">
+      <div class="pick-shift-preview">
+        <div class="psv-icon">${def.icon}</div>
+        <div>
+          <div class="psv-date">${dateStr}</div>
+          <div class="psv-type">${def.label} · ${def.time} · ${def.hours}h</div>
+        </div>
+      </div>
+      <p class="pick-note">This request goes to admin for approval. You'll get a Telegram notification when it's decided.</p>
+    </div>
+    <div class="modal-actions">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="submitShiftRequest(${shift.id}, this)">Send Request</button>
+    </div>
+  `);
+  document.body.appendChild(modal);
+}
+
+async function submitShiftRequest(shiftId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    await apiCall('/shift-requests', {
+      method: 'POST',
+      body: JSON.stringify({ shiftId })
+    });
+    btn.closest('.modal-overlay').remove();
+    showSuccess('Shift request sent! Admin will be notified.');
+    loadShifts();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Send Request';
+    showWarning('Error: ' + err.message);
+  }
+}
+
+function confirmTradeFromPick(myShift, theirShift) {
+  const myDef = SHIFT_DEFS[myShift.shift_type];
+  const theirDef = SHIFT_DEFS[theirShift.shift_type];
+  const theirStaff = allStaff.find(s => s.id === theirShift.assigned_to);
+  const myDate = new Date(myShift.date + 'T12:00:00').toLocaleDateString('en-US',
+    { weekday: 'short', month: 'short', day: 'numeric' });
+  const theirDate = new Date(theirShift.date + 'T12:00:00').toLocaleDateString('en-US',
+    { weekday: 'short', month: 'short', day: 'numeric' });
+
+  const modal = buildSimpleModal(`
+    <h3>🔄 Request Shift Trade</h3>
+    <div class="trade-preview-wrap">
+      <div class="trade-leg give">
+        <div class="tl-label">You GIVE</div>
+        <div class="tl-date">${myDate}</div>
+        <div class="tl-type">${myDef.icon} ${myDef.label}</div>
+        <div class="tl-time">${myDef.time}</div>
+      </div>
+      <div class="trade-arrow">⇌</div>
+      <div class="trade-leg get">
+        <div class="tl-label">You GET</div>
+        <div class="tl-date">${theirDate}</div>
+        <div class="tl-type">${theirDef.icon} ${theirDef.label}</div>
+        <div class="tl-time">${theirDef.time}</div>
+        <div class="tl-staff">from ${theirStaff?.full_name || 'Unknown'}</div>
+      </div>
+    </div>
+    <div class="pick-note" style="margin-top:12px;">
+      ${theirStaff?.full_name || 'That staff member'} must approve first, then admin gives final sign-off.
+    </div>
+    <div class="fg" style="margin-top:12px;">
+      <label style="font-size:13px;font-weight:600;color:#495057;">Optional note to ${theirStaff?.full_name || 'them'}:</label>
+      <input type="text" id="tradeNoteInput" class="inp" placeholder="e.g. Family event, can you swap?" style="margin-top:4px;">
+    </div>
+    <div class="modal-actions">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="submitTradeRequest(${myShift.id}, ${theirShift.id}, this)">Send Trade Request</button>
+    </div>
+  `);
+  document.body.appendChild(modal);
+}
+
+async function submitTradeRequest(myShiftId, theirShiftId, btn) {
+  const note = document.getElementById('tradeNoteInput')?.value || '';
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    await apiCall('/trade-requests', {
+      method: 'POST',
+      body: JSON.stringify({ myShiftId, theirShiftId, note })
+    });
+    btn.closest('.modal-overlay').remove();
+    showSuccess('Trade request sent! The other staff member will be notified.');
+    loadShifts();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Send Trade Request';
+    showWarning('Error: ' + err.message);
+  }
+}
+
+// ── PENDING TILE HIGHLIGHT ─────────────────────────────────
+
+let pendingShiftIds = new Set(); // shift IDs with pending requests
+let pendingTradeShiftIds = new Set(); // shift IDs involved in pending trades
+
+async function loadPendingShiftIds() {
+  try {
+    const [srData, trData] = await Promise.all([
+      apiCall('/shift-requests').catch(() => ({ requests: [] })),
+      apiCall('/trade-requests').catch(() => ({ requests: [] }))
+    ]);
+    pendingShiftIds = new Set(
+      srData.requests
+        .filter(r => r.status === 'pending')
+        .map(r => r.shift_id)
+    );
+    // Collect shift IDs involved in any non-finalized trade
+    pendingTradeShiftIds = new Set();
+    trData.requests
+      .filter(r => r.status === 'pending')
+      .forEach(r => {
+        if (r.requester_shift_id) pendingTradeShiftIds.add(r.requester_shift_id);
+        if (r.target_shift_id) pendingTradeShiftIds.add(r.target_shift_id);
+      });
+  } catch (e) {
+    // Non-critical — tiles just won't show pending state
+  }
+}
+
+// ── EMERGENCY ABSENCE / ISSUE ──────────────────────────────
+
+function openEmergencyDialog() {
+  document.getElementById('emergencyDialog').classList.add('show');
+}
+
+function closeEmergencyDialog() {
+  document.getElementById('emergencyDialog').classList.remove('show');
+}
+
+function showAbsenceForm() {
+  document.getElementById('emergencyTypeSelect').classList.remove('show');
+  document.getElementById('absenceForm').classList.add('show');
+
+  // Populate shift selector with user's upcoming shifts (within 48h)
+  const shiftSel = document.getElementById('absenceShiftSelect');
+  shiftSel.innerHTML = '<option value="">-- Select your shift --</option>';
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+  allShifts
+    .filter(s => s.assigned_to === currentUser.id && new Date(s.date + 'T12:00:00') <= cutoff && new Date(s.date + 'T12:00:00') >= new Date(now.toDateString()))
+    .forEach(s => {
+      const def = SHIFT_DEFS[s.shift_type];
+      const label = new Date(s.date + 'T12:00:00').toLocaleDateString('en-US',
+        { weekday: 'short', month: 'short', day: 'numeric' }) + ' — ' + def.label;
+      shiftSel.innerHTML += `<option value="${s.id}">${label}</option>`;
+    });
+}
+
+function showIssueForm() {
+  document.getElementById('emergencyTypeSelect').classList.remove('show');
+  document.getElementById('issueForm').classList.add('show');
+}
+
+function backToEmergencyTypeSelect() {
+  document.getElementById('absenceForm').classList.remove('show');
+  document.getElementById('issueForm').classList.remove('show');
+  document.getElementById('emergencyTypeSelect').classList.add('show');
+}
+
+async function submitAbsence() {
+  const shiftId = document.getElementById('absenceShiftSelect').value;
+  const reason = document.getElementById('absenceReason').value.trim();
+  const reportedWhileOnDuty = document.getElementById('absenceOnDutyCheck').checked;
+
+  if (!shiftId) { showWarning('Please select which shift you cannot make.'); return; }
+  if (!reason) { showWarning('Please describe the reason.'); return; }
+
+  const btn = document.getElementById('submitAbsenceBtn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    await apiCall('/absences/enhanced', {
+      method: 'POST',
+      body: JSON.stringify({ shiftId, reason, reportedWhileOnDuty })
+    });
+    closeEmergencyDialog();
+    document.getElementById('absenceForm').classList.remove('show');
+    document.getElementById('emergencyTypeSelect').classList.add('show');
+    document.getElementById('absenceReason').value = '';
+    document.getElementById('absenceOnDutyCheck').checked = false;
+    showSuccess('Absence reported. House Manager and Admin have been notified.');
+  } catch (err) {
+    showWarning('Error: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit Report';
+  }
+}
+
+async function submitIssue() {
+  const details = document.getElementById('issueDetails').value.trim();
+  const notifyAdmin = document.getElementById('issueNotifyAdmin').checked;
+
+  if (!details) { showWarning('Please describe the issue.'); return; }
+
+  const btn = document.getElementById('submitIssueBtn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    await apiCall('/report-issue', {
+      method: 'POST',
+      body: JSON.stringify({ details, notifyAdmin })
+    });
+    closeEmergencyDialog();
+    document.getElementById('issueForm').classList.remove('show');
+    document.getElementById('emergencyTypeSelect').classList.add('show');
+    document.getElementById('issueDetails').value = '';
+    document.getElementById('issueNotifyAdmin').checked = false;
+    showSuccess('Issue reported. House Manager has been notified.');
+  } catch (err) {
+    showWarning('Error: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Submit Issue';
+  }
+}
+
+// ── CONTACT ───────────────────────────────────────────────
+
+async function openContactDialog() {
+  // Pre-load next shift info and house manager before showing
+  const dlg = document.getElementById('contactDialog');
+  dlg.classList.add('show');
+  await buildContactOptions();
+}
+
+function closeContactDialog() {
+  document.getElementById('contactDialog').classList.remove('show');
+}
+
+async function buildContactOptions() {
+  const container = document.getElementById('contactOptions');
+  container.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">Loading…</div>';
+
+  try {
+    // Get next shift after right now
+    const now = new Date();
+    const todayStr = formatDate(now);
+    const allStaffData = allStaff.filter(s => s.role === 'staff' && s.username !== '_open');
+
+    // Find next shift on the calendar (shift starting after now)
+    const shiftOrder = { morning: 1, afternoon: 2, overnight: 3 };
+    const currentHour = now.getHours();
+    // Current shift: morning ends ~15:00, afternoon ends ~19:00, overnight ends ~07:00
+    const currentShiftType = currentHour < 7 ? 'overnight' :
+                             currentHour < 15 ? 'morning' :
+                             currentHour < 19 ? 'afternoon' : 'overnight';
+    const typeOrder = { morning: 1, afternoon: 2, overnight: 3 };
+
+    // Find the next shift after current on calendar
+    let nextShift = null;
+    const sortedShifts = [...allShifts]
+      .filter(s => s.assigned_to && !s.is_open)
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        return typeOrder[a.shift_type] - typeOrder[b.shift_type];
+      });
+
+    for (const s of sortedShifts) {
+      if (s.date > todayStr) { nextShift = s; break; }
+      if (s.date === todayStr && typeOrder[s.shift_type] > typeOrder[currentShiftType]) {
+        nextShift = s; break;
+      }
+    }
+
+    const nextStaff = nextShift ? allStaff.find(s => s.id === nextShift.assigned_to) : null;
+    const houseManager = allStaff.find(s => s.job_title === 'House Manager');
+
+    let html = '';
+
+    // Next shift contact
+    if (nextShift && nextStaff) {
+      const def = SHIFT_DEFS[nextShift.shift_type];
+      const dateLabel = new Date(nextShift.date + 'T12:00:00').toLocaleDateString('en-US',
+        { weekday: 'short', month: 'short', day: 'numeric' });
+      html += `
+        <div class="contact-card">
+          <div class="contact-label">📅 Next Shift Staff</div>
+          <div class="contact-name">${nextStaff.full_name}</div>
+          <div class="contact-meta">${def.icon} ${def.label} · ${dateLabel}</div>
+          <div class="contact-actions">
+            ${nextStaff.phone ? `<a class="contact-btn phone-btn" href="tel:${nextStaff.phone}">📞 Call ${nextStaff.phone}</a>` : '<span class="contact-no-info">No phone on file</span>'}
+            ${nextStaff.telegram_id ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${nextStaff.id}, '${(nextStaff.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
+          </div>
+        </div>`;
+    } else {
+      html += `<div class="contact-card"><div class="contact-meta" style="color:#aaa;">No upcoming shifts found on calendar</div></div>`;
+    }
+
+    // House Manager contact
+    if (houseManager) {
+      html += `
+        <div class="contact-card">
+          <div class="contact-label">🏠 House Manager</div>
+          <div class="contact-name">${houseManager.full_name}</div>
+          <div class="contact-actions">
+            ${houseManager.phone ? `<a class="contact-btn phone-btn" href="tel:${houseManager.phone}">📞 Call ${houseManager.phone}</a>` : '<span class="contact-no-info">No phone on file</span>'}
+            ${houseManager.telegram_id ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${houseManager.id}, '${(houseManager.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
+          </div>
+        </div>`;
+    }
+
+    // Staff directory
+    html += `
+      <div class="contact-card">
+        <div class="contact-label">📋 Staff Directory</div>
+        <div class="contact-dir-list">
+          ${allStaffData.map(s => `
+            <div class="contact-dir-item">
+              <div class="contact-dir-dot" style="background:${s.tile_color||'#eee'}"></div>
+              <div class="contact-dir-info">
+                <div class="contact-dir-name">${s.full_name}</div>
+                <div class="contact-dir-role">${s.job_title}</div>
+              </div>
+              <div class="contact-dir-btns">
+                ${s.phone ? `<a class="contact-btn-sm phone-btn" href="tel:${s.phone}">📞</a>` : ''}
+                ${s.telegram_id ? `<button class="contact-btn-sm tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️</button>` : ''}
+                ${!s.phone && !s.telegram_id ? '<span style="font-size:11px;color:#aaa;">No contact</span>' : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `<div class="contact-meta" style="color:#dc3545;">Error loading contacts: ${err.message}</div>`;
+  }
+}
+
+async function sendTelegramContact(staffId, staffName) {
+  const msgInput = prompt(`Message to send to ${staffName} via Telegram:`);
+  if (!msgInput || !msgInput.trim()) return;
+  try {
+    await apiCall('/contact-telegram', {
+      method: 'POST',
+      body: JSON.stringify({ targetStaffId: staffId, message: msgInput.trim() })
+    });
+    showSuccess(`Message sent to ${staffName} via Telegram!`);
+  } catch (err) {
+    showWarning('Failed to send: ' + err.message);
+  }
+}
+
+// ── SETTINGS ──────────────────────────────────────────────
+
+function openSettingsDialog() {
+  document.getElementById('settingsDialog').classList.add('show');
+  // Pre-fill current user info
+  document.getElementById('settingsFullName').value = currentUser.fullName || '';
+  document.getElementById('settingsPhone').value = currentUser.phone || '';
+  document.getElementById('settingsTelegramId').value = currentUser.telegramId || '';
+  document.getElementById('settingsNewPassword').value = '';
+  document.getElementById('settingsConfirmPassword').value = '';
+}
+
+function closeSettingsDialog() {
+  document.getElementById('settingsDialog').classList.remove('show');
+}
+
+async function saveSettings() {
+  const fullName = document.getElementById('settingsFullName').value.trim();
+  const phone = document.getElementById('settingsPhone').value.trim();
+  const telegramId = document.getElementById('settingsTelegramId').value.trim();
+  const newPw = document.getElementById('settingsNewPassword').value;
+  const confirmPw = document.getElementById('settingsConfirmPassword').value;
+
+  if (newPw && newPw.length < 6) {
+    showWarning('New password must be at least 6 characters.'); return;
+  }
+  if (newPw && newPw !== confirmPw) {
+    showWarning('Passwords do not match.'); return;
+  }
+
+  const btn = document.getElementById('saveSettingsBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await apiCall(`/staff/${currentUser.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ fullName, phone, email: currentUser.email })
+    });
+
+    if (newPw) {
+      await apiCall('/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ newPassword: newPw })
+      });
+    }
+
+    // Refresh current user
+    const me = await apiCall('/me');
+    currentUser = me.user;
+    document.getElementById('userName').textContent = currentUser.fullName;
+
+    closeSettingsDialog();
+    showSuccess('Settings saved!');
+  } catch (err) {
+    showWarning('Error: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Changes';
+  }
+}
+
+// ── HELPER: build a modal dynamically ─────────────────────
+function buildSimpleModal(innerHtml) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.innerHTML = innerHtml;
+  overlay.appendChild(content);
+  return overlay;
+}
+
