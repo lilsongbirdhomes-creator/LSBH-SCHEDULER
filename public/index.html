@@ -37,6 +37,7 @@
     </div>
     <div class="hdr-right">
       <div class="badge" id="roleBadge">Staff</div>
+      <button class="lo-btn" onclick="openContactDialog()">📞 Contact</button>
       <button class="lo-btn" onclick="handleLogout()">Logout</button>
     </div>
   </div>
@@ -138,6 +139,25 @@
 
     <!-- Staff Dashboard -->
     <div id="staffDashboard" class="hidden">
+      <!-- Staff Action Buttons -->
+      <div class="staff-action-bar">
+        <button class="staff-action-btn btn-request" onclick="openRequestDialog()">
+          <span class="sab-icon">📋</span>
+          <span class="sab-label">Request Shift / Trade</span>
+        </button>
+        <button class="staff-action-btn btn-emergency" onclick="openEmergencyDialog()">
+          <span class="sab-icon">🚨</span>
+          <span class="sab-label">Emergency / Issue</span>
+        </button>
+        <button class="staff-action-btn btn-contact" onclick="openContactDialog()">
+          <span class="sab-icon">📞</span>
+          <span class="sab-label">Contact</span>
+        </button>
+        <button class="staff-action-btn btn-settings" onclick="openSettingsDialog()">
+          <span class="sab-icon">⚙️</span>
+          <span class="sab-label">Settings</span>
+        </button>
+      </div>
       <div class="dashboard-card">
         <h3>📊 Your Dashboard</h3>
         <div id="dashboardContent"></div>
@@ -369,8 +389,152 @@
 </div>
 
 
-<script src="/app.js"></script>
-<!-- ADD THIS TO index.html BEFORE </body> -->
+<!-- ═══════════════ PICK MODE BAR ═══════════════ -->
+<div id="pickModeBar" class="pick-mode-bar">
+  <span id="pickModeHint">Select a shift…</span>
+  <button onclick="exitPickMode()">✕ Cancel</button>
+</div>
+
+<!-- ═══════════════ REQUEST SHIFT/TRADE DIALOG ═══════════════ -->
+<div id="requestDialog" class="ov">
+  <div class="modal">
+    <h3>📋 Request Shift or Trade</h3>
+    <p style="color:#666;font-size:13px;margin-bottom:20px;">What would you like to do?</p>
+    <div class="request-options">
+      <button class="request-option-btn" onclick="startShiftRequest()">
+        <div class="rob-icon">➕</div>
+        <div class="rob-title">Request an Open Shift</div>
+        <div class="rob-desc">Tap an available (grey) shift on the calendar to request admin approval</div>
+      </button>
+      <button class="request-option-btn" onclick="startTradeRequest()">
+        <div class="rob-icon">🔄</div>
+        <div class="rob-title">Trade a Shift</div>
+        <div class="rob-desc">Swap one of your shifts with another staff member — requires their approval + admin sign-off</div>
+      </button>
+    </div>
+    <div class="mbtn-row" style="margin-top:16px;">
+      <button class="mc" onclick="closeRequestDialog()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ EMERGENCY DIALOG ═══════════════ -->
+<div id="emergencyDialog" class="ov">
+  <div class="modal">
+    <h3>🚨 Emergency Report</h3>
+
+    <!-- Type selector -->
+    <div id="emergencyTypeSelect" class="show">
+      <p style="color:#666;font-size:13px;margin-bottom:20px;">Select the type of report:</p>
+      <div class="request-options">
+        <button class="request-option-btn emerg-btn" onclick="showAbsenceForm()">
+          <div class="rob-icon">🏥</div>
+          <div class="rob-title">Report Absence</div>
+          <div class="rob-desc">Cannot make your shift — notifies House Manager, Admin, and current shift staff</div>
+        </button>
+        <button class="request-option-btn emerg-btn" onclick="showIssueForm()">
+          <div class="rob-icon">⚠️</div>
+          <div class="rob-title">Report an Issue</div>
+          <div class="rob-desc">Safety, maintenance, or other concern — notifies House Manager by default</div>
+        </button>
+      </div>
+      <div class="mbtn-row" style="margin-top:16px;">
+        <button class="mc" onclick="closeEmergencyDialog()">Close</button>
+      </div>
+    </div>
+
+    <!-- Absence form -->
+    <div id="absenceForm">
+      <div class="fg">
+        <label>Which shift are you unable to make?</label>
+        <select id="absenceShiftSelect" class="inp-full">
+          <option value="">-- Select your shift --</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label>Reason / Details <span style="color:#dc3545;">*</span></label>
+        <textarea id="absenceReason" rows="3" placeholder="Describe the reason for absence…" style="width:100%;padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:13px;resize:vertical;"></textarea>
+      </div>
+      <div class="fg">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+          <input type="checkbox" id="absenceOnDutyCheck">
+          I am currently on duty and became ill / unable to continue
+        </label>
+        <div style="font-size:11px;color:#888;margin-top:4px;">Checking this notifies House Manager and Admin only (not other shift staff)</div>
+      </div>
+      <div class="mbtn-row">
+        <button class="mc" onclick="backToEmergencyTypeSelect()">← Back</button>
+        <button class="mok" style="background:#dc3545;" id="submitAbsenceBtn" onclick="submitAbsence()">Submit Report</button>
+      </div>
+    </div>
+
+    <!-- Issue form -->
+    <div id="issueForm">
+      <div class="fg">
+        <label>Issue Details <span style="color:#dc3545;">*</span></label>
+        <textarea id="issueDetails" rows="4" placeholder="Describe the issue in detail…" style="width:100%;padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:13px;resize:vertical;"></textarea>
+      </div>
+      <div class="fg">
+        <label style="font-weight:600;color:#495057;font-size:13px;">Who should be notified?</label>
+        <div style="margin-top:8px;padding:10px;background:#fff3cd;border-radius:6px;font-size:12px;color:#856404;margin-bottom:8px;">
+          🏠 House Manager is always notified (required)
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+          <input type="checkbox" id="issueNotifyAdmin">
+          Also notify Admin
+        </label>
+      </div>
+      <div class="mbtn-row">
+        <button class="mc" onclick="backToEmergencyTypeSelect()">← Back</button>
+        <button class="mok" style="background:#dc3545;" id="submitIssueBtn" onclick="submitIssue()">Submit Issue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ CONTACT DIALOG ═══════════════ -->
+<div id="contactDialog" class="ov">
+  <div class="modal contact-modal">
+    <h3>📞 Contact</h3>
+    <div id="contactOptions"></div>
+    <div class="mbtn-row" style="margin-top:16px;">
+      <button class="mc" onclick="closeContactDialog()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ SETTINGS DIALOG ═══════════════ -->
+<div id="settingsDialog" class="ov">
+  <div class="modal">
+    <h3>⚙️ My Settings</h3>
+    <div class="fg">
+      <label>Full Name</label>
+      <input type="text" id="settingsFullName" placeholder="Your full name">
+    </div>
+    <div class="fg">
+      <label>Phone Number</label>
+      <input type="tel" id="settingsPhone" placeholder="e.g. 555-123-4567">
+    </div>
+    <div class="fg">
+      <label>Telegram ID</label>
+      <input type="text" id="settingsTelegramId" placeholder="Your Telegram ID (from @YourBot)" readonly style="background:#f8f9fa;cursor:not-allowed;">
+      <div style="font-size:11px;color:#888;margin-top:4px;">Ask your admin to link your Telegram ID — message your bot first to get it</div>
+    </div>
+    <hr style="margin:16px 0;border:none;border-top:1px solid #eee;">
+    <div class="fg">
+      <label>New Password (leave blank to keep current)</label>
+      <input type="password" id="settingsNewPassword" placeholder="New password (min 6 chars)">
+    </div>
+    <div class="fg">
+      <label>Confirm New Password</label>
+      <input type="password" id="settingsConfirmPassword" placeholder="Confirm new password">
+    </div>
+    <div class="mbtn-row">
+      <button class="mc" onclick="closeSettingsDialog()">Cancel</button>
+      <button class="mok" id="saveSettingsBtn" onclick="saveSettings()">Save Changes</button>
+    </div>
+  </div>
+</div>
 
 <!-- Import Data Modal -->
 <div id="importDataModal" class="modal-overlay" style="display:none;">
