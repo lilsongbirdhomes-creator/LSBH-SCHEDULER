@@ -65,9 +65,10 @@ function getPayPeriodStart(dateStr) {
  * @param {Object} db - Database instance
  * @param {number} userId - Staff user ID
  * @param {string} dateStr - Any date in the pay period
+ * @param {number} [excludeShiftId] - Optional shift ID to exclude (e.g. shift being traded away)
  * @returns {number} Total hours
  */
-function calculateWeeklyHours(db, userId, dateStr) {
+function calculateWeeklyHours(db, userId, dateStr, excludeShiftId) {
   const sunday = getPayPeriodStart(dateStr);
   const dates = [];
   
@@ -78,14 +79,20 @@ function calculateWeeklyHours(db, userId, dateStr) {
     dates.push(d.toISOString().split('T')[0]);
   }
   
-  // Get all shifts for this user in this week
+  // Get all shifts for this user in this week, optionally excluding one shift
   const placeholders = dates.map(() => '?').join(',');
+  const excludeClause = excludeShiftId ? ' AND id != ?' : '';
+  const queryParams = excludeShiftId
+    ? [userId, ...dates, excludeShiftId]
+    : [userId, ...dates];
+
   const shifts = db.prepare(`
     SELECT date, shift_type
     FROM shifts
     WHERE assigned_to = ?
     AND date IN (${placeholders})
-  `).all(userId, ...dates);
+    ${excludeClause}
+  `).all(...queryParams);
   
   // Sum up hours
   let total = 0;
@@ -154,15 +161,16 @@ function buildRunningTotals(db, sunday) {
  * @param {number} userId - User to assign to
  * @param {string} dateStr - Date of new shift
  * @param {string} shiftType - Type of new shift
+ * @param {number} [excludeShiftId] - Optional shift ID to exclude (e.g. shift being traded away)
  * @returns {Object} { wouldExceed: boolean, currentHours: number, projectedHours: number, isHouseManager: boolean }
  */
-function checkHoursLimit(db, userId, dateStr, shiftType) {
+function checkHoursLimit(db, userId, dateStr, shiftType, excludeShiftId) {
   // Get user info
   const user = db.prepare('SELECT job_title FROM users WHERE id = ?').get(userId);
   const isHouseManager = user?.job_title === 'House Manager';
   
-  // Calculate current hours
-  const currentHours = calculateWeeklyHours(db, userId, dateStr);
+  // Calculate current hours, optionally excluding a shift being traded away
+  const currentHours = calculateWeeklyHours(db, userId, dateStr, excludeShiftId);
   
   // Calculate hours for new shift
   const shiftHours = getShiftHours(dateStr, shiftType);
