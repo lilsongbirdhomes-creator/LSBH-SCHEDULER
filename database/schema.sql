@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
     text_color TEXT DEFAULT 'black',
     email TEXT,
     phone TEXT,
-    telegram_id TEXT UNIQUE,
+    telegram_id TEXT,
     telegram_username TEXT,
     is_approved BOOLEAN DEFAULT 1,
     is_active BOOLEAN DEFAULT 1,
