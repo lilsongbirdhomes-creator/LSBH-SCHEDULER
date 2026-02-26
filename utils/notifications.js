@@ -86,7 +86,7 @@ async function notifyShiftRequestDenied(db, userId, shiftId, adminNote) {
 }
 
 /**
- * Send trade request received notification
+ * Send trade request received notification (to target staff)
  */
 async function notifyTradeRequestReceived(db, targetId, tradeId) {
   const user = db.prepare('SELECT telegram_id FROM users WHERE id = ?').get(targetId);
@@ -107,22 +107,153 @@ async function notifyTradeRequestReceived(db, targetId, tradeId) {
 
   if (!trade) return false;
 
-  const requesterShift = SHIFT_DEFS[trade.requester_shift];
-  const targetShift = SHIFT_DEFS[trade.target_shift];
+  const requesterShift = SHIFT_DEFS[trade.requester_shift] || {};
+  const targetShift    = SHIFT_DEFS[trade.target_shift]    || {};
+  const scheduleUrl    = process.env.APP_URL || 'https://your-app.railway.app';
 
   const message = templates.tradeRequestReceived(
     trade.requester_name,
     formatDate(trade.requester_date),
-    requesterShift.label,
+    requesterShift.label  || trade.requester_shift,
+    requesterShift.time   || '',
     formatDate(trade.target_date),
-    targetShift.label
+    targetShift.label     || trade.target_shift,
+    targetShift.time      || '',
+    scheduleUrl
   );
 
   const sent = await sendNotification(user.telegram_id, message);
-  if (sent) {
-    logNotification(db, targetId, 'trade_request', message);
-  }
+  if (sent) logNotification(db, targetId, 'trade_request', message);
   return sent;
+}
+
+/**
+ * Send trade request sent confirmation (to requester)
+ */
+async function notifyTradeRequestSent(db, requesterId, tradeId) {
+  const user = db.prepare('SELECT telegram_id FROM users WHERE id = ?').get(requesterId);
+  if (!user || !user.telegram_id) return false;
+
+  const trade = db.prepare(`
+    SELECT 
+      u2.full_name as target_name,
+      s1.date as req_date, s1.shift_type as req_shift,
+      s2.date as tgt_date, s2.shift_type as tgt_shift
+    FROM trade_requests tr
+    JOIN users u2 ON tr.target_id = u2.id
+    JOIN shifts s1 ON tr.requester_shift_id = s1.id
+    JOIN shifts s2 ON tr.target_shift_id = s2.id
+    WHERE tr.id = ?
+  `).get(tradeId);
+
+  if (!trade) return false;
+
+  const myShift    = SHIFT_DEFS[trade.req_shift] || {};
+  const theirShift = SHIFT_DEFS[trade.tgt_shift] || {};
+
+  const message = templates.tradeRequestSent(
+    trade.target_name,
+    formatDate(trade.req_date),
+    myShift.label  || trade.req_shift,
+    myShift.time   || '',
+    formatDate(trade.tgt_date),
+    theirShift.label || trade.tgt_shift,
+    theirShift.time  || ''
+  );
+
+  const sent = await sendNotification(user.telegram_id, message);
+  if (sent) logNotification(db, requesterId, 'trade_sent', message);
+  return sent;
+}
+
+/**
+ * Notify all admins of a new trade request
+ */
+async function notifyAdminTradeRequest(db, tradeId) {
+  const trade = db.prepare(`
+    SELECT 
+      u1.full_name as requester_name,
+      u2.full_name as target_name,
+      s1.date as req_date, s1.shift_type as req_shift,
+      s2.date as tgt_date, s2.shift_type as tgt_shift
+    FROM trade_requests tr
+    JOIN users u1 ON tr.requester_id = u1.id
+    JOIN users u2 ON tr.target_id = u2.id
+    JOIN shifts s1 ON tr.requester_shift_id = s1.id
+    JOIN shifts s2 ON tr.target_shift_id = s2.id
+    WHERE tr.id = ?
+  `).get(tradeId);
+
+  if (!trade) return false;
+
+  const reqShift = SHIFT_DEFS[trade.req_shift] || {};
+  const tgtShift = SHIFT_DEFS[trade.tgt_shift] || {};
+
+  const message = templates.tradeRequestAdmin(
+    trade.requester_name,
+    trade.target_name,
+    formatDate(trade.req_date),
+    reqShift.label || trade.req_shift,
+    reqShift.time  || '',
+    formatDate(trade.tgt_date),
+    tgtShift.label || trade.tgt_shift,
+    tgtShift.time  || ''
+  );
+
+  const admins = db.prepare(`
+    SELECT id, telegram_id FROM users
+    WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+  `).all();
+
+  let sent = 0;
+  for (const admin of admins) {
+    if (await sendNotification(admin.telegram_id, message)) {
+      logNotification(db, admin.id, 'trade_request_admin', message);
+      sent++;
+    }
+  }
+  return sent > 0;
+}
+
+/**
+ * Notify all admins of a new open shift request
+ */
+async function notifyAdminShiftRequest(db, shiftRequestId) {
+  const req = db.prepare(`
+    SELECT 
+      sr.shift_id,
+      u.full_name as requester_name,
+      s.date, s.shift_type
+    FROM shift_requests sr
+    JOIN users u ON sr.requester_id = u.id
+    JOIN shifts s ON sr.shift_id = s.id
+    WHERE sr.id = ?
+  `).get(shiftRequestId);
+
+  if (!req) return false;
+
+  const shiftDef = SHIFT_DEFS[req.shift_type] || {};
+
+  const message = templates.shiftRequestAdmin(
+    req.requester_name,
+    formatDate(req.date),
+    shiftDef.label || req.shift_type,
+    shiftDef.time  || ''
+  );
+
+  const admins = db.prepare(`
+    SELECT id, telegram_id FROM users
+    WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+  `).all();
+
+  let sent = 0;
+  for (const admin of admins) {
+    if (await sendNotification(admin.telegram_id, message)) {
+      logNotification(db, admin.id, 'shift_request_admin', message);
+      sent++;
+    }
+  }
+  return sent > 0;
 }
 
 /**
@@ -325,6 +456,9 @@ module.exports = {
   notifyShiftRequestApproved,
   notifyShiftRequestDenied,
   notifyTradeRequestReceived,
+  notifyTradeRequestSent,
+  notifyAdminTradeRequest,
+  notifyAdminShiftRequest,
   notifyTradeApproved,
   notifyTradeDenied,
   notifyTradeFinalized,
