@@ -614,7 +614,7 @@ router.get('/shift-requests', requireAuth, (req, res) => {
 });
 
 // POST /api/shift-requests - Create shift request
-router.post('/shift-requests', requireAuth, (req, res) => {
+router.post('/shift-requests', requireAuth, async (req, res) => {
   const { shiftId } = req.body;
   
   if (!shiftId) {
@@ -655,7 +655,10 @@ router.post('/shift-requests', requireAuth, (req, res) => {
       INSERT INTO shift_requests (shift_id, requester_id)
       VALUES (?, ?)
     `).run(shiftId, req.session.userId);
-    
+
+    // Notify all admins of the new open shift request
+    await notify.notifyAdminShiftRequest(req.db, result.lastInsertRowid);
+
     res.json({ success: true, requestId: result.lastInsertRowid });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create shift request' });
@@ -742,6 +745,7 @@ router.get('/trade-requests', requireAuth, (req, res) => {
   let query = `
     SELECT 
       tr.id, tr.requester_id, tr.target_id, tr.status,
+      tr.requester_shift_id, tr.target_shift_id,
       tr.requester_approved, tr.target_approved, tr.admin_approved,
       tr.requester_note, tr.target_note, tr.admin_note, tr.created_at,
       u1.full_name as requester_name,
@@ -838,9 +842,16 @@ router.post('/trade-requests', requireAuth, async (req, res) => {
       ) VALUES (?, ?, ?, ?, ?)
     `).run(myShiftId, theirShiftId, req.session.userId, theirShift.assigned_to, note);
     
-    // Notify target
-    await notify.notifyTradeRequestReceived(req.db, theirShift.assigned_to, result.lastInsertRowid);
-    
+    // Notify all three parties
+    await Promise.all([
+      // Requester: "You sent a swap request"
+      notify.notifyTradeRequestSent(req.db, req.session.userId, result.lastInsertRowid),
+      // Target: "You received a swap request" (includes schedule link)
+      notify.notifyTradeRequestReceived(req.db, theirShift.assigned_to, result.lastInsertRowid),
+      // All admins: "A swap request was sent between X and Y"
+      notify.notifyAdminTradeRequest(req.db, result.lastInsertRowid)
+    ]);
+
     res.json({ success: true, requestId: result.lastInsertRowid });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create trade request' });
