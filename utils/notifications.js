@@ -202,7 +202,7 @@ async function notifyAdminTradeRequest(db, tradeId) {
 
   const admins = db.prepare(`
     SELECT id, telegram_id FROM users
-    WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+    WHERE (role = 'admin' OR job_title = 'Admin') AND is_active = 1 AND telegram_id IS NOT NULL
   `).all();
 
   let sent = 0;
@@ -243,7 +243,7 @@ async function notifyAdminShiftRequest(db, shiftRequestId) {
 
   const admins = db.prepare(`
     SELECT id, telegram_id FROM users
-    WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+    WHERE (role = 'admin' OR job_title = 'Admin') AND is_active = 1 AND telegram_id IS NOT NULL
   `).all();
 
   let sent = 0;
@@ -429,7 +429,7 @@ async function notifyEmergencyAbsence(db, shiftId, staffName) {
   const admins = db.prepare(`
     SELECT id, telegram_id 
     FROM users 
-    WHERE role = 'admin' AND telegram_id IS NOT NULL
+    WHERE (role = 'admin' OR job_title = 'Admin') AND telegram_id IS NOT NULL
   `).all();
 
   const shiftDef = SHIFT_DEFS[shift.shift_type];
