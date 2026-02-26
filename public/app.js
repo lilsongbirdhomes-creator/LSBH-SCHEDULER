@@ -2087,27 +2087,55 @@ function closeRequestDialog() {
 function startShiftRequest() {
   closeRequestDialog();
   requestMode = 'shift';
-  enterPickMode('Tap an OPEN SHIFT (grey tile) to request it');
+  showPickDialog(
+    'Step 1 of 1',
+    'Select an open shift',
+    'Tap a grey "Open Shift" tile on the calendar to request it.',
+    'Pick an open shift →'
+  );
 }
 
 function startTradeRequest() {
   closeRequestDialog();
   requestMode = 'trade_step1';
   tradeMyShift = null;
-  enterPickMode('Step 1 of 2 — Tap YOUR shift that you want to give away');
+  showPickDialog(
+    'Step 1 of 2',
+    'Select YOUR shift to give away',
+    'Tap one of your own coloured shift tiles on the calendar.',
+    'Pick my shift →'
+  );
 }
 
-function enterPickMode(hint) {
-  document.getElementById('pickModeBar').classList.add('show');
-  document.getElementById('pickModeHint').textContent = hint;
-  document.getElementById('calendarRoot').classList.add('pick-mode');
+// ── Pick Dialog helpers ────────────────────────────────────
+
+function showPickDialog(stepLabel, instruction, sub, btnLabel) {
+  document.getElementById('pickDialogStep').textContent        = stepLabel;
+  document.getElementById('pickDialogInstruction').textContent = instruction;
+  document.getElementById('pickDialogSub').textContent         = sub;
+  document.getElementById('pickDialogGoBtn').textContent       = btnLabel;
+  document.getElementById('pickModeDialog').classList.add('show');
+  // Apply dashed outline to calendar tiles
+  document.getElementById('calendarRoot')     && document.getElementById('calendarRoot').classList.add('pick-mode');
+  document.getElementById('calendarRootStaff') && document.getElementById('calendarRootStaff').classList.add('pick-mode');
+}
+
+// User clicks "Pick now →" — hide dialog so they can tap the calendar
+function pickDialogGo() {
+  document.getElementById('pickModeDialog').classList.remove('show');
+  // Dialog is hidden but requestMode is still active — tile clicks still register
+}
+
+function hidePickDialog() {
+  document.getElementById('pickModeDialog').classList.remove('show');
 }
 
 function exitPickMode() {
   requestMode = null;
   tradeMyShift = null;
-  document.getElementById('pickModeBar').classList.remove('show');
-  document.getElementById('calendarRoot').classList.remove('pick-mode');
+  hidePickDialog();
+  document.getElementById('calendarRoot')      && document.getElementById('calendarRoot').classList.remove('pick-mode');
+  document.getElementById('calendarRootStaff') && document.getElementById('calendarRootStaff').classList.remove('pick-mode');
 }
 
 // Called from createShiftTile when in pick mode
@@ -2115,32 +2143,59 @@ function handleTilePick(shift) {
   if (!requestMode) return;
 
   if (requestMode === 'shift') {
-    // Must be an open shift
     if (!shift.is_open) {
-      showWarning('⚠️ Please tap an open (grey) shift to request it.');
+      // Wrong tile — re-show dialog with error hint
+      showPickDialog(
+        'Step 1 of 1',
+        'That\'s not an open shift',
+        '⚠️ Please tap a grey "Open Shift" tile. Your coloured tiles are already assigned.',
+        'Try again →'
+      );
       return;
     }
     exitPickMode();
     confirmRequestShiftFromPick(shift);
 
   } else if (requestMode === 'trade_step1') {
-    // Must be the current user's own shift
     if (shift.assigned_to !== currentUser.id) {
-      showWarning('⚠️ Please tap one of YOUR shifts — the one you want to trade away.');
+      showPickDialog(
+        'Step 1 of 2',
+        'That\'s not your shift',
+        '⚠️ Please tap one of YOUR own coloured tiles — the shift you want to give away.',
+        'Try again →'
+      );
       return;
     }
+    // Step 1 done — store and move to step 2
     tradeMyShift = shift;
     requestMode = 'trade_step2';
-    document.getElementById('pickModeHint').textContent =
-      `Step 2 of 2 — Now tap the shift you WANT to receive (currently assigned to someone else)`;
+    const def = SHIFT_DEFS[shift.shift_type];
+    const dateLabel = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
+      { weekday: 'short', month: 'short', day: 'numeric' });
+    showPickDialog(
+      'Step 2 of 2',
+      'Now select the shift you WANT',
+      `You're giving: ${dateLabel} ${def.icon} ${def.label}\nNow tap the shift you want to receive from another staff member.`,
+      'Pick their shift →'
+    );
 
   } else if (requestMode === 'trade_step2') {
     if (!shift.assigned_to || shift.is_open) {
-      showWarning('⚠️ Please tap an assigned shift belonging to another staff member.');
+      showPickDialog(
+        'Step 2 of 2',
+        'That shift has no owner',
+        '⚠️ Please tap a shift that is assigned to another staff member (not an open/grey tile).',
+        'Try again →'
+      );
       return;
     }
     if (shift.assigned_to === currentUser.id) {
-      showWarning('⚠️ You can\'t trade with yourself. Pick a shift belonging to someone else.');
+      showPickDialog(
+        'Step 2 of 2',
+        'That\'s your own shift',
+        '⚠️ You can\'t trade with yourself. Tap a shift belonging to someone else.',
+        'Try again →'
+      );
       return;
     }
     exitPickMode();
