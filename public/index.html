@@ -411,9 +411,17 @@
 
 
 <!-- ═══════════════ PICK MODE BAR ═══════════════ -->
-<div id="pickModeBar" class="pick-mode-bar">
-  <span id="pickModeHint">Select a shift…</span>
-  <button onclick="exitPickMode()">✕ Cancel</button>
+<!-- Pick Mode Floating Dialog -->
+<div id="pickModeDialog" class="pick-dialog-overlay">
+  <div class="pick-dialog">
+    <div class="pick-dialog-step" id="pickDialogStep"></div>
+    <div class="pick-dialog-instruction" id="pickDialogInstruction"></div>
+    <div class="pick-dialog-sub" id="pickDialogSub"></div>
+    <div class="pick-dialog-actions">
+      <button class="pick-dialog-go" id="pickDialogGoBtn" onclick="pickDialogGo()"></button>
+      <button class="pick-dialog-cancel" onclick="exitPickMode()">✕ Cancel</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════ REQUEST SHIFT/TRADE DIALOG ═══════════════ -->
