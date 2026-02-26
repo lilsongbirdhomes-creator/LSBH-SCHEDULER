@@ -139,14 +139,32 @@ const templates = {
     `Your request for ${date} ${shiftType} was not approved.\n\n` +
     (adminNote ? `📝 Note: ${adminNote}` : ''),
 
-  tradeRequestReceived: (requesterName, theirDate, theirShift, yourDate, yourShift) =>
-    `🔄 <b>Trade Request Received</b>\n\n` +
-    `<b>${requesterName}</b> wants to trade:\n\n` +
-    `They give you:\n` +
-    `📅 ${theirDate} - ${theirShift}\n\n` +
-    `You give them:\n` +
-    `📅 ${yourDate} - ${yourShift}\n\n` +
-    `Log in to approve or deny this trade.`,
+  tradeRequestReceived: (requesterName, theirDate, theirShiftLabel, theirShiftTime, yourDate, yourShiftLabel, yourShiftTime, scheduleUrl) =>
+    `🔄 <b>Shift Swap Request Received</b>\n\n` +
+    `<b>${requesterName}</b> has sent you a shift swap request.\n\n` +
+    `📤 <b>They give you:</b>\n` +
+    `📅 ${theirDate} · ${theirShiftLabel} (${theirShiftTime})\n\n` +
+    `📥 <b>You give them:</b>\n` +
+    `📅 ${yourDate} · ${yourShiftLabel} (${yourShiftTime})\n\n` +
+    `Log in to accept or decline:\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
+
+  tradeRequestSent: (targetName, myDate, myShiftLabel, myShiftTime, theirDate, theirShiftLabel, theirShiftTime) =>
+    `📤 <b>Shift Swap Request Sent</b>\n\n` +
+    `You have sent <b>${targetName}</b> a shift swap request.\n\n` +
+    `📥 <b>You give:</b>\n` +
+    `📅 ${myDate} · ${myShiftLabel} (${myShiftTime})\n\n` +
+    `📤 <b>You receive:</b>\n` +
+    `📅 ${theirDate} · ${theirShiftLabel} (${theirShiftTime})\n\n` +
+    `You will be notified once ${targetName} responds.`,
+
+  tradeRequestAdmin: (requesterName, targetName, reqDate, reqShiftLabel, reqShiftTime, tgtDate, tgtShiftLabel, tgtShiftTime) =>
+    `🔄 <b>New Shift Swap Request</b>\n\n` +
+    `A shift swap request has been sent between <b>${requesterName}</b> and <b>${targetName}</b>.\n\n` +
+    `📋 <b>Details:</b>\n` +
+    `• ${requesterName}: ${reqDate} · ${reqShiftLabel} (${reqShiftTime})\n` +
+    `• ${targetName}: ${tgtDate} · ${tgtShiftLabel} (${tgtShiftTime})\n\n` +
+    `Awaiting both staff to approve before admin action is needed.`,
 
   tradeApproved: (partnerName, date, shiftType) =>
     `✅ <b>Trade Approved by Partner</b>\n\n` +
@@ -198,7 +216,13 @@ const templates = {
     `Your shift on ${date} has changed:\n\n` +
     `❌ Was: ${oldShift}\n` +
     `✅ Now: ${newShift}\n\n` +
-    (reason ? `📝 Reason: ${reason}` : 'Check the schedule for details.')
+    (reason ? `📝 Reason: ${reason}` : 'Check the schedule for details.'),
+
+  shiftRequestAdmin: (requesterName, date, shiftLabel, shiftTime) =>
+    `📋 <b>New Open Shift Request</b>\n\n` +
+    `<b>${requesterName}</b> has requested an open shift.\n\n` +
+    `📅 ${date} · ${shiftLabel} (${shiftTime})\n\n` +
+    `Log in to approve or deny this request.`
 };
 
 module.exports = {
@@ -207,4 +231,4 @@ module.exports = {
   sendNotification,
   sendBulkNotifications,
   templates
-};
+}; // templates includes: tradeRequestSent, tradeRequestReceived, tradeRequestAdmin, shiftRequestAdmin
