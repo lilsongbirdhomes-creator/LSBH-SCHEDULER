@@ -154,7 +154,7 @@ router.put('/staff/:id', requireAuth, async (req, res) => {
   if (textColor) { updates.push('text_color = ?'); values.push(textColor); }
   if (email !== undefined) { updates.push('email = ?'); values.push(email); }
   if (phone !== undefined) { updates.push('phone = ?'); values.push(phone); }
-  if (isAdmin && telegramId !== undefined) { updates.push('telegram_id = ?'); values.push(telegramId); }
+  if (telegramId !== undefined) { updates.push('telegram_id = ?'); values.push(telegramId || null); }
   
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No fields to update' });
@@ -1652,7 +1652,7 @@ router.post('/report-issue', requireAuth, async (req, res) => {
     const admins = notifyAdmin
       ? req.db.prepare(`
           SELECT id, telegram_id, full_name FROM users
-          WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+          WHERE (role = 'admin' OR job_title = 'Admin') AND is_active = 1 AND telegram_id IS NOT NULL
         `).all()
       : [];
 
@@ -1726,7 +1726,7 @@ router.post('/absences/enhanced', requireAuth, async (req, res) => {
       SELECT telegram_id FROM users WHERE job_title = 'House Manager' AND is_active = 1 AND telegram_id IS NOT NULL
     `).all();
     const admins = req.db.prepare(`
-      SELECT telegram_id FROM users WHERE role = 'admin' AND is_active = 1 AND telegram_id IS NOT NULL
+      SELECT telegram_id FROM users WHERE (role = 'admin' OR job_title = 'Admin') AND is_active = 1 AND telegram_id IS NOT NULL
     `).all();
 
     const notifyList = [...houseManagers, ...admins];
