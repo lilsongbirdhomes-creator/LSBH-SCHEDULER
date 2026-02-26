@@ -643,9 +643,6 @@ function createShiftTile(shift, viewType = 'week') {
   const hasPendingTrade    = pendingTradeShiftIds.has(shift.id);
   const isPending          = hasPendingShiftReq || hasPendingTrade;
 
-  // Pick-mode overrides normal click behaviour
-  const inPickMode = !!requestMode;
-
   if (isPending) {
     tile.classList.add('tile-pending');
   }
@@ -658,7 +655,7 @@ function createShiftTile(shift, viewType = 'week') {
     tile.style.cursor = 'pointer';
 
     tile.onclick = () => {
-      if (inPickMode) { handleTilePick(shift); return; }
+      if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
       if (currentUser.role === 'admin') {
         if (isPending) showAdminPendingShiftModal(shift);
         else showAssignOpenShiftModal(shift);
@@ -699,7 +696,7 @@ function createShiftTile(shift, viewType = 'week') {
 
     tile.style.cursor = 'pointer';
     tile.onclick = () => {
-      if (inPickMode) { handleTilePick(shift); return; }
+      if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
       if (currentUser.role === 'admin') {
         if (isPending) showAdminPendingShiftModal(shift);
         else showReassignModal(shift);
