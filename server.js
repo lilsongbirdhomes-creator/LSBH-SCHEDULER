@@ -12,6 +12,24 @@ db.pragma('journal_mode = WAL'); // Performance optimization
 
 console.log('✅ Database connected:', dbPath);
 
+// ── Startup migration: keep role in sync with job_title ──────────────────
+// Runs every deploy — self-heals any mismatch from manual edits or imports.
+// Rule: job_title = 'Admin'  -> role = 'admin'
+//       anything else        -> role = 'staff'  (never touches system accounts)
+try {
+  const fixToAdmin = db.prepare(
+    "UPDATE users SET role = 'admin' WHERE job_title = 'Admin' AND role != 'admin' AND username != '_open'"
+  ).run();
+  const fixToStaff = db.prepare(
+    "UPDATE users SET role = 'staff' WHERE job_title != 'Admin' AND role = 'admin' AND username != 'admin' AND username != '_open'"
+  ).run();
+  if (fixToAdmin.changes > 0) console.log('Migration: promoted ' + fixToAdmin.changes + ' user(s) to admin role');
+  if (fixToStaff.changes > 0) console.log('Migration: demoted ' + fixToStaff.changes + ' user(s) to staff role');
+} catch (err) {
+  console.error('Role migration failed:', err.message);
+}
+// ─────────────────────────────────────────────────────────────────────────
+
 // Initialize Telegram bot
 require('./server/telegram');
 
