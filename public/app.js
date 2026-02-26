@@ -2112,8 +2112,13 @@ function showPickDialog(stepLabel, instruction, sub, btnLabel) {
   document.getElementById('pickDialogSub').textContent         = sub;
   document.getElementById('pickDialogGoBtn').textContent       = btnLabel;
   document.getElementById('pickModeDialog').classList.add('show');
+  // Always show ALL shifts during pick mode so staff can see other people's tiles
+  if (showOnlyMyShifts) {
+    showOnlyMyShifts = false;
+    renderCalendar(); // re-render so other staff tiles appear
+  }
   // Apply dashed outline to calendar tiles
-  document.getElementById('calendarRoot')     && document.getElementById('calendarRoot').classList.add('pick-mode');
+  document.getElementById('calendarRoot')      && document.getElementById('calendarRoot').classList.add('pick-mode');
   document.getElementById('calendarRootStaff') && document.getElementById('calendarRootStaff').classList.add('pick-mode');
 }
 
@@ -2177,11 +2182,14 @@ function handleTilePick(shift) {
     );
 
   } else if (requestMode === 'trade_step2') {
-    if (!shift.assigned_to || shift.is_open) {
+    // Coerce is_open to boolean (SQLite returns 0/1 integers)
+    const isOpen = !!shift.is_open;
+    const hasOwner = shift.assigned_to && shift.assigned_to > 0;
+    if (!hasOwner || isOpen) {
       showPickDialog(
         'Step 2 of 2',
-        'That shift has no owner',
-        '⚠️ Please tap a shift that is assigned to another staff member (not an open/grey tile).',
+        'That\'s an open shift',
+        '⚠️ Please tap a shift that belongs to another staff member — not a grey open shift.',
         'Try again →'
       );
       return;
@@ -2195,8 +2203,10 @@ function handleTilePick(shift) {
       );
       return;
     }
+    // Valid — proceed to confirmation
+    const savedMyShift = tradeMyShift; // capture before exitPickMode clears it
     exitPickMode();
-    confirmTradeFromPick(tradeMyShift, shift);
+    confirmTradeFromPick(savedMyShift, shift);
   }
 }
 
