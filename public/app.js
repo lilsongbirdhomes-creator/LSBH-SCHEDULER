@@ -446,9 +446,10 @@ async function loadShifts() {
     allShifts = result.shifts;
     renderCalendar();
     
-    // Render pay period summary for staff
+    // Render pay period summary + trade inbox for staff
     if (currentUser && currentUser.role === 'staff') {
       renderPayPeriodSummary();
+      loadTradeInbox();
     }
   } catch (err) {
     console.error('Load shifts error:', err);
@@ -658,8 +659,12 @@ function createShiftTile(shift, viewType = 'week') {
 
     tile.onclick = () => {
       if (inPickMode) { handleTilePick(shift); return; }
-      if (currentUser.role === 'admin') showAssignOpenShiftModal(shift);
-      else confirmRequestShift(shift.id);
+      if (currentUser.role === 'admin') {
+        if (isPending) showAdminPendingShiftModal(shift);
+        else showAssignOpenShiftModal(shift);
+      } else {
+        confirmRequestShift(shift.id);
+      }
     };
 
     const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
@@ -695,7 +700,10 @@ function createShiftTile(shift, viewType = 'week') {
     tile.style.cursor = 'pointer';
     tile.onclick = () => {
       if (inPickMode) { handleTilePick(shift); return; }
-      if (currentUser.role === 'admin') showReassignModal(shift);
+      if (currentUser.role === 'admin') {
+        if (isPending) showAdminPendingShiftModal(shift);
+        else showReassignModal(shift);
+      }
     };
 
     const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
@@ -1218,6 +1226,7 @@ async function loadDashboard() {
   try {
     const result = await apiCall('/dashboard');
     renderDashboard(result);
+    loadTradeInbox(); // Load trade inbox alongside dashboard
   } catch (err) {
     console.error('Dashboard error:', err);
   }
@@ -2562,5 +2571,313 @@ function buildSimpleModal(innerHtml) {
   content.innerHTML = innerHtml;
   overlay.appendChild(content);
   return overlay;
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// FIX 1 — ADMIN: clicking a pending tile shows approve/deny
+// ═══════════════════════════════════════════════════════════
+
+async function showAdminPendingShiftModal(shift) {
+  // Load the actual pending request(s) for this shift
+  showLoading();
+  try {
+    const [srData, trData] = await Promise.all([
+      apiCall('/shift-requests'),
+      apiCall('/trade-requests')
+    ]);
+
+    // Find pending shift requests for this shift
+    const shiftReqs = srData.requests.filter(
+      r => r.shift_id === shift.id && r.status === 'pending'
+    );
+
+    // Find pending trade requests involving this shift
+    const tradeReqs = trData.requests.filter(
+      r => r.status === 'pending' &&
+           (r.requester_shift_id === shift.id || r.target_shift_id === shift.id)
+    );
+
+    const def = SHIFT_DEFS[shift.shift_type];
+    const dateLabel = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
+      { weekday: 'long', month: 'short', day: 'numeric' });
+
+    let html = `<h3>⏳ Pending Requests</h3>
+      <p style="color:#666;font-size:13px;margin-bottom:16px;">
+        ${def.icon} ${dateLabel} · ${def.label} (${def.time})
+      </p>`;
+
+    if (shiftReqs.length === 0 && tradeReqs.length === 0) {
+      html += `<p style="color:#888;font-size:13px;">No pending requests found for this shift.</p>`;
+    }
+
+    // Shift requests (open shift requests)
+    shiftReqs.forEach(req => {
+      html += `
+        <div class="pending-review-card">
+          <div class="prc-type">📋 Shift Request</div>
+          <div class="prc-who"><strong>${req.requester_name}</strong> wants this shift</div>
+          <div class="prc-meta">Requested: ${new Date(req.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</div>
+          <div class="prc-actions">
+            <button class="btn-approve" onclick="adminApproveShiftReq(${req.id}, this)">✅ Approve</button>
+            <button class="btn-deny"    onclick="adminDenyShiftReq(${req.id}, this)">❌ Deny</button>
+          </div>
+        </div>`;
+    });
+
+    // Trade requests
+    tradeReqs.forEach(req => {
+      const isRequesterSide = req.requester_shift_id === shift.id;
+      const tradingWith = isRequesterSide ? req.target_name : req.requester_name;
+      const theirDate   = isRequesterSide ? req.tgt_date : req.req_date;
+      const theirShift  = isRequesterSide ? req.tgt_shift : req.req_shift;
+      const theirDef    = SHIFT_DEFS[theirShift] || {};
+      const bothApproved = req.requester_approved && req.target_approved;
+
+      html += `
+        <div class="pending-review-card">
+          <div class="prc-type">🔄 Trade Request ${bothApproved ? '<span style="color:#28a745;font-size:11px;">(Both staff approved — awaiting you)</span>' : '<span style="color:#888;font-size:11px;">(Awaiting staff approval)</span>'}</div>
+          <div class="prc-who">
+            <strong>${req.requester_name}</strong> ⇌ <strong>${req.target_name}</strong>
+          </div>
+          <div class="prc-meta">
+            Trade: ${new Date(req.req_date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ${SHIFT_DEFS[req.req_shift]?.icon || ''} ⇌ 
+            ${new Date(req.tgt_date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ${theirDef.icon || ''}
+          </div>
+          ${req.requester_note ? `<div class="prc-note">Note: "${req.requester_note}"</div>` : ''}
+          ${bothApproved ? `
+          <div class="prc-actions">
+            <button class="btn-approve" onclick="adminFinalizeTradeModal(${req.id}, this)">✅ Finalize Trade</button>
+            <button class="btn-deny"    onclick="adminDenyTradeModal(${req.id}, this)">❌ Deny</button>
+          </div>` : `<div style="font-size:12px;color:#888;margin-top:8px;">Waiting for both staff to approve before admin action is needed.</div>`}
+        </div>`;
+    });
+
+    html += `<div class="modal-actions" style="margin-top:16px;">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Close</button>
+    </div>`;
+
+    const modal = buildSimpleModal(html);
+    document.body.appendChild(modal);
+  } catch (err) {
+    showWarning('Error loading pending requests: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function adminApproveShiftReq(reqId, btn) {
+  btn.disabled = true; btn.textContent = 'Approving…';
+  try {
+    await apiCall(`/shift-requests/${reqId}/approve`, {
+      method: 'POST', body: JSON.stringify({ note: '' })
+    });
+    btn.closest('.modal-overlay').remove();
+    showSuccess('Shift request approved!');
+    loadShifts();
+    if (currentUser.role === 'admin') loadPendingApprovals();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '✅ Approve';
+    showWarning('Error: ' + err.message);
+  }
+}
+
+async function adminDenyShiftReq(reqId, btn) {
+  const note = prompt('Reason for denial (optional):') ?? '';
+  btn.disabled = true; btn.textContent = 'Denying…';
+  try {
+    await apiCall(`/shift-requests/${reqId}/deny`, {
+      method: 'POST', body: JSON.stringify({ note })
+    });
+    btn.closest('.modal-overlay').remove();
+    showSuccess('Shift request denied.');
+    loadShifts();
+    if (currentUser.role === 'admin') loadPendingApprovals();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '❌ Deny';
+    showWarning('Error: ' + err.message);
+  }
+}
+
+async function adminFinalizeTradeModal(tradeId, btn) {
+  btn.disabled = true; btn.textContent = 'Finalizing…';
+  try {
+    await apiCall(`/trade-requests/${tradeId}/finalize`, {
+      method: 'POST', body: JSON.stringify({ note: '' })
+    });
+    btn.closest('.modal-overlay').remove();
+    showSuccess('Trade finalized! Both staff notified.');
+    loadShifts();
+    if (currentUser.role === 'admin') loadPendingApprovals();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '✅ Finalize Trade';
+    showWarning('Error: ' + err.message);
+  }
+}
+
+async function adminDenyTradeModal(tradeId, btn) {
+  const note = prompt('Reason for denial (optional):') ?? '';
+  btn.disabled = true; btn.textContent = 'Denying…';
+  try {
+    await apiCall(`/trade-requests/${tradeId}/deny`, {
+      method: 'POST', body: JSON.stringify({ note, status: 'denied' })
+    });
+    btn.closest('.modal-overlay').remove();
+    showSuccess('Trade denied.');
+    loadShifts();
+    if (currentUser.role === 'admin') loadPendingApprovals();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '❌ Deny';
+    showWarning('Error: ' + err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// FIX 2 — STAFF TRADE INBOX
+// Shows in dashboard: incoming trade requests to approve/deny,
+// outgoing requests with their status.
+// ═══════════════════════════════════════════════════════════
+
+async function loadTradeInbox() {
+  const container = document.getElementById('tradeInboxContent');
+  if (!container) return;
+
+  try {
+    const data = await apiCall('/trade-requests');
+    const allReqs = data.requests || [];
+
+    const incoming = allReqs.filter(
+      r => r.target_id === currentUser.id && r.status === 'pending' && !r.target_approved
+    );
+    const outgoing = allReqs.filter(
+      r => r.requester_id === currentUser.id
+    );
+
+    const badge = document.getElementById('tradeInboxBadge');
+    if (badge) {
+      badge.textContent = incoming.length;
+      badge.style.display = incoming.length > 0 ? 'inline-flex' : 'none';
+    }
+
+    let html = '';
+
+    // ── Incoming ──────────────────────────────────────────
+    if (incoming.length > 0) {
+      html += `<div class="inbox-section-title">📥 Someone wants to trade with you</div>`;
+      incoming.forEach(req => {
+        const myShiftDef   = SHIFT_DEFS[req.tgt_shift]  || {};
+        const theirShiftDef = SHIFT_DEFS[req.req_shift] || {};
+        const myDate    = new Date(req.tgt_date  + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
+        const theirDate = new Date(req.req_date  + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
+
+        html += `
+          <div class="trade-inbox-card incoming" id="tradeCard_${req.id}">
+            <div class="tic-header">
+              <span class="tic-from">From: <strong>${req.requester_name}</strong></span>
+              <span class="trade-status pending">Awaiting your reply</span>
+            </div>
+            <div class="tic-shifts">
+              <div class="tic-shift give">
+                <div class="tic-label">You GIVE UP</div>
+                <div class="tic-date">${myDate}</div>
+                <div class="tic-type">${myShiftDef.icon || ''} ${myShiftDef.label || req.tgt_shift}</div>
+                <div class="tic-time">${myShiftDef.time || ''}</div>
+              </div>
+              <div class="tic-arrow">⇌</div>
+              <div class="tic-shift get">
+                <div class="tic-label">You GET</div>
+                <div class="tic-date">${theirDate}</div>
+                <div class="tic-type">${theirShiftDef.icon || ''} ${theirShiftDef.label || req.req_shift}</div>
+                <div class="tic-time">${theirShiftDef.time || ''}</div>
+              </div>
+            </div>
+            ${req.requester_note ? `<div class="tic-note">💬 "${req.requester_note}"</div>` : ''}
+            <div class="tic-actions">
+              <button class="btn-approve" onclick="staffApproveTrade(${req.id}, this)">✅ Accept Trade</button>
+              <button class="btn-deny"    onclick="staffDenyTrade(${req.id}, this)">❌ Decline</button>
+            </div>
+          </div>`;
+      });
+    }
+
+    // ── Outgoing ─────────────────────────────────────────
+    if (outgoing.length > 0) {
+      html += `<div class="inbox-section-title" style="margin-top:${incoming.length > 0 ? '18px' : '0'};">📤 Your trade requests</div>`;
+      outgoing.forEach(req => {
+        const myShiftDef    = SHIFT_DEFS[req.req_shift] || {};
+        const theirShiftDef = SHIFT_DEFS[req.tgt_shift] || {};
+        const myDate    = new Date(req.req_date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
+        const theirDate = new Date(req.tgt_date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
+
+        let statusLabel = '';
+        let statusClass = '';
+        if (req.status === 'approved') { statusLabel = '✅ Completed'; statusClass = 'approved'; }
+        else if (req.status === 'denied') { statusLabel = '❌ Denied'; statusClass = 'denied'; }
+        else if (req.target_approved) { statusLabel = '⏳ Awaiting admin'; statusClass = 'pending'; }
+        else { statusLabel = '⏳ Awaiting ' + req.target_name; statusClass = 'pending'; }
+
+        html += `
+          <div class="trade-inbox-card outgoing">
+            <div class="tic-header">
+              <span class="tic-from">To: <strong>${req.target_name}</strong></span>
+              <span class="trade-status ${statusClass}">${statusLabel}</span>
+            </div>
+            <div class="tic-shifts">
+              <div class="tic-shift give">
+                <div class="tic-label">You GIVE</div>
+                <div class="tic-date">${myDate}</div>
+                <div class="tic-type">${myShiftDef.icon || ''} ${myShiftDef.label || req.req_shift}</div>
+              </div>
+              <div class="tic-arrow">⇌</div>
+              <div class="tic-shift get">
+                <div class="tic-label">You GET</div>
+                <div class="tic-date">${theirDate}</div>
+                <div class="tic-type">${theirShiftDef.icon || ''} ${theirShiftDef.label || req.tgt_shift}</div>
+              </div>
+            </div>
+          </div>`;
+      });
+    }
+
+    if (incoming.length === 0 && outgoing.length === 0) {
+      html = `<div class="inbox-empty">No trade requests yet.</div>`;
+    }
+
+    container.innerHTML = html;
+
+  } catch (err) {
+    console.error('loadTradeInbox error:', err);
+  }
+}
+
+async function staffApproveTrade(tradeId, btn) {
+  btn.disabled = true; btn.textContent = 'Accepting…';
+  try {
+    await apiCall(`/trade-requests/${tradeId}/approve`, {
+      method: 'POST', body: JSON.stringify({ note: '' })
+    });
+    showSuccess('Trade accepted! Now awaiting admin approval.');
+    loadTradeInbox();
+    loadShifts();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '✅ Accept Trade';
+    showWarning('Error: ' + err.message);
+  }
+}
+
+async function staffDenyTrade(tradeId, btn) {
+  const note = prompt('Reason for declining (optional):') ?? '';
+  btn.disabled = true; btn.textContent = 'Declining…';
+  try {
+    await apiCall(`/trade-requests/${tradeId}/deny`, {
+      method: 'POST', body: JSON.stringify({ note })
+    });
+    showSuccess('Trade declined.');
+    loadTradeInbox();
+    loadShifts();
+  } catch (err) {
+    btn.disabled = false; btn.textContent = '❌ Decline';
+    showWarning('Error: ' + err.message);
+  }
 }
 
