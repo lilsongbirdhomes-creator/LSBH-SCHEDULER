@@ -117,7 +117,6 @@ function closePasswordModal() {
     handleLogout();
   } else {
     document.getElementById('passwordModal').classList.remove('show');
-    showTelegramSetupModal();
   }
 }
 
@@ -151,7 +150,6 @@ async function savePassword() {
 // TELEGRAM SETUP (FIRST LOGIN)
 // ═══════════════════════════════════════════════════════════
 
-// Show Telegram setup modal after password change (staff only)
 function showTelegramSetupModal() {
   console.log('🔍 showTelegramSetupModal called');
   console.log('🔍 Current user:', currentUser);
@@ -172,9 +170,8 @@ function showTelegramSetupModal() {
   
   console.log('✅ Showing Telegram setup modal');
   
-  // Show the setup modal
+  // Hide password modal and show telegram modal
   document.getElementById('passwordModal').classList.remove('show');
-    showTelegramSetupModal();
   const modal = document.getElementById('telegramSetupModal');
   console.log('🔍 Telegram modal element:', modal);
   modal.classList.add('show');
@@ -217,6 +214,7 @@ async function saveTelegramIdFirstLogin() {
     console.log('✅ Removed show class');
     
     showSuccess('Telegram ID saved! You will receive notifications.');
+    showApp();
   } catch (err) {
     console.error('❌ Error:', err);
     alert('Error saving Telegram ID: ' + err.message);
