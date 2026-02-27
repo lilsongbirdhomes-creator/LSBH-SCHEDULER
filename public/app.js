@@ -3,7 +3,20 @@
 // ═══════════════════════════════════════════════════════════
 let currentUser = null;
 let viewMode = 'week';
-let viewDate = new Date('2026-02-16'); // Sunday
+
+// Initialize viewDate to current week's Sunday
+const today = new Date();
+const currentDayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
+const daysToSunday = currentDayOfWeek; // Days since last Sunday
+let viewDate = new Date(today);
+viewDate.setDate(today.getDate() - daysToSunday); // Go back to Sunday
+viewDate.setHours(0, 0, 0, 0); // Midnight
+
+console.log('📅 Initializing calendar:');
+console.log('Today:', today.toISOString().split('T')[0]);
+console.log('Day of week:', currentDayOfWeek, ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][currentDayOfWeek]);
+console.log('Week starts (viewDate):', viewDate.toISOString().split('T')[0]);
+
 let allStaff = [];
 let allShifts = [];
 let showOnlyMyShifts = false; // Staff can toggle this
@@ -2601,51 +2614,84 @@ function closeEmergencyDialog() {
 let emergencyAbsenceMode = false;
 let emergencyEligibleShifts = [];
 
-function showAbsenceForm() {
+async function showAbsenceForm() {
   // Close the emergency dialog
   closeEmergencyDialog();
   
-  // Find current or next shift (within 48 hours from now)
-  const now = new Date();
-  const cutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-  
-  // Get today at midnight for comparison
-  const todayMidnight = new Date(now);
-  todayMidnight.setHours(0, 0, 0, 0);
-  
-  console.log('🔍 Emergency absence check:');
-  console.log('Now:', now);
-  console.log('Cutoff (48h):', cutoff);
-  console.log('Today midnight:', todayMidnight);
-  console.log('All shifts for user:', allShifts.filter(s => s.assigned_to === currentUser.id).map(s => ({ date: s.date, shift_type: s.shift_type })));
-  
-  emergencyEligibleShifts = allShifts.filter(s => {
-    if (s.assigned_to !== currentUser.id) return false;
+  try {
+    showLoading();
     
-    // Create date at midnight for comparison
-    const shiftDate = new Date(s.date + 'T00:00:00');
+    // Load ALL shifts for the next 7 days (not just visible week)
+    const now = new Date();
+    const cutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
     
-    console.log('Checking shift:', s.date, s.shift_type, 'Date obj:', shiftDate, 'In range?', shiftDate >= todayMidnight && shiftDate <= cutoff);
+    const todayMidnight = new Date(now);
+    todayMidnight.setHours(0, 0, 0, 0);
     
-    // Shift must be today or in the future, and within 48 hours
-    return shiftDate >= todayMidnight && shiftDate <= cutoff;
-  });
-  
-  console.log('✅ Eligible shifts:', emergencyEligibleShifts.length);
-  
-  if (emergencyEligibleShifts.length === 0) {
-    alert('You have no upcoming shifts in the next 48 hours to report an absence for.');
-    return;
+    console.log('🔍 Emergency absence check:');
+    console.log('Now:', now);
+    console.log('Loading shifts from:', formatDate(todayMidnight), 'to:', formatDate(cutoff));
+    
+    // Fetch ALL shifts in the next 7 days
+    const result = await apiCall(`/shifts?startDate=${formatDate(todayMidnight)}&endDate=${formatDate(cutoff)}`);
+    const allFutureShifts = result.shifts;
+    
+    console.log('Total shifts in next 7 days:', allFutureShifts.length);
+    console.log('User shifts:', allFutureShifts.filter(s => s.assigned_to === currentUser.id).map(s => ({ date: s.date, shift_type: s.shift_type })));
+    
+    // Filter for user's shifts within 48 hours
+    const cutoff48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    emergencyEligibleShifts = allFutureShifts.filter(s => {
+      if (s.assigned_to !== currentUser.id) return false;
+      
+      const shiftDate = new Date(s.date + 'T00:00:00');
+      const inRange = shiftDate >= todayMidnight && shiftDate <= cutoff48h;
+      
+      console.log('Checking shift:', s.date, s.shift_type, 'In 48h range?', inRange);
+      
+      return inRange;
+    });
+    
+    console.log('✅ Eligible shifts (48h):', emergencyEligibleShifts.length);
+    
+    hideLoading();
+    
+    if (emergencyEligibleShifts.length === 0) {
+      alert('You have no upcoming shifts in the next 48 hours to report an absence for.');
+      return;
+    }
+    
+    // Enable emergency mode
+    emergencyAbsenceMode = true;
+    
+    // Show message at top
+    showWarning('Emergency Absence: Click on your current or next shift to report you cannot make it.');
+    
+    // If the eligible shift is not in the current view, navigate to it
+    const firstEligibleShift = emergencyEligibleShifts[0];
+    const firstShiftDate = new Date(firstEligibleShift.date + 'T00:00:00');
+    
+    // Check if we need to change the view to show the shift
+    if (viewMode === 'week') {
+      const currentWeekStart = getWeekStart(viewDate);
+      const currentWeekEnd = new Date(currentWeekStart);
+      currentWeekEnd.setDate(currentWeekEnd.getDate() + 6);
+      
+      if (firstShiftDate < currentWeekStart || firstShiftDate > currentWeekEnd) {
+        // Shift is not in current week, navigate to it
+        viewDate = new Date(firstShiftDate);
+        console.log('📅 Navigating to week containing shift:', firstShiftDate.toISOString().split('T')[0]);
+      }
+    }
+    
+    // Re-render calendar with emergency mode
+    loadShifts();
+    
+  } catch (err) {
+    hideLoading();
+    console.error('Emergency check error:', err);
+    alert('Error checking shifts: ' + err.message);
   }
-  
-  // Enable emergency mode
-  emergencyAbsenceMode = true;
-  
-  // Show message at top
-  showWarning('Emergency Absence: Click on your current or next shift to report you cannot make it.');
-  
-  // Re-render calendar with emergency mode
-  loadShifts();
 }
 
 function showIssueForm() {
