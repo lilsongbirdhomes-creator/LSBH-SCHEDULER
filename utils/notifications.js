@@ -27,7 +27,8 @@ async function notifyShiftAssigned(db, userId, date, shiftType) {
     user.full_name,
     formatDate(date),
     shiftDef.label,
-    shiftDef.time
+    shiftDef.time,
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const sent = await sendNotification(user.telegram_id, message);
@@ -51,7 +52,8 @@ async function notifyShiftRequestApproved(db, userId, shiftId, adminNote) {
   const message = templates.shiftRequestApproved(
     formatDate(shift.date),
     shiftDef.label,
-    shiftDef.time
+    shiftDef.time,
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const sent = await sendNotification(user.telegram_id, message);
@@ -75,7 +77,8 @@ async function notifyShiftRequestDenied(db, userId, shiftId, adminNote) {
   const message = templates.shiftRequestDenied(
     formatDate(shift.date),
     shiftDef.label,
-    adminNote
+    adminNote,
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const sent = await sendNotification(user.telegram_id, message);
@@ -297,7 +300,7 @@ async function notifyTradeDenied(db, requesterId, partnerName, note) {
   const user = db.prepare('SELECT telegram_id FROM users WHERE id = ?').get(requesterId);
   if (!user || !user.telegram_id) return false;
 
-  const message = templates.tradeDenied(partnerName, note);
+  const message = templates.tradeDenied(partnerName, note, process.env.APP_URL || 'https://your-app.railway.app');
 
   const sent = await sendNotification(user.telegram_id, message);
   if (sent) {
