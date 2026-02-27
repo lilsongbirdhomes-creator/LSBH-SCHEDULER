@@ -8,6 +8,94 @@ let allStaff = [];
 let allShifts = [];
 let showOnlyMyShifts = false; // Staff can toggle this
 
+// Timezone management
+let systemTimezone = 'America/Chicago'; // Default
+
+async function loadTimezone() {
+  try {
+    const result = await apiCall('/settings/timezone');
+    if (result.timezone) {
+      systemTimezone = result.timezone;
+      
+      // Update dropdown if exists (admin only)
+      const select = document.getElementById('timezoneSelect');
+      if (select) {
+        select.value = systemTimezone;
+      }
+      
+      // Update display
+      const display = document.getElementById('currentTimezone');
+      if (display) {
+        const tzNames = {
+          'America/New_York': 'Eastern Time (ET)',
+          'America/Chicago': 'Central Time (CT)',
+          'America/Denver': 'Mountain Time (MT)',
+          'America/Los_Angeles': 'Pacific Time (PT)',
+          'America/Anchorage': 'Alaska Time (AKT)',
+          'Pacific/Honolulu': 'Hawaii Time (HST)'
+        };
+        display.textContent = `Current: ${tzNames[systemTimezone] || systemTimezone}`;
+      }
+      
+      console.log('✅ System timezone:', systemTimezone);
+    }
+  } catch (err) {
+    console.error('Failed to load timezone:', err);
+  }
+}
+
+async function saveTimezone() {
+  const select = document.getElementById('timezoneSelect');
+  const timezone = select.value;
+  
+  try {
+    showLoading();
+    await apiCall('/settings/timezone', {
+      method: 'POST',
+      body: JSON.stringify({ timezone })
+    });
+    
+    systemTimezone = timezone;
+    showSuccess('Timezone updated! Changes will apply to all date/time displays.');
+    loadTimezone();
+    
+    // Reload shifts to reflect new timezone
+    loadShifts();
+  } catch (err) {
+    alert('Error saving timezone: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// Format date in system timezone
+function formatDateInTimezone(dateStr) {
+  try {
+    const date = new Date(dateStr + 'T12:00:00Z'); // UTC noon
+    return date.toLocaleDateString('en-US', {
+      timeZone: systemTimezone,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  } catch (err) {
+    // Fallback to simple format
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+}
+
+// Get current date in system timezone
+function getTodayInTimezone() {
+  const now = new Date();
+  const tzDate = new Date(now.toLocaleString('en-US', { timeZone: systemTimezone }));
+  tzDate.setHours(0, 0, 0, 0);
+  return tzDate;
+}
 const SHIFT_DEFS = {
   morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
   afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0, icon: '🌆' },
@@ -87,6 +175,13 @@ async function showApp() {
   document.getElementById('userName').textContent = currentUser.fullName;
   document.getElementById('roleBadge').textContent = currentUser.role === 'admin' ? 'Admin' : 'Staff';
   
+  // Set default view based on role
+  if (currentUser.role === 'admin') {
+    viewMode = 'month';
+  } else {
+    viewMode = 'week';
+  }
+  
   // Load shift templates from database
   loadTemplates();
   
@@ -99,6 +194,7 @@ async function showApp() {
     loadDashboard();
   }
   
+  loadTimezone();
   loadShifts();
 }
 
@@ -731,6 +827,20 @@ function createShiftTile(shift, viewType = 'week') {
 
   if (isPending) {
     tile.classList.add('tile-pending');
+  }
+  
+  // Highlight today's shifts
+  const today = new Date();
+  const shiftDate = new Date(shift.date + 'T12:00:00');
+  const isToday = (
+    shiftDate.getFullYear() === today.getFullYear() &&
+    shiftDate.getMonth() === today.getMonth() &&
+    shiftDate.getDate() === today.getDate()
+  );
+  
+  if (isToday) {
+    tile.style.border = '3px solid #ffc107';
+    tile.style.boxShadow = '0 0 12px rgba(255, 193, 7, 0.6)';
   }
   
   // Trade mode filtering
@@ -2495,15 +2605,33 @@ function showAbsenceForm() {
   // Close the emergency dialog
   closeEmergencyDialog();
   
-  // Find current or next shift
+  // Find current or next shift (within 48 hours from now)
   const now = new Date();
   const cutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000);
   
+  // Get today at midnight for comparison
+  const todayMidnight = new Date(now);
+  todayMidnight.setHours(0, 0, 0, 0);
+  
+  console.log('🔍 Emergency absence check:');
+  console.log('Now:', now);
+  console.log('Cutoff (48h):', cutoff);
+  console.log('Today midnight:', todayMidnight);
+  console.log('All shifts for user:', allShifts.filter(s => s.assigned_to === currentUser.id).map(s => ({ date: s.date, shift_type: s.shift_type })));
+  
   emergencyEligibleShifts = allShifts.filter(s => {
     if (s.assigned_to !== currentUser.id) return false;
-    const shiftDate = new Date(s.date + 'T12:00:00');
-    return shiftDate >= new Date(now.toDateString()) && shiftDate <= cutoff;
+    
+    // Create date at midnight for comparison
+    const shiftDate = new Date(s.date + 'T00:00:00');
+    
+    console.log('Checking shift:', s.date, s.shift_type, 'Date obj:', shiftDate, 'In range?', shiftDate >= todayMidnight && shiftDate <= cutoff);
+    
+    // Shift must be today or in the future, and within 48 hours
+    return shiftDate >= todayMidnight && shiftDate <= cutoff;
   });
+  
+  console.log('✅ Eligible shifts:', emergencyEligibleShifts.length);
   
   if (emergencyEligibleShifts.length === 0) {
     alert('You have no upcoming shifts in the next 48 hours to report an absence for.');
