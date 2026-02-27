@@ -137,12 +137,69 @@ async function savePassword() {
     
     currentUser.mustChangePassword = false;
     document.getElementById('passwordModal').classList.remove('show');
-    showApp();
+    showTelegramSetupModal();
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
     hideLoading();
   }
+// Show Telegram setup modal after password change (staff only)
+function showTelegramSetupModal() {
+  // Only show for staff, not admin
+  if (currentUser.role === 'admin' || currentUser.jobTitle === 'Admin') {
+    showApp();
+    return;
+  }
+  
+  // Check if they already have a Telegram ID
+  if (currentUser.telegramId) {
+    showApp();
+    return;
+  }
+  
+  // Show the setup modal
+  document.getElementById('passwordModal').classList.remove('show');
+  document.getElementById('telegramSetupModal').classList.add('show');
+}
+
+async function saveTelegramIdFirstLogin() {
+  const telegramId = document.getElementById('firstLoginTelegramId').value.trim();
+  
+  if (!telegramId) {
+    alert('Please enter your Telegram ID');
+    return;
+  }
+  
+  // Validate it's numbers only
+  if (!/^\d+$/.test(telegramId)) {
+    alert('Telegram ID should be numbers only');
+    return;
+  }
+  
+  try {
+    showLoading();
+    await apiCall(`/staff/${currentUser.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ telegramId })
+    });
+    
+    currentUser.telegramId = telegramId;
+    document.getElementById('telegramSetupModal').classList.remove('show');
+    showSuccess('Telegram ID saved! You will receive notifications.');
+    showApp();
+  } catch (err) {
+    alert('Error saving Telegram ID: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function skipTelegramSetup() {
+  if (confirm('Skip Telegram setup? You can add it later in your settings.')) {
+    document.getElementById('telegramSetupModal').classList.remove('show');
+    showApp();
+  }
+}
 }
 
 // ═══════════════════════════════════════════════════════════
