@@ -198,9 +198,11 @@ async function showApp() {
   // Load shift templates from database
   loadTemplates();
   
+  // Load staff data (needed for tile colors in staff view)
+  await loadStaff();
+  
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
-    await loadStaff();
     loadPendingApprovals();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
@@ -587,6 +589,22 @@ async function deleteStaff(staffId) {
 // ═══════════════════════════════════════════════════════════
 function navPrev() {
   if (viewMode === 'week') {
+    const newDate = new Date(viewDate);
+    newDate.setDate(newDate.getDate() - 7);
+    
+    // Staff can only view 4 weeks back
+    if (currentUser.role === 'staff') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const fourWeeksAgo = new Date(today);
+      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28); // 4 weeks = 28 days
+      
+      if (newDate < fourWeeksAgo) {
+        showWarning('You can only view shifts from the last 4 weeks.');
+        return;
+      }
+    }
+    
     viewDate.setDate(viewDate.getDate() - 7);
   } else {
     viewDate.setMonth(viewDate.getMonth() - 1);
@@ -844,16 +862,28 @@ function createShiftTile(shift, viewType = 'week') {
   
   // Highlight today's shifts
   const today = new Date();
-  const shiftDate = new Date(shift.date + 'T12:00:00');
+  today.setHours(0, 0, 0, 0);
+  const shiftDate = new Date(shift.date + 'T00:00:00');
+  
   const isToday = (
     shiftDate.getFullYear() === today.getFullYear() &&
     shiftDate.getMonth() === today.getMonth() &&
     shiftDate.getDate() === today.getDate()
   );
   
+  // Check if shift is in the past
+  const isPast = shiftDate < today;
+  
   if (isToday) {
     tile.style.border = '3px solid #ffc107';
     tile.style.boxShadow = '0 0 12px rgba(255, 193, 7, 0.6)';
+  }
+  
+  // Grey out past shifts
+  if (isPast) {
+    tile.style.opacity = '0.5';
+    tile.style.filter = 'grayscale(80%)';
+    tile.style.cursor = 'default';
   }
   
   // Trade mode filtering
