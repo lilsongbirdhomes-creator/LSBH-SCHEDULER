@@ -732,13 +732,33 @@ function createShiftTile(shift, viewType = 'week') {
   if (isPending) {
     tile.classList.add('tile-pending');
   }
+  
+  // Trade mode filtering
+  let isTradeEligible = true;
+  if (requestMode === 'trade_step1') {
+    // Step 1: Only show user's own current/future shifts
+    const shiftDate = new Date(shift.date + 'T12:00:00');
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    isTradeEligible = (shift.assigned_to === currentUser.id && shiftDate >= now);
+  } else if (requestMode === 'trade_step2') {
+    // Step 2: Only show other staff's shifts (not user's own, not open)
+    isTradeEligible = (shift.assigned_to && shift.assigned_to !== currentUser.id && !shift.is_open);
+  }
 
   if (shift.is_open) {
     if (!isPending) {
       tile.style.background = '#f5f5f5';
       tile.style.color = 'black';
     }
-    tile.style.cursor = 'pointer';
+    
+    // Trade mode: grey out ineligible shifts
+    if (requestMode && !isTradeEligible) {
+      tile.style.opacity = '0.3';
+      tile.style.cursor = 'not-allowed';
+    } else {
+      tile.style.cursor = 'pointer';
+    }
 
     tile.onclick = () => {
       if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
@@ -779,10 +799,38 @@ function createShiftTile(shift, viewType = 'week') {
       tile.style.background = staff?.tile_color || '#f5f5f5';
       tile.style.color = staff?.text_color || 'black';
     }
+    
+    // Emergency mode: grey out non-eligible shifts
+    if (emergencyAbsenceMode) {
+      const isEligible = emergencyEligibleShifts.find(s => s.id === shift.id);
+      if (!isEligible) {
+        tile.style.opacity = '0.3';
+        tile.style.cursor = 'not-allowed';
+      } else {
+        tile.style.border = '3px solid #dc3545';
+        tile.style.boxShadow = '0 0 10px rgba(220, 53, 69, 0.5)';
+      }
+    }
+    
+    // Trade mode: grey out ineligible shifts
+    if (requestMode && !isTradeEligible) {
+      tile.style.opacity = '0.3';
+      tile.style.cursor = 'not-allowed';
+    } else if (!emergencyAbsenceMode || emergencyEligibleShifts.find(s => s.id === shift.id)) {
+      tile.style.cursor = 'pointer';
+    }
 
-    tile.style.cursor = 'pointer';
     tile.onclick = () => {
-      if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
+      if (requestMode) { handleTilePick(shift); return; }
+      
+      // Handle emergency absence mode
+      if (emergencyAbsenceMode) {
+        if (emergencyEligibleShifts.find(s => s.id === shift.id)) {
+          confirmEmergencyAbsence(shift);
+        }
+        return;
+      }
+      
       if (currentUser.role === 'admin') {
         if (isPending) showAdminPendingShiftModal(shift);
         else showReassignModal(shift);
@@ -2439,23 +2487,37 @@ function closeEmergencyDialog() {
   document.getElementById('emergencyDialog').classList.remove('show');
 }
 
-function showAbsenceForm() {
-  document.getElementById('emergencyTypeSelect').classList.remove('show');
-  document.getElementById('absenceForm').classList.add('show');
+// Global variable to track emergency absence mode
+let emergencyAbsenceMode = false;
+let emergencyEligibleShifts = [];
 
-  // Populate shift selector with user's upcoming shifts (within 48h)
-  const shiftSel = document.getElementById('absenceShiftSelect');
-  shiftSel.innerHTML = '<option value="">-- Select your shift --</option>';
+function showAbsenceForm() {
+  // Close the emergency dialog
+  closeEmergencyDialog();
+  
+  // Find current or next shift
   const now = new Date();
   const cutoff = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-  allShifts
-    .filter(s => s.assigned_to === currentUser.id && new Date(s.date + 'T12:00:00') <= cutoff && new Date(s.date + 'T12:00:00') >= new Date(now.toDateString()))
-    .forEach(s => {
-      const def = SHIFT_DEFS[s.shift_type];
-      const label = new Date(s.date + 'T12:00:00').toLocaleDateString('en-US',
-        { weekday: 'short', month: 'short', day: 'numeric' }) + ' — ' + def.label;
-      shiftSel.innerHTML += `<option value="${s.id}">${label}</option>`;
-    });
+  
+  emergencyEligibleShifts = allShifts.filter(s => {
+    if (s.assigned_to !== currentUser.id) return false;
+    const shiftDate = new Date(s.date + 'T12:00:00');
+    return shiftDate >= new Date(now.toDateString()) && shiftDate <= cutoff;
+  });
+  
+  if (emergencyEligibleShifts.length === 0) {
+    alert('You have no upcoming shifts in the next 48 hours to report an absence for.');
+    return;
+  }
+  
+  // Enable emergency mode
+  emergencyAbsenceMode = true;
+  
+  // Show message at top
+  showWarning('Emergency Absence: Click on your current or next shift to report you cannot make it.');
+  
+  // Re-render calendar with emergency mode
+  loadShifts();
 }
 
 function showIssueForm() {
@@ -3029,3 +3091,39 @@ async function staffDenyTrade(tradeId, btn) {
   }
 }
 
+
+// Confirm emergency absence for selected shift
+async function confirmEmergencyAbsence(shift) {
+  const def = SHIFT_DEFS[shift.shift_type];
+  const shiftDate = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
+    { weekday: 'long', month: 'long', day: 'numeric' });
+  
+  const reason = prompt(`Emergency Absence Report\n\nShift: ${shiftDate} - ${def.label}\n\nPlease briefly describe the reason you cannot make this shift:`);
+  
+  if (!reason || !reason.trim()) {
+    return; // User cancelled or didn't provide reason
+  }
+  
+  try {
+    showLoading();
+    await apiCall('/absences/enhanced', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        shiftId: shift.id, 
+        reason: reason.trim(),
+        reportedWhileOnDuty: false 
+      })
+    });
+    
+    // Exit emergency mode
+    emergencyAbsenceMode = false;
+    emergencyEligibleShifts = [];
+    
+    showSuccess('Emergency absence reported. House Manager and Admin have been notified.');
+    loadShifts();
+  } catch (err) {
+    alert('Error reporting absence: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
