@@ -158,7 +158,8 @@ async function notifyTradeRequestSent(db, requesterId, tradeId) {
     myShift.time   || '',
     formatDate(trade.tgt_date),
     theirShift.label || trade.tgt_shift,
-    theirShift.time  || ''
+    theirShift.time  || '',
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const sent = await sendNotification(user.telegram_id, message);
