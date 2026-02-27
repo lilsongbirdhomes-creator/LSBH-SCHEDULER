@@ -149,14 +149,15 @@ const templates = {
     `Log in to accept or decline:\n` +
     `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  tradeRequestSent: (targetName, myDate, myShiftLabel, myShiftTime, theirDate, theirShiftLabel, theirShiftTime) =>
+  tradeRequestSent: (targetName, myDate, myShiftLabel, myShiftTime, theirDate, theirShiftLabel, theirShiftTime, scheduleUrl) =>
     `📤 <b>Shift Swap Request Sent</b>\n\n` +
     `You have sent <b>${targetName}</b> a shift swap request.\n\n` +
     `📥 <b>You give:</b>\n` +
     `📅 ${myDate} · ${myShiftLabel} (${myShiftTime})\n\n` +
     `📤 <b>You receive:</b>\n` +
     `📅 ${theirDate} · ${theirShiftLabel} (${theirShiftTime})\n\n` +
-    `You will be notified once ${targetName} responds.`,
+    `You will be notified once ${targetName} responds.\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
   tradeRequestAdmin: (requesterName, targetName, reqDate, reqShiftLabel, reqShiftTime, tgtDate, tgtShiftLabel, tgtShiftTime) =>
     `🔄 <b>New Shift Swap Request</b>\n\n` +
