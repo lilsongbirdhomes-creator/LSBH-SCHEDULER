@@ -1290,10 +1290,16 @@ router.get('/export-data', requireAdmin, (req, res) => {
     
     // Export shift templates if they exist
     let templates = null;
+    let timezone = 'America/Chicago'; // Default
     try {
       const templatesRow = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('shift_templates');
       if (templatesRow) {
         templates = JSON.parse(templatesRow.value);
+      }
+      
+      const timezoneRow = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('timezone');
+      if (timezoneRow) {
+        timezone = timezoneRow.value;
       }
     } catch (err) {
       // Settings table might not exist yet
@@ -1305,6 +1311,7 @@ router.get('/export-data', requireAdmin, (req, res) => {
       staff: regularStaff,
       shifts: shifts,
       templates: templates,
+      timezone: timezone,  // Include timezone in export
       adminTelegramId: adminData?.telegram_id || null  // Save admin's telegram ID separately
     };
     
@@ -1317,7 +1324,7 @@ router.get('/export-data', requireAdmin, (req, res) => {
 
 // POST /api/import-data - Import staff and shifts (admin only)
 router.post('/import-data', requireAdmin, async (req, res) => {
-  const { staff, shifts, templates, adminTelegramId } = req.body;
+  const { staff, shifts, templates, timezone, adminTelegramId } = req.body;
   
   if (!staff || !shifts) {
     return res.status(400).json({ error: 'Invalid import data' });
@@ -1334,6 +1341,18 @@ router.post('/import-data', requireAdmin, async (req, res) => {
         WHERE username = 'admin'
       `).run(adminTelegramId);
       console.log('✅ Admin Telegram ID restored:', adminTelegramId);
+    }
+    
+    // Restore timezone setting if provided
+    if (timezone) {
+      req.db.prepare(`
+        INSERT INTO settings (key, value, updated_at) 
+        VALUES ('timezone', ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET 
+          value = excluded.value,
+          updated_at = CURRENT_TIMESTAMP
+      `).run(timezone);
+      console.log('✅ Timezone restored:', timezone);
     }
     let shiftsImported = 0;
     let staffIdMap = {}; // Map old IDs to new IDs
@@ -1806,4 +1825,54 @@ router.post('/contact-telegram', requireAuth, async (req, res) => {
 });
 
 
+// GET /api/settings/timezone - Get system timezone
+router.get('/settings/timezone', requireAuth, (req, res) => {
+  try {
+    const setting = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('timezone');
+    res.json({ timezone: setting?.value || 'America/Chicago' });
+  } catch (err) {
+    console.error('Get timezone error:', err);
+    res.status(500).json({ error: 'Failed to get timezone' });
+  }
+});
+
+// POST /api/settings/timezone - Update system timezone (admin only)
+router.post('/settings/timezone', requireAdmin, (req, res) => {
+  const { timezone } = req.body;
+  
+  if (!timezone) {
+    return res.status(400).json({ error: 'Timezone is required' });
+  }
+  
+  // Validate timezone
+  const validTimezones = [
+    'America/New_York',
+    'America/Chicago', 
+    'America/Denver',
+    'America/Los_Angeles',
+    'America/Anchorage',
+    'Pacific/Honolulu'
+  ];
+  
+  if (!validTimezones.includes(timezone)) {
+    return res.status(400).json({ error: 'Invalid timezone' });
+  }
+  
+  try {
+    // Insert or update timezone setting
+    req.db.prepare(`
+      INSERT INTO settings (key, value, updated_at) 
+      VALUES ('timezone', ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET 
+        value = excluded.value,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(timezone);
+    
+    console.log('✅ System timezone updated to:', timezone);
+    res.json({ success: true, timezone });
+  } catch (err) {
+    console.error('Update timezone error:', err);
+    res.status(500).json({ error: 'Failed to update timezone' });
+  }
+});
 module.exports = router;
