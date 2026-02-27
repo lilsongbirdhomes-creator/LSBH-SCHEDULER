@@ -86,6 +86,32 @@
       <!-- STAFF MANAGEMENT TAB -->
       <div id="staffTab" class="tab-pane">
         <div class="data-backup-section">
+<!-- Timezone Settings (Add to admin panel) -->
+<div class="settings-section" style="background:#f8f9fa;padding:16px;border-radius:8px;margin-bottom:16px;">
+  <h3 style="margin-top:0;">⏰ Timezone Settings</h3>
+  <p style="font-size:13px;color:#666;margin-bottom:12px;">
+    Set the timezone for your facility. All shift times and dates will use this timezone.
+  </p>
+  
+  <div style="display:flex;gap:12px;align-items:center;">
+    <select id="timezoneSelect" class="inp" style="flex:1;max-width:400px;">
+      <option value="America/New_York">Eastern Time (ET)</option>
+      <option value="America/Chicago" selected>Central Time (CT)</option>
+      <option value="America/Denver">Mountain Time (MT)</option>
+      <option value="America/Los_Angeles">Pacific Time (PT)</option>
+      <option value="America/Anchorage">Alaska Time (AKT)</option>
+      <option value="Pacific/Honolulu">Hawaii Time (HST)</option>
+    </select>
+    
+    <button class="b-pri" onclick="saveTimezone()" style="white-space:nowrap;">
+      Save Timezone
+    </button>
+  </div>
+  
+  <div id="currentTimezone" style="margin-top:8px;font-size:12px;color:#666;">
+    Current: Central Time (CT)
+  </div>
+</div>
           <h4>💾 Data Backup & Restore</h4>
           <p>Export your data before deploying, then import it back to restore staff and shifts.</p>
           <div class="data-backup-buttons">
