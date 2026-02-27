@@ -120,24 +120,27 @@ async function sendBulkNotifications(notifications) {
  * Pre-formatted notification templates
  */
 const templates = {
-  shiftAssigned: (staffName, date, shiftType, shiftTime) => 
+  shiftAssigned: (staffName, date, shiftType, shiftTime, scheduleUrl) => 
     `✅ <b>New Shift Assigned</b>\n\n` +
     `You have been assigned:\n` +
     `📅 <b>${date}</b>\n` +
     `⏰ ${shiftType}: ${shiftTime}\n\n` +
-    `Check the schedule for details.`,
+    `Check the schedule for details.\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  shiftRequestApproved: (date, shiftType, shiftTime) =>
+  shiftRequestApproved: (date, shiftType, shiftTime, scheduleUrl) =>
     `🎉 <b>Shift Request Approved!</b>\n\n` +
     `Your request has been approved:\n` +
     `📅 <b>${date}</b>\n` +
     `⏰ ${shiftType}: ${shiftTime}\n\n` +
-    `The shift is now on your schedule.`,
+    `The shift is now on your schedule.\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  shiftRequestDenied: (date, shiftType, adminNote) =>
+  shiftRequestDenied: (date, shiftType, adminNote, scheduleUrl) =>
     `❌ <b>Shift Request Denied</b>\n\n` +
     `Your request for ${date} ${shiftType} was not approved.\n\n` +
-    (adminNote ? `📝 Note: ${adminNote}` : ''),
+    (adminNote ? `📝 Note: ${adminNote}\n\n` : '') +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
   tradeRequestReceived: (requesterName, theirDate, theirShiftLabel, theirShiftTime, yourDate, yourShiftLabel, yourShiftTime, scheduleUrl) =>
     `🔄 <b>Shift Swap Request Received</b>\n\n` +
@@ -159,71 +162,81 @@ const templates = {
     `You will be notified once ${targetName} responds.\n\n` +
     `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  tradeRequestAdmin: (requesterName, targetName, reqDate, reqShiftLabel, reqShiftTime, tgtDate, tgtShiftLabel, tgtShiftTime) =>
+  tradeRequestAdmin: (requesterName, targetName, reqDate, reqShiftLabel, reqShiftTime, tgtDate, tgtShiftLabel, tgtShiftTime, scheduleUrl) =>
     `🔄 <b>New Shift Swap Request</b>\n\n` +
     `A shift swap request has been sent between <b>${requesterName}</b> and <b>${targetName}</b>.\n\n` +
     `📋 <b>Details:</b>\n` +
     `• ${requesterName}: ${reqDate} · ${reqShiftLabel} (${reqShiftTime})\n` +
     `• ${targetName}: ${tgtDate} · ${tgtShiftLabel} (${tgtShiftTime})\n\n` +
-    `Awaiting both staff to approve before admin action is needed.`,
+    `Awaiting both staff to approve before admin action is needed.\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  tradeApproved: (partnerName, date, shiftType) =>
+  tradeApproved: (partnerName, date, shiftType, scheduleUrl) =>
     `✅ <b>Trade Approved by Partner</b>\n\n` +
     `<b>${partnerName}</b> approved your trade request.\n` +
     `Waiting for admin final approval.\n\n` +
-    `You'll get ${date} - ${shiftType}`,
+    `You'll get ${date} - ${shiftType}\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  tradeDenied: (partnerName, note) =>
+  tradeDenied: (partnerName, note, scheduleUrl) =>
     `❌ <b>Trade Request Denied</b>\n\n` +
     `<b>${partnerName}</b> declined your trade request.\n\n` +
-    (note ? `📝 Reason: ${note}` : ''),
+    (note ? `📝 Reason: ${note}\n\n` : '') +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  tradeFinalized: (finalDate, finalShift, adminNote) =>
+  tradeFinalized: (finalDate, finalShift, adminNote, scheduleUrl) =>
     `🎉 <b>Trade Finalized!</b>\n\n` +
     `Admin approved the trade.\n` +
     `Your new shift:\n` +
     `📅 <b>${finalDate}</b>\n` +
     `⏰ ${finalShift}\n\n` +
-    (adminNote ? `📝 Admin note: ${adminNote}` : 'Check your updated schedule.'),
+    (adminNote ? `📝 Admin note: ${adminNote}\n\n` : 'Check your updated schedule.\n\n') +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  timeOffApproved: (startDate, endDate, type) =>
+  timeOffApproved: (startDate, endDate, type, scheduleUrl) =>
     `🌴 <b>Time Off Approved</b>\n\n` +
     `Your time-off request has been approved:\n` +
     `📅 ${startDate}${endDate !== startDate ? ` - ${endDate}` : ''}\n` +
     `Type: ${type}\n\n` +
-    `Enjoy your time off!`,
+    `Enjoy your time off!\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  timeOffDenied: (startDate, adminNote) =>
+  timeOffDenied: (startDate, adminNote, scheduleUrl) =>
     `❌ <b>Time Off Request Denied</b>\n\n` +
     `Your request for ${startDate} was not approved.\n\n` +
-    (adminNote ? `📝 Reason: ${adminNote}` : ''),
+    (adminNote ? `📝 Reason: ${adminNote}\n\n` : '') +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  emergencyAbsence: (staffName, date, shiftType) =>
+  emergencyAbsence: (staffName, date, shiftType, scheduleUrl) =>
     `🚨 <b>Emergency Absence Reported</b>\n\n` +
     `<b>${staffName}</b> cannot make their shift:\n` +
     `📅 ${date}\n` +
     `⏰ ${shiftType}\n\n` +
-    `URGENT: Coverage needed!`,
+    `URGENT: Coverage needed!\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  shiftReminder: (date, shiftType, shiftTime, hoursUntil) =>
+  shiftReminder: (date, shiftType, shiftTime, hoursUntil, scheduleUrl) =>
     `⏰ <b>Shift Reminder</b>\n\n` +
     `You have a shift in ${hoursUntil} hours:\n` +
     `📅 ${date}\n` +
     `⏰ ${shiftType}: ${shiftTime}\n\n` +
-    `See you soon!`,
+    `See you soon!\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  scheduleChanged: (date, oldShift, newShift, reason) =>
+  scheduleChanged: (date, oldShift, newShift, reason, scheduleUrl) =>
     `📝 <b>Schedule Update</b>\n\n` +
     `Your shift on ${date} has changed:\n\n` +
     `❌ Was: ${oldShift}\n` +
     `✅ Now: ${newShift}\n\n` +
-    (reason ? `📝 Reason: ${reason}` : 'Check the schedule for details.'),
+    (reason ? `📝 Reason: ${reason}\n\n` : 'Check the schedule for details.\n\n') +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`,
 
-  shiftRequestAdmin: (requesterName, date, shiftLabel, shiftTime) =>
+  shiftRequestAdmin: (requesterName, date, shiftLabel, shiftTime, scheduleUrl) =>
     `📋 <b>New Open Shift Request</b>\n\n` +
     `<b>${requesterName}</b> has requested an open shift.\n\n` +
     `📅 ${date} · ${shiftLabel} (${shiftTime})\n\n` +
-    `Log in to approve or deny this request.`
+    `Log in to approve or deny this request.\n\n` +
+    `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`
 };
 
 module.exports = {
