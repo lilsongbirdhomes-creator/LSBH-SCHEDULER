@@ -1304,7 +1304,7 @@ router.get('/export-data', requireAdmin, (req, res) => {
       exportDate: new Date().toISOString(),
       staff: regularStaff,
       shifts: shifts,
-      templates: templates
+      templates: templates,
       adminTelegramId: adminData?.telegram_id || null  // Save admin's telegram ID separately
     };
     
