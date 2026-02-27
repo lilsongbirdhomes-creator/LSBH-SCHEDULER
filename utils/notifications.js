@@ -201,7 +201,8 @@ async function notifyAdminTradeRequest(db, tradeId) {
     reqShift.time  || '',
     formatDate(trade.tgt_date),
     tgtShift.label || trade.tgt_shift,
-    tgtShift.time  || ''
+    tgtShift.time  || '',
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const admins = db.prepare(`
@@ -242,7 +243,8 @@ async function notifyAdminShiftRequest(db, shiftRequestId) {
     req.requester_name,
     formatDate(req.date),
     shiftDef.label || req.shift_type,
-    shiftDef.time  || ''
+    shiftDef.time  || '',
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const admins = db.prepare(`
@@ -283,7 +285,8 @@ async function notifyTradeApproved(db, requesterId, tradeId) {
   const message = templates.tradeApproved(
     trade.partner_name,
     formatDate(trade.date),
-    shiftDef.label
+    shiftDef.label,
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const sent = await sendNotification(user.telegram_id, message);
@@ -338,7 +341,8 @@ async function notifyTradeFinalized(db, tradeId, adminNote) {
     const message = templates.tradeFinalized(
       formatDate(trade.req_new_date),
       reqShift.label,
-      adminNote
+      adminNote,
+      process.env.APP_URL || 'https://your-app.railway.app'
     );
     if (await sendNotification(trade.req_telegram, message)) {
       logNotification(db, trade.requester_id, 'trade_finalized', message);
@@ -352,7 +356,8 @@ async function notifyTradeFinalized(db, tradeId, adminNote) {
     const message = templates.tradeFinalized(
       formatDate(trade.tgt_new_date),
       tgtShift.label,
-      adminNote
+      adminNote,
+      process.env.APP_URL || 'https://your-app.railway.app'
     );
     if (await sendNotification(trade.tgt_telegram, message)) {
       logNotification(db, trade.target_id, 'trade_finalized', message);
@@ -387,7 +392,8 @@ async function notifyTimeOffApproved(db, requestId) {
   const message = templates.timeOffApproved(
     startDate,
     endDate,
-    request.request_type === 'assigned_shift' ? 'Assigned shift' : 'Vacation'
+    request.request_type === 'assigned_shift' ? 'Assigned shift' : 'Vacation',
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const sent = await sendNotification(request.telegram_id, message);
@@ -413,7 +419,8 @@ async function notifyTimeOffDenied(db, requestId, adminNote) {
 
   const message = templates.timeOffDenied(
     formatDate(request.start_date),
-    adminNote
+    adminNote,
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   const sent = await sendNotification(request.telegram_id, message);
@@ -440,7 +447,8 @@ async function notifyEmergencyAbsence(db, shiftId, staffName) {
   const message = templates.emergencyAbsence(
     staffName,
     formatDate(shift.date),
-    shiftDef.label
+    shiftDef.label,
+    process.env.APP_URL || 'https://your-app.railway.app'
   );
 
   let sent = 0;
