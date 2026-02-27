@@ -1270,9 +1270,13 @@ router.get('/export-data', requireAdmin, (req, res) => {
              tile_color, text_color, email, phone, telegram_id,
              is_approved, is_active, must_change_password
       FROM users
-      WHERE username != '_open' AND username != 'admin'
+      WHERE username != '_open'
       ORDER BY id
     `).all();
+    
+    // Separate admin data (to restore telegram_id but not password)
+    const adminData = staff.find(s => s.username === 'admin');
+    const regularStaff = staff.filter(s => s.username !== 'admin');
     
     // Export all shifts
     const shifts = req.db.prepare(`
@@ -1298,9 +1302,10 @@ router.get('/export-data', requireAdmin, (req, res) => {
     const exportData = {
       version: '1.0',
       exportDate: new Date().toISOString(),
-      staff: staff,
+      staff: regularStaff,
       shifts: shifts,
       templates: templates
+      adminTelegramId: adminData?.telegram_id || null  // Save admin's telegram ID separately
     };
     
     res.json(exportData);
@@ -1312,7 +1317,7 @@ router.get('/export-data', requireAdmin, (req, res) => {
 
 // POST /api/import-data - Import staff and shifts (admin only)
 router.post('/import-data', requireAdmin, async (req, res) => {
-  const { staff, shifts, templates } = req.body;
+  const { staff, shifts, templates, adminTelegramId } = req.body;
   
   if (!staff || !shifts) {
     return res.status(400).json({ error: 'Invalid import data' });
@@ -1320,6 +1325,16 @@ router.post('/import-data', requireAdmin, async (req, res) => {
   
   try {
     let staffImported = 0;
+    
+    // Restore admin's Telegram ID if provided
+    if (adminTelegramId) {
+      req.db.prepare(`
+        UPDATE users 
+        SET telegram_id = ?, updated_at = CURRENT_TIMESTAMP 
+        WHERE username = 'admin'
+      `).run(adminTelegramId);
+      console.log('✅ Admin Telegram ID restored:', adminTelegramId);
+    }
     let shiftsImported = 0;
     let staffIdMap = {}; // Map old IDs to new IDs
     
