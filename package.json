@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "migrate": "node migrate.js",
     "fix-admin": "node fix-admin.js"
+    "init-db": "node database/init.js"
   },
   "keywords": ["scheduling", "staff", "telegram", "notifications"],
   "author": "LilSongBirdHomes",
