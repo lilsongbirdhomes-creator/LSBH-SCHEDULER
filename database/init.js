@@ -1,12 +1,13 @@
 const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
+const path = require('path');
 
 const dbPath = process.env.DATABASE_PATH || '/app/database/scheduler.db';
 const db = new Database(dbPath);
 
-console.log('🔧 Initializing database...');
+console.log('🔧 Initializing database at:', dbPath);
 
-// Create tables
+// Create all tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +32,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,
     shift_type TEXT NOT NULL,
-    assigned_to INTEGER REFERENCES users(id),
+    assigned_to INTEGER,
     is_open INTEGER DEFAULT 0,
     is_preliminary INTEGER DEFAULT 0,
     notes TEXT,
@@ -98,39 +99,39 @@ db.exec(`
     value TEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE INDEX IF NOT EXISTS idx_shifts_date ON shifts(date);
+  CREATE INDEX IF NOT EXISTS idx_shifts_assigned ON shifts(assigned_to);
 `);
 
 console.log('✅ Tables created');
 
-// Create admin user
-async function createAdmin() {
+// Create admin and system users
+async function init() {
   const hashedPassword = await bcrypt.hash('admin123', 10);
   
   db.prepare(`
     INSERT OR REPLACE INTO users (id, username, password, full_name, role, job_title, must_change_password)
-    VALUES (1, ?, ?, ?, ?, ?, ?)
-  `).run('admin', hashedPassword, 'System Admin', 'admin', 'Admin', 0);
-  
-  console.log('✅ Admin user created (username: admin, password: admin123)');
+    VALUES (1, 'admin', ?, 'System Admin', 'admin', 'Admin', 0)
+  `).run(hashedPassword);
   
   db.prepare(`
     INSERT OR IGNORE INTO users (id, username, password, full_name, role)
     VALUES (2, '_open', 'no-login', 'Open Shift', 'system')
   `).run();
   
-  console.log('✅ System users created');
-  
   db.prepare(`
     INSERT OR REPLACE INTO settings (key, value)
     VALUES ('timezone', 'America/Chicago')
   `).run();
   
-  console.log('✅ Settings created');
-  console.log('🎉 Database initialization complete!');
+  console.log('✅ Admin user: admin / admin123');
+  console.log('✅ System users created');
+  console.log('🎉 Database ready!');
   db.close();
 }
 
-createAdmin().then(() => process.exit(0)).catch(err => {
-  console.error('❌ Error:', err);
+init().then(() => process.exit(0)).catch(err => {
+  console.error('❌ Init failed:', err);
   process.exit(1);
 });
