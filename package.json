@@ -29,5 +29,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
-  }
+  },
+  "scripts": {
+  "fix-admin": "node fix-admin.js"
+}
 }
