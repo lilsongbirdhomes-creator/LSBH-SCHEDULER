@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npm run migrate",
+    "startCommand": "npm run fix-admin",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
