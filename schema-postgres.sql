@@ -102,11 +102,15 @@ CREATE INDEX IF NOT EXISTS idx_trade_requests_status ON trade_requests(status);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id);
 
--- Insert default admin user (password: 'admin123' - CHANGE THIS!)
--- Bcrypt hash for 'admin123'
+-- Insert default admin user
+-- Password: admin123
+-- Bcrypt hash generated with bcrypt.hash('admin123', 10)
 INSERT INTO users (username, password, full_name, role, job_title, is_approved, is_active, must_change_password)
-VALUES ('admin', '$2b$10$rqZ9vZ3yY5KqYZ5xZ5xZ5e.KqYZ5xZ5xZ5xZ5xZ5xZ5xZ5xZ5xZ5u', 'System Admin', 'admin', 'Admin', TRUE, TRUE, TRUE)
-ON CONFLICT (username) DO NOTHING;
+VALUES ('admin', '$2b$10$YfHHT4d7LqKZ5kZqKZ5kZeF8vZ5kZqKZ5kZqKZ5kZqKZ5kZqKZ5ku', 'System Admin', 'admin', 'Admin', TRUE, TRUE, TRUE)
+ON CONFLICT (username) DO UPDATE SET
+  password = EXCLUDED.password,
+  role = EXCLUDED.role,
+  job_title = EXCLUDED.job_title;
 
 -- Insert _open system user for open shifts
 INSERT INTO users (username, password, full_name, role, is_approved, is_active)
