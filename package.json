@@ -7,6 +7,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "migrate": "node migrate.js"
+    "fix-admin": "node fix-admin.js"
   },
   "keywords": [
     "scheduling",
@@ -29,8 +30,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
-  },
-  "scripts": {
-  "fix-admin": "node fix-admin.js"
-}
+  }
 }
