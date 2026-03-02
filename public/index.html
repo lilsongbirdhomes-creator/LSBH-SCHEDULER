@@ -211,17 +211,21 @@
   </div>
 </div>
 
-<!-- Change Password Modal -->
-<div id="passwordModal" class="ov">
-  <div class="modal">
-    <h3>🔒 Change Password</h3>
-    <div class="fg">
-      <label>New Password (min 6 characters)</label>
-      <input type="password" id="newPassword" placeholder="Enter new password">
+<div id="passwordModal" class="modal">
+  <div class="modal-content">
+    <h3>Change Password</h3>
+    <p>Please set a new password</p>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">New Password</label>
+      <input type="password" id="newPassword" placeholder="At least 8 characters" class="inp" minlength="8">
     </div>
-    <div class="mbtn-row">
-      <button class="mc" onclick="closePasswordModal()">Cancel</button>
-      <button class="mok" onclick="savePassword()">Change Password</button>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Confirm Password</label>
+      <input type="password" id="confirmPassword" placeholder="Re-enter password" class="inp">
+    </div>
+    <div class="modal-actions">
+      <button onclick="closePasswordModal()">Cancel</button>
+      <button onclick="savePassword()" class="b-pri">Save Password</button>
     </div>
   </div>
 </div>
