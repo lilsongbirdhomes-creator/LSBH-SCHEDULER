@@ -24,10 +24,19 @@ let showOnlyMyShifts = false; // Staff can toggle this
 // Timezone management
 let systemTimezone = 'America/Chicago'; // Default
 
-// Admin change own password
+// ═══════════════════════════════════════════════════════════
+// ADMIN PASSWORD CHANGE
+// ═══════════════════════════════════════════════════════════
+
 function showAdminPasswordChange() {
+  // Remove any existing modal first
+  const existingModal = document.getElementById('adminPasswordModal');
+  if (existingModal) existingModal.remove();
+  
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
+  modal.id = 'adminPasswordModal';
+  
   modal.onclick = (e) => {
     if (e.target === modal) modal.remove();
   };
