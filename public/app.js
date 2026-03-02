@@ -24,6 +24,71 @@ let showOnlyMyShifts = false; // Staff can toggle this
 // Timezone management
 let systemTimezone = 'America/Chicago'; // Default
 
+// Admin change own password
+function showAdminPasswordChange() {
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+  
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.innerHTML = `
+    <h3>🔐 Change Your Password</h3>
+    <p style="color:#666;font-size:13px;margin-bottom:12px;">As admin, you can change your password without entering the current one.</p>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">New Password</label>
+      <input type="password" id="adminNewPassword" class="inp" placeholder="At least 8 characters" minlength="8">
+    </div>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Confirm Password</label>
+      <input type="password" id="adminConfirmPassword" class="inp" placeholder="Re-enter password">
+    </div>
+    <div class="modal-actions">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="saveAdminPassword(this)">Change Password</button>
+    </div>
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+  
+  setTimeout(() => document.getElementById('adminNewPassword').focus(), 100);
+}
+
+async function saveAdminPassword(btn) {
+  const newPassword = document.getElementById('adminNewPassword').value;
+  const confirmPassword = document.getElementById('adminConfirmPassword').value;
+  
+  if (newPassword.length < 8) {
+    alert('Password must be at least 8 characters');
+    return;
+  }
+  
+  if (newPassword !== confirmPassword) {
+    alert('Passwords do not match');
+    return;
+  }
+  
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  
+  try {
+    await apiCall('/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ newPassword })
+    });
+    
+    btn.closest('.modal-overlay').remove();
+    alert('✅ Password changed successfully!');
+  } catch (err) {
+    alert('Error: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Change Password';
+  }
+}
+
 async function loadTimezone() {
   try {
     const result = await apiCall('/settings/timezone');
