@@ -255,7 +255,6 @@ async function handleLogin() {
     hideLoading();
   }
 }
-
 async function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
