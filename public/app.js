@@ -233,17 +233,37 @@ function closePasswordModal() {
 
 async function savePassword() {
   const newPassword = document.getElementById('newPassword').value;
+  const confirmPassword = document.getElementById('confirmPassword').value;
+  const currentPassword = document.getElementById('currentPassword')?.value;
   
-  if (newPassword.length < 6) {
-    alert('Password must be at least 6 characters');
+  const isAdmin = currentUser.username === 'admin';
+  
+  // Validation
+  if (newPassword.length < 8) {
+    alert('Password must be at least 8 characters');
+    return;
+  }
+  
+  if (newPassword !== confirmPassword) {
+    alert('Passwords do not match');
+    return;
+  }
+  
+  if (!isAdmin && currentPassword && newPassword === currentPassword) {
+    alert('New password must be different from current password');
     return;
   }
   
   try {
     showLoading();
+    const payload = { newPassword };
+    if (!isAdmin && currentPassword) {
+      payload.currentPassword = currentPassword;
+    }
+    
     await apiCall('/change-password', {
       method: 'POST',
-      body: JSON.stringify({ newPassword })
+      body: JSON.stringify(payload)
     });
     
     currentUser.mustChangePassword = false;
@@ -251,6 +271,29 @@ async function savePassword() {
     showTelegramSetupModal();
   } catch (err) {
     alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TEST TELEGRAM (ADMIN ONLY)
+// ═══════════════════════════════════════════════════════════
+
+async function testTelegram() {
+  if (currentUser.role !== 'admin') {
+    alert('Only admins can test Telegram notifications');
+    return;
+  }
+  
+  try {
+    showLoading();
+    await apiCall('/test-telegram', {
+      method: 'POST'
+    });
+    showSuccess('Test notification sent! Check your Telegram.');
+  } catch (err) {
+    alert(err.message || 'Failed to send test notification');
   } finally {
     hideLoading();
   }
