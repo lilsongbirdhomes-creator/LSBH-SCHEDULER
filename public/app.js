@@ -341,7 +341,13 @@ async function savePassword() {
     
     currentUser.mustChangePassword = false;
     document.getElementById('passwordModal').classList.remove('show');
-    showTelegramSetupModal();
+    
+    // Only show Telegram setup for non-admin staff
+    if (currentUser.role !== 'admin' && currentUser.jobTitle !== 'Admin') {
+      showTelegramSetupModal();
+    } else {
+      showApp();
+    }
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
