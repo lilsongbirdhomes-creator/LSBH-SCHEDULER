@@ -47,8 +47,18 @@ router.get('/me', requireAuth, (req, res) => {
 
 // POST /api/change-password
 router.post('/change-password', requireAuth, async (req, res) => {
-  const { newPassword } = req.body;
-  const result = await changePassword(req.db, req.session.userId, newPassword);
+  const { newPassword, currentPassword } = req.body;
+  
+  if (!newPassword) {
+    return res.status(400).json({ error: 'New password required' });
+  }
+  
+  const result = await changePassword(
+    req.db, 
+    req.session.userId, 
+    newPassword,
+    currentPassword
+  );
   
   if (result.success) {
     res.json({ success: true });
