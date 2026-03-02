@@ -1875,4 +1875,32 @@ router.post('/settings/timezone', requireAdmin, (req, res) => {
     res.status(500).json({ error: 'Failed to update timezone' });
   }
 });
+
+// POST /api/test-telegram - Test Telegram notification (admin only)
+router.post('/test-telegram', requireAdmin, async (req, res) => {
+  try {
+    const admin = req.db.prepare('SELECT telegram_id, full_name FROM users WHERE id = ?').get(req.session.userId);
+    
+    if (!admin || !admin.telegram_id) {
+      return res.status(400).json({ 
+        error: 'No Telegram ID set for your account',
+        help: 'Go to Settings and add your Telegram ID'
+      });
+    }
+    
+    const testMessage = `🔔 Test Notification\n\nThis is a test from LilSongBirdHomes Scheduler.\n\nTime: ${new Date().toLocaleString()}`;
+    
+    const telegram = require('./telegram');
+    const sent = await telegram.sendNotification(admin.telegram_id, testMessage);
+    
+    if (sent) {
+      res.json({ success: true, message: 'Test notification sent!' });
+    } else {
+      res.status(500).json({ error: 'Failed to send notification - check bot token and Telegram ID' });
+    }
+  } catch (err) {
+    console.error('Test telegram error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 module.exports = router;
