@@ -69,21 +69,49 @@ async function login(db, username, password) {
 /**
  * Change password handler
  */
-async function changePassword(db, userId, newPassword) {
-  if (!newPassword || newPassword.length < 6) {
-    return { success: false, error: 'Password must be at least 6 characters' };
+async function changePassword(db, userId, newPassword, currentPassword = null) {
+  const user = db.prepare('SELECT username, password, must_change_password FROM users WHERE id = ?').get(userId);
+  
+  if (!user) {
+    return { success: false, error: 'User not found' };
   }
-
+  
+  // Admin can change password without current password
+  const isAdmin = user.username === 'admin';
+  
+  // Non-admin must provide current password
+  if (!isAdmin && currentPassword) {
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) {
+      return { success: false, error: 'Current password is incorrect' };
+    }
+  }
+  
+  // Validate new password
+  if (!newPassword || newPassword.length < 8) {
+    return { success: false, error: 'Password must be at least 8 characters' };
+  }
+  
+  // Hash new password
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   
+  // Update password and clear must_change flag
   db.prepare(`
     UPDATE users 
     SET password = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(hashedPassword, userId);
-
+  
   return { success: true };
 }
+
+module.exports = {
+  login,
+  changePassword,
+  requireAuth,
+  requireAdmin,
+  getCurrentUser
+};
 
 /**
  * Get current user from session
