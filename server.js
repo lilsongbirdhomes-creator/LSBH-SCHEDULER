@@ -74,7 +74,7 @@ async function initializeDatabase() {
           target_shift_id INTEGER NOT NULL,
           requester_id INTEGER NOT NULL,
           target_id INTEGER NOT NULL,
-          requester_approved INTEGER DEFAULT 0,
+          requester_approved INTEGER DEFAULT 1,
           target_approved INTEGER DEFAULT 0,
           admin_approved INTEGER DEFAULT 0,
           requester_note TEXT,
@@ -162,6 +162,19 @@ initializeDatabase().then(() => {
     if (fixToStaff.changes > 0) console.log('Migration: demoted ' + fixToStaff.changes + ' user(s) to staff role');
   } catch (err) {
     console.error('Role migration failed:', err.message);
+  }
+
+  // ── Trade requester_approved migration ───────────────────────────────────
+  // Fix any stuck trade requests where the requester's approval was never
+  // recorded due to the previous DEFAULT 0 bug. Safe to run on every startup.
+  try {
+    const fixTrades = db.prepare(
+      "UPDATE trade_requests SET requester_approved = 1 WHERE requester_approved = 0"
+    ).run();
+    if (fixTrades.changes > 0)
+      console.log('Migration: fixed requester_approved on ' + fixTrades.changes + ' stuck trade request(s)');
+  } catch (err) {
+    console.error('Trade migration failed:', err.message);
   }
 
   // Initialize Telegram bot
