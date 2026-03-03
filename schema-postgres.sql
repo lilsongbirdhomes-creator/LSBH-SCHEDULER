@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS trade_requests (
   target_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   requester_shift_id INTEGER NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
   target_shift_id INTEGER NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
-  requester_approved BOOLEAN DEFAULT FALSE,
+  requester_approved BOOLEAN DEFAULT TRUE,
   target_approved BOOLEAN DEFAULT FALSE,
   admin_approved BOOLEAN DEFAULT FALSE,
   admin_note TEXT,
