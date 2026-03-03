@@ -848,8 +848,9 @@ router.post('/trade-requests', requireAuth, async (req, res) => {
     const result = req.db.prepare(`
       INSERT INTO trade_requests (
         requester_shift_id, target_shift_id, 
-        requester_id, target_id, requester_note
-      ) VALUES (?, ?, ?, ?, ?)
+        requester_id, target_id, requester_note,
+        requester_approved
+      ) VALUES (?, ?, ?, ?, ?, 1)
     `).run(myShiftId, theirShiftId, req.session.userId, theirShift.assigned_to, note);
     
     // Notify all three parties
