@@ -847,7 +847,7 @@ router.post('/trade-requests', requireAuth, async (req, res) => {
   try {
     const result = req.db.prepare(`
       INSERT INTO trade_requests (
-        requester_shift_id, target_shift_id, 
+        requester_shift_id, target_shift_id,
         requester_id, target_id, requester_note,
         requester_approved
       ) VALUES (?, ?, ?, ?, ?, 1)
