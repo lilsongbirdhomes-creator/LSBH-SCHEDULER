@@ -55,6 +55,9 @@
         <button onclick="showAdminPasswordChange()" class="btn-secondary" style="margin-left:8px;">
           🔐 Change My Password
         </button>
+        <button onclick="handleLogout()" class="btn-admin-logout">
+          🚪 Logout
+        </button>
       </div>
 
       <!-- SCHEDULE TAB -->
@@ -191,6 +194,10 @@
         <button class="staff-action-btn btn-settings" onclick="openSettingsDialog()">
           <span class="sab-icon">⚙️</span>
           <span class="sab-label">Settings</span>
+        </button>
+        <button class="staff-action-btn btn-logout" onclick="handleLogout()">
+          <span class="sab-icon">🚪</span>
+          <span class="sab-label">Logout</span>
         </button>
       </div>
 
