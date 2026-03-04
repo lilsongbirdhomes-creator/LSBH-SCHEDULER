@@ -61,12 +61,9 @@
       <div id="scheduleTab" class="tab-pane active">
         <div class="schedule-toolbar">
           <button class="gen-trigger-btn" onclick="openShiftGenerator()">🗓️ Shift Generator</button>
-          <div class="notification-section">
-            <button id="sendNotificationsBtn" class="btn-notify" onclick="sendScheduleNotifications()" disabled style="opacity:0.5;">
-              📧 Send Notifications
-            </button>
-            <button class="btn-clear-changes" onclick="clearScheduleChanges()">🗑️ Clear Changes</button>
-          </div>
+          <button id="sendNotificationsBtn" class="btn-notify" onclick="sendScheduleNotifications()" disabled style="opacity:0.5;">📧 Send Notifications</button>
+          <button class="btn-clear-changes" onclick="clearScheduleChanges()">🗑️ Clear Changes</button>
+          <button class="btn-admin-contact" onclick="openContactDialog()">📞 Contact</button>
         </div>
 
         <!-- Calendar nav + grid live INSIDE the schedule tab for admin -->
