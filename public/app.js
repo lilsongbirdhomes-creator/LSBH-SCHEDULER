@@ -550,7 +550,7 @@ async function addStaff() {
     showLoading();
     const result = await apiCall('/staff', {
       method: 'POST',
-      body: JSON.stringify({ username, fullName, role, jobTitle, phone, email })
+      body: JSON.stringify({ username, fullName, role, jobTitle, phone: phone || null, email: email || null })
     });
     
     alert(`Staff added!\nUsername: ${username}\nTemp Password: ${result.tempPassword}\n\nThey must change password on first login.`);
@@ -646,8 +646,8 @@ async function saveStaffEdit() {
         jobTitle, 
         tileColor, 
         textColor,
-        phone: phone || '',
-        email: email || '',
+        phone: phone || null,
+        email: email || null,
         telegramId: telegramId || null
       })
     });
@@ -2939,21 +2939,19 @@ async function buildContactOptions() {
   container.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">Loading…</div>';
 
   try {
-    // Get next shift after right now
     const now = new Date();
     const todayStr = formatDate(now);
-    const allStaffData = allStaff.filter(s => s.role === 'staff' && s.username !== '_open');
+    // All contactable staff (exclude system _open account)
+    const allStaffData = allStaff.filter(s => s.username !== '_open');
 
-    // Find next shift on the calendar (shift starting after now)
-    const shiftOrder = { morning: 1, afternoon: 2, overnight: 3 };
+    // ── Determine current shift period ────────────────────────
     const currentHour = now.getHours();
-    // Current shift: morning ends ~15:00, afternoon ends ~19:00, overnight ends ~07:00
     const currentShiftType = currentHour < 7 ? 'overnight' :
                              currentHour < 15 ? 'morning' :
                              currentHour < 19 ? 'afternoon' : 'overnight';
     const typeOrder = { morning: 1, afternoon: 2, overnight: 3 };
 
-    // Find the next shift after current on calendar
+    // ── Find the next upcoming assigned shift ─────────────────
     let nextShift = null;
     const sortedShifts = [...allShifts]
       .filter(s => s.assigned_to && !s.is_open)
@@ -2961,7 +2959,6 @@ async function buildContactOptions() {
         if (a.date !== b.date) return a.date < b.date ? -1 : 1;
         return typeOrder[a.shift_type] - typeOrder[b.shift_type];
       });
-
     for (const s of sortedShifts) {
       if (s.date > todayStr) { nextShift = s; break; }
       if (s.date === todayStr && typeOrder[s.shift_type] > typeOrder[currentShiftType]) {
@@ -2969,12 +2966,26 @@ async function buildContactOptions() {
       }
     }
 
-    const nextStaff = nextShift ? allStaff.find(s => s.id === nextShift.assigned_to) : null;
+    const nextStaff    = nextShift ? allStaff.find(s => s.id === nextShift.assigned_to) : null;
     const houseManager = allStaff.find(s => s.job_title === 'House Manager');
+
+    // ── Helper: render a contact action row ───────────────────
+    function contactActions(s) {
+      const callBtn = s.phone
+        ? `<a class="contact-btn phone-btn" href="tel:${s.phone}">📞 Call ${s.phone}</a>`
+        : '<span class="contact-no-info">No phone on file</span>';
+      const emailBtn = s.email
+        ? `<a class="contact-btn email-btn" href="mailto:${s.email}">✉️ Email ${s.email}</a>`
+        : '<span class="contact-no-info">No email on file</span>';
+      const tgBtn = s.telegram_id
+        ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>`
+        : '<span class="contact-no-info">Not on Telegram</span>';
+      return `<div class="contact-actions">${callBtn}${emailBtn}${tgBtn}</div>`;
+    }
 
     let html = '';
 
-    // Next shift contact
+    // ── Pinned card: Next Shift Staff ─────────────────────────
     if (nextShift && nextStaff) {
       const def = SHIFT_DEFS[nextShift.shift_type];
       const dateLabel = new Date(nextShift.date + 'T12:00:00').toLocaleDateString('en-US',
@@ -2984,57 +2995,78 @@ async function buildContactOptions() {
           <div class="contact-label">📅 Next Shift Staff</div>
           <div class="contact-name">${nextStaff.full_name}</div>
           <div class="contact-meta">${def.icon} ${def.label} · ${dateLabel}</div>
-          <div class="contact-actions">
-            ${nextStaff.phone ? `<a class="contact-btn phone-btn" href="tel:${nextStaff.phone}">📞 Call ${nextStaff.phone}</a>` : '<span class="contact-no-info">No phone on file</span>'}
-            ${nextStaff.email ? `<a class="contact-btn email-btn" href="mailto:${nextStaff.email}">✉️ ${nextStaff.email}</a>` : ''}
-            ${nextStaff.telegram_id ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${nextStaff.id}, '${(nextStaff.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
-          </div>
+          ${contactActions(nextStaff)}
         </div>`;
     } else {
       html += `<div class="contact-card"><div class="contact-meta" style="color:#aaa;">No upcoming shifts found on calendar</div></div>`;
     }
 
-    // House Manager contact
+    // ── Pinned card: House Manager ────────────────────────────
     if (houseManager) {
       html += `
         <div class="contact-card">
           <div class="contact-label">🏠 House Manager</div>
           <div class="contact-name">${houseManager.full_name}</div>
-          <div class="contact-actions">
-            ${houseManager.phone ? `<a class="contact-btn phone-btn" href="tel:${houseManager.phone}">📞 Call ${houseManager.phone}</a>` : '<span class="contact-no-info">No phone on file</span>'}
-            ${houseManager.email ? `<a class="contact-btn email-btn" href="mailto:${houseManager.email}">✉️ ${houseManager.email}</a>` : ''}
-            ${houseManager.telegram_id ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${houseManager.id}, '${(houseManager.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
-          </div>
+          ${contactActions(houseManager)}
         </div>`;
     }
 
-    // Staff directory
+    // ── Staff Directory — dropdown picker ─────────────────────
+    // Sort alphabetically by full name
+    const dirStaff = [...allStaffData].sort((a, b) =>
+      (a.full_name || '').localeCompare(b.full_name || ''));
+
+    const options = dirStaff.map(s =>
+      `<option value="${s.id}">${s.full_name}${s.job_title ? ' — ' + s.job_title : ''}</option>`
+    ).join('');
+
     html += `
       <div class="contact-card">
         <div class="contact-label">📋 Staff Directory</div>
-        <div class="contact-dir-list">
-          ${allStaffData.map(s => `
-            <div class="contact-dir-item">
-              <div class="contact-dir-dot" style="background:${s.tile_color||'#eee'}"></div>
-              <div class="contact-dir-info">
-                <div class="contact-dir-name">${s.full_name}</div>
-                <div class="contact-dir-role">${s.job_title}</div>
-              </div>
-              <div class="contact-dir-btns">
-                ${s.phone ? `<a class="contact-btn-sm phone-btn" href="tel:${s.phone}" title="Call ${s.phone}">📞</a>` : ''}
-                ${s.email ? `<a class="contact-btn-sm email-btn" href="mailto:${s.email}" title="Email ${s.email}">✉️</a>` : ''}
-                ${s.telegram_id ? `<button class="contact-btn-sm tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️</button>` : ''}
-                ${!s.phone && !s.email && !s.telegram_id ? '<span style="font-size:11px;color:#aaa;">No contact</span>' : ''}
-              </div>
-            </div>
-          `).join('')}
-        </div>
+        <select id="contactDirSelect" class="contact-dir-select" onchange="showContactDirCard()">
+          <option value="">— Select a staff member —</option>
+          ${options}
+        </select>
+        <div id="contactDirCard"></div>
       </div>`;
 
     container.innerHTML = html;
   } catch (err) {
     container.innerHTML = `<div class="contact-meta" style="color:#dc3545;">Error loading contacts: ${err.message}</div>`;
   }
+}
+
+// Renders the contact card for whichever staff member is selected in the directory dropdown.
+function showContactDirCard() {
+  const select = document.getElementById('contactDirSelect');
+  const cardEl = document.getElementById('contactDirCard');
+  if (!select || !cardEl) return;
+
+  const staffId = parseInt(select.value, 10);
+  if (!staffId) { cardEl.innerHTML = ''; return; }
+
+  const s = allStaff.find(m => m.id === staffId);
+  if (!s) { cardEl.innerHTML = ''; return; }
+
+  const callBtn = s.phone
+    ? `<a class="contact-btn phone-btn" href="tel:${s.phone}">📞 Call ${s.phone}</a>`
+    : '<span class="contact-no-info">No phone on file</span>';
+  const emailBtn = s.email
+    ? `<a class="contact-btn email-btn" href="mailto:${s.email}">✉️ Email ${s.email}</a>`
+    : '<span class="contact-no-info">No email on file</span>';
+  const tgBtn = s.telegram_id
+    ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>`
+    : '<span class="contact-no-info">Not on Telegram</span>';
+
+  cardEl.innerHTML = `
+    <div class="contact-dir-result">
+      <div class="contact-dir-result-dot" style="background:${s.tile_color||'#eee'}"></div>
+      <div>
+        <div class="contact-name" style="margin-bottom:2px;">${s.full_name}</div>
+        <div class="contact-meta">${s.job_title || ''}</div>
+        <div class="contact-actions" style="margin-top:8px;">${callBtn}${emailBtn}${tgBtn}</div>
+      </div>
+    </div>`;
 }
 
 async function sendTelegramContact(staffId, staffName) {
