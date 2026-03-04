@@ -102,7 +102,7 @@ router.get('/staff', requireAuth, (req, res) => {
 
 // POST /api/staff - Add new staff member (admin only)
 router.post('/staff', requireAdmin, async (req, res) => {
-  const { username, fullName, role, jobTitle, tileColor, textColor } = req.body;
+  const { username, fullName, role, jobTitle, tileColor, textColor, phone, email } = req.body;
   
   if (!username || !fullName) {
     return res.status(400).json({ error: 'Username and full name required' });
@@ -119,8 +119,8 @@ router.post('/staff', requireAdmin, async (req, res) => {
   
   try {
     const result = req.db.prepare(`
-      INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, phone, email)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       username.toLowerCase(),
       hashedPassword,
@@ -128,7 +128,9 @@ router.post('/staff', requireAdmin, async (req, res) => {
       role || 'staff',
       jobTitle || 'Caregiver',
       tileColor || '#f5f5f5',
-      textColor || 'black'
+      textColor || 'black',
+      phone || null,
+      email || null
     );
     
     res.json({ 
