@@ -944,6 +944,50 @@ router.post('/trade-requests/:id/deny', requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/trade-requests/completed - Bulk-dismiss all completed/denied trade requests for current user
+router.delete('/trade-requests/completed', requireAuth, (req, res) => {
+  try {
+    req.db.prepare(`
+      DELETE FROM trade_requests
+      WHERE status IN ('approved', 'denied')
+        AND (requester_id = ? OR target_id = ?)
+    `).run(req.session.userId, req.session.userId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear completed trade requests' });
+  }
+});
+
+// DELETE /api/trade-requests/:id - Dismiss a single completed/denied trade request
+router.delete('/trade-requests/:id', requireAuth, (req, res) => {
+  const requestId = parseInt(req.params.id);
+
+  const trade = req.db.prepare(
+    'SELECT id, requester_id, target_id, status FROM trade_requests WHERE id = ?'
+  ).get(requestId);
+
+  if (!trade) {
+    return res.status(404).json({ error: 'Trade request not found' });
+  }
+
+  // Only the requester or target may dismiss, and only when resolved
+  const isParty = trade.requester_id === req.session.userId || trade.target_id === req.session.userId;
+  if (!isParty) {
+    return res.status(403).json({ error: 'Not authorized' });
+  }
+
+  if (!['approved', 'denied'].includes(trade.status)) {
+    return res.status(400).json({ error: 'Can only dismiss completed or denied requests' });
+  }
+
+  try {
+    req.db.prepare('DELETE FROM trade_requests WHERE id = ?').run(requestId);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to dismiss trade request' });
+  }
+});
+
 // POST /api/trade-requests/:id/finalize - Admin finalize trade
 router.post('/trade-requests/:id/finalize', requireAdmin, async (req, res) => {
   const requestId = parseInt(req.params.id);
