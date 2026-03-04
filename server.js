@@ -177,21 +177,22 @@ initializeDatabase().then(() => {
     console.error('Trade migration failed:', err.message);
   }
 
-  // ── Phone & email column migration ──────────────────────────────────
-  // Ensures phone and email columns exist for databases created before
-  // these fields were added to the schema. ALTER TABLE is a no-op if the
-  // column already exists (SQLite ignores duplicate-column errors).
+  // ── Phone / email column migration ──────────────────────────────────────
+  // Ensures phone and email columns exist for databases created before these
+  // columns were added to the schema. ALTER TABLE IF NOT EXISTS is not
+  // supported in all SQLite versions, so we check pragma table_info instead.
   try {
-    db.exec("ALTER TABLE users ADD COLUMN phone TEXT");
-    console.log('Migration: added phone column to users');
+    const userColumns = db.pragma('table_info(users)').map(c => c.name);
+    if (!userColumns.includes('phone')) {
+      db.prepare('ALTER TABLE users ADD COLUMN phone TEXT').run();
+      console.log('Migration: added phone column to users table');
+    }
+    if (!userColumns.includes('email')) {
+      db.prepare('ALTER TABLE users ADD COLUMN email TEXT').run();
+      console.log('Migration: added email column to users table');
+    }
   } catch (err) {
-    if (!err.message.includes('duplicate column')) console.error('Phone migration failed:', err.message);
-  }
-  try {
-    db.exec("ALTER TABLE users ADD COLUMN email TEXT");
-    console.log('Migration: added email column to users');
-  } catch (err) {
-    if (!err.message.includes('duplicate column')) console.error('Email migration failed:', err.message);
+    console.error('Phone/email column migration failed:', err.message);
   }
 
   // Initialize Telegram bot
