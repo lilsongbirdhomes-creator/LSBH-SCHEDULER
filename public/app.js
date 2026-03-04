@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
 // GLOBAL STATE
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 let currentUser = null;
 let viewMode = 'week';
 
@@ -288,10 +288,12 @@ async function showApp() {
 
 async function handleLogout() {
   try {
+    // Clear completed/denied trade notifications before ending the session
+    await apiCall('/trade-requests/completed', { method: 'DELETE' }).catch(() => {});
     await apiCall('/logout', { method: 'POST' });
-    location.reload();
   } catch (err) {
     console.error('Logout error:', err);
+  } finally {
     location.reload();
   }
 }
@@ -3392,16 +3394,18 @@ async function loadTradeInbox() {
 
         let statusLabel = '';
         let statusClass = '';
+        const isResolved = req.status === 'approved' || req.status === 'denied';
         if (req.status === 'approved') { statusLabel = '✅ Completed'; statusClass = 'approved'; }
         else if (req.status === 'denied') { statusLabel = '❌ Denied'; statusClass = 'denied'; }
         else if (req.target_approved) { statusLabel = '⏳ Awaiting admin'; statusClass = 'pending'; }
         else { statusLabel = '⏳ Awaiting ' + req.target_name; statusClass = 'pending'; }
 
         html += `
-          <div class="trade-inbox-card outgoing">
+          <div class="trade-inbox-card outgoing" id="tradeCard_${req.id}">
             <div class="tic-header">
               <span class="tic-from">To: <strong>${req.target_name}</strong></span>
               <span class="trade-status ${statusClass}">${statusLabel}</span>
+              ${isResolved ? `<button class="tic-dismiss-btn" onclick="dismissTrade(${req.id})" title="Dismiss">✕</button>` : ''}
             </div>
             <div class="tic-shifts">
               <div class="tic-shift give">
@@ -3462,6 +3466,21 @@ async function staffDenyTrade(tradeId, btn) {
   }
 }
 
+
+async function dismissTrade(tradeId) {
+  const card = document.getElementById('tradeCard_' + tradeId);
+  if (card) {
+    card.style.transition = 'opacity 0.2s';
+    card.style.opacity = '0';
+  }
+  try {
+    await apiCall(`/trade-requests/${tradeId}`, { method: 'DELETE' });
+    loadTradeInbox();
+  } catch (err) {
+    if (card) card.style.opacity = '1';
+    showWarning('Could not dismiss: ' + err.message);
+  }
+}
 
 // Confirm emergency absence for selected shift
 async function confirmEmergencyAbsence(shift) {
