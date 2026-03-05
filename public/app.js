@@ -1196,6 +1196,7 @@ function showAssignOpenShiftModal(shift) {
     <div id="assignHoursWarning" style="display:none;margin-top:8px;padding:8px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;"></div>
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-del-shift" onclick="deleteShift(${shift.id}, this)">🗑️ Delete</button>
       <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
       <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', '${(shift.start_time || '').replace(/'/g, '')}', '${(shift.end_time || '').replace(/'/g, '')}')">➕ Add Shift</button>
       <button class="b-pri" onclick="confirmAssignOpenShift(${shift.id})">Assign</button>
@@ -1334,6 +1335,7 @@ function showReassignModal(shift) {
     </select>
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-del-shift" onclick="deleteShift(${shift.id}, this)">🗑️ Delete</button>
       <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
       <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', '${(shift.start_time || '').replace(/'/g, '')}', '${(shift.end_time || '').replace(/'/g, '')}')">➕ Add Shift</button>
       <button class="b-pri" onclick="saveReassignment(${shift.id})">Save</button>
@@ -1412,6 +1414,48 @@ async function saveReassignment(shiftId) {
   } finally {
     hideLoading();
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// DELETE SHIFT
+// ═══════════════════════════════════════════════════════════
+
+function deleteShift(shiftId, btn) {
+  // First click: replace button text with a confirmation prompt
+  if (!btn.dataset.confirming) {
+    btn.dataset.confirming = '1';
+    btn.textContent = 'Confirm Delete?';
+    btn.classList.add('b-del-confirm');
+    // Auto-reset after 5 seconds if the admin doesn't follow through
+    btn._resetTimer = setTimeout(() => {
+      btn.textContent = '\ud83d\uddd1\ufe0f Delete';
+      btn.classList.remove('b-del-confirm');
+      delete btn.dataset.confirming;
+    }, 5000);
+    return;
+  }
+
+  // Second click: confirmed — proceed with deletion
+  clearTimeout(btn._resetTimer);
+  const modal = btn.closest('.modal-overlay');
+
+  (async () => {
+    try {
+      showLoading();
+      await apiCall(`/shifts/${shiftId}`, { method: 'DELETE' });
+      modal?.remove();
+      await loadShifts();
+      showSuccess('Shift deleted.');
+    } catch (err) {
+      alert('Error deleting shift: ' + err.message);
+      // Reset button so the admin can try again
+      btn.textContent = '\ud83d\uddd1\ufe0f Delete';
+      btn.classList.remove('b-del-confirm');
+      delete btn.dataset.confirming;
+    } finally {
+      hideLoading();
+    }
+  })();
 }
 
 // ═══════════════════════════════════════════════════════════
