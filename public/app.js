@@ -3506,4 +3506,19 @@ async function confirmEmergencyAbsence(shift) {
       body: JSON.stringify({ 
         shiftId: shift.id, 
         reason: reason.trim(),
-        report
+        reportedWhileOnDuty: false 
+      })
+    });
+    
+    // Exit emergency mode
+    emergencyAbsenceMode = false;
+    emergencyEligibleShifts = [];
+    
+    showSuccess('Emergency absence reported. House Manager and Admin have been notified.');
+    loadShifts();
+  } catch (err) {
+    alert('Error reporting absence: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
