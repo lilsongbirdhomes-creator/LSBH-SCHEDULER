@@ -278,6 +278,7 @@ router.get('/shifts', requireAuth, (req, res) => {
   let query = `
     SELECT 
       s.id, s.date, s.shift_type, s.assigned_to, s.is_open, s.is_preliminary, s.notes,
+      s.start_time, s.end_time,
       u.full_name, u.tile_color, u.text_color, u.job_title
     FROM shifts s
     LEFT JOIN users u ON s.assigned_to = u.id
@@ -348,7 +349,7 @@ router.get('/hours-check', requireAuth, (req, res) => {
 
 // POST /api/shifts - Create shift (admin only)
 router.post('/shifts', requireAdmin, async (req, res) => {
-  const { date, shiftType, assignedTo, isOpen, isPreliminary, notes } = req.body;
+  const { date, shiftType, assignedTo, isOpen, isPreliminary, notes, startTime, endTime, allowDuplicate } = req.body;
   
   if (!date || !shiftType) {
     return res.status(400).json({ error: 'Date and shift type required' });
@@ -358,14 +359,16 @@ router.post('/shifts', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Invalid shift type' });
   }
   
-  // Check if shift already exists
-  const existing = req.db.prepare(`
-    SELECT id FROM shifts 
-    WHERE date = ? AND shift_type = ?
-  `).get(date, shiftType);
-  
-  if (existing) {
-    return res.status(400).json({ error: 'Shift already exists for this date and time' });
+  // Check if shift already exists (skip check when explicitly adding a duplicate)
+  if (!allowDuplicate) {
+    const existing = req.db.prepare(`
+      SELECT id FROM shifts 
+      WHERE date = ? AND shift_type = ?
+    `).get(date, shiftType);
+    
+    if (existing) {
+      return res.status(400).json({ error: 'Shift already exists for this date and time' });
+    }
   }
   
   // Check hours limit if assigning to someone
@@ -381,15 +384,17 @@ router.post('/shifts', requireAdmin, async (req, res) => {
   
   try {
     const result = req.db.prepare(`
-      INSERT INTO shifts (date, shift_type, assigned_to, is_open, is_preliminary, notes, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO shifts (date, shift_type, assigned_to, is_open, is_preliminary, notes, start_time, end_time, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       date,
       shiftType,
       isOpen ? null : assignedTo,
       isOpen ? 1 : 0,
       isPreliminary ? 1 : 0,
-      notes,
+      notes || null,
+      startTime || null,
+      endTime || null,
       req.session.userId
     );
     
@@ -557,7 +562,7 @@ router.post('/shifts/copy', requireAdmin, async (req, res) => {
 // PUT /api/shifts/:id - Update shift
 router.put('/shifts/:id', requireAdmin, async (req, res) => {
   const shiftId = parseInt(req.params.id);
-  const { assignedTo, isOpen, isPreliminary, notes } = req.body;
+  const { assignedTo, isOpen, isPreliminary, notes, startTime, endTime } = req.body;
   
   const shift = req.db.prepare('SELECT date, shift_type, assigned_to FROM shifts WHERE id = ?').get(shiftId);
   if (!shift) {
@@ -583,6 +588,8 @@ router.put('/shifts/:id', requireAdmin, async (req, res) => {
     if (isOpen !== undefined) { updates.push('is_open = ?'); values.push(isOpen ? 1 : 0); }
     if (isPreliminary !== undefined) { updates.push('is_preliminary = ?'); values.push(isPreliminary ? 1 : 0); }
     if (notes !== undefined) { updates.push('notes = ?'); values.push(notes); }
+    if (startTime !== undefined) { updates.push('start_time = ?'); values.push(startTime || null); }
+    if (endTime !== undefined) { updates.push('end_time = ?'); values.push(endTime || null); }
     
     updates.push('updated_at = CURRENT_TIMESTAMP');
     values.push(shiftId);
