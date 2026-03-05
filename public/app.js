@@ -2341,7 +2341,7 @@ async function copyShifts() {
   const sourceDate = new Date(document.getElementById('copySourceDate').value);
   const targetDate = new Date(document.getElementById('copyTargetDate').value);
   const keepAssignments = document.getElementById('copyKeepAssignments').checked;
-  const skipExisting = document.getElementById('copySkipExisting').checked;
+  const replaceExisting = document.getElementById('copyReplaceExisting').checked;
   
   if (isNaN(sourceDate) || isNaN(targetDate)) {
     alert('Please select both source and target dates');
@@ -2362,7 +2362,7 @@ async function copyShifts() {
         targetDate: formatDate(targetDate),
         copyType: copyFrom,
         keepAssignments,
-        skipExisting
+        replaceExisting
       })
     });
     
