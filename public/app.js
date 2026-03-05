@@ -1197,7 +1197,7 @@ function showAssignOpenShiftModal(shift) {
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
       <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
-      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', ${JSON.stringify(shift.start_time || '').replace(/'/g, "\\'")}, ${JSON.stringify(shift.end_time || '').replace(/'/g, "\\'")})">➕ Add Shift</button>
+      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', '${(shift.start_time || '').replace(/'/g, '')}', '${(shift.end_time || '').replace(/'/g, '')}')">➕ Add Shift</button>
       <button class="b-pri" onclick="confirmAssignOpenShift(${shift.id})">Assign</button>
     </div>
   `;
@@ -1335,7 +1335,7 @@ function showReassignModal(shift) {
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
       <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
-      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', ${JSON.stringify(shift.start_time || '').replace(/'/g, "\\'")}, ${JSON.stringify(shift.end_time || '').replace(/'/g, "\\'")})">➕ Add Shift</button>
+      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', '${(shift.start_time || '').replace(/'/g, '')}', '${(shift.end_time || '').replace(/'/g, '')}')">➕ Add Shift</button>
       <button class="b-pri" onclick="saveReassignment(${shift.id})">Save</button>
     </div>
   `;
@@ -2072,7 +2072,11 @@ function closeShiftGenerator() {
 function switchGenTab(tabName) {
   // Update tab buttons
   document.querySelectorAll('.gen-tab').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
+  // Find the matching tab button by its onclick attribute text rather than relying on
+  // the implicit global `event` object, which is undefined when called programmatically.
+  const matchingBtn = Array.from(document.querySelectorAll('.gen-tab'))
+    .find(btn => btn.getAttribute('onclick') && btn.getAttribute('onclick').includes("'" + tabName + "'"));
+  if (matchingBtn) matchingBtn.classList.add('active');
   
   // Update tab content
   document.querySelectorAll('.gen-tab-content').forEach(content => content.classList.remove('active'));
