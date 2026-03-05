@@ -475,83 +475,125 @@ router.post('/shifts/bulk', requireAdmin, async (req, res) => {
 
 // POST /api/shifts/copy - Copy shifts from one date range to another (admin only)
 router.post('/shifts/copy', requireAdmin, async (req, res) => {
-  const { sourceDate, targetDate, copyType, keepAssignments, skipExisting } = req.body;
-  
+  const { sourceDate, targetDate, copyType, keepAssignments, replaceExisting } = req.body;
+
   if (!sourceDate || !targetDate) {
     return res.status(400).json({ error: 'Source and target dates required' });
   }
-  
+
   try {
     // Calculate date range based on copy type
     let sourceStart, sourceEnd;
     const src = new Date(sourceDate);
-    
+
     if (copyType === 'day') {
       sourceStart = sourceDate;
       sourceEnd = sourceDate;
     } else if (copyType === 'week') {
-      // Get Sunday of the week
       const day = src.getDay();
       const diff = src.getDate() - day;
       sourceStart = new Date(src.setDate(diff)).toISOString().split('T')[0];
-      sourceEnd = new Date(src.setDate(diff + 6)).toISOString().split('T')[0];
+      sourceEnd   = new Date(src.setDate(diff + 6)).toISOString().split('T')[0];
     } else if (copyType === 'month') {
       sourceStart = new Date(src.getFullYear(), src.getMonth(), 1).toISOString().split('T')[0];
-      sourceEnd = new Date(src.getFullYear(), src.getMonth() + 1, 0).toISOString().split('T')[0];
+      sourceEnd   = new Date(src.getFullYear(), src.getMonth() + 1, 0).toISOString().split('T')[0];
     }
-    
-    // Get source shifts
+
+    // Fetch ALL source shifts, including custom start_time/end_time and every extra
+    // shift on a day (e.g. a 4th trainer shift). Order by id so extras are preserved
+    // in insertion order.
     const sourceShifts = req.db.prepare(`
-      SELECT date, shift_type, assigned_to, is_open
+      SELECT id, date, shift_type, assigned_to, is_open, start_time, end_time
       FROM shifts
       WHERE date >= ? AND date <= ?
-      ORDER BY date, shift_type
+      ORDER BY date, id
     `).all(sourceStart, sourceEnd);
-    
+
     if (sourceShifts.length === 0) {
       return res.json({ success: true, copied: 0, message: 'No shifts found in source range' });
     }
-    
-    // Calculate date offset
+
+    // Calculate date offset (in whole days)
     const srcDate = new Date(sourceStart);
     const tgtDate = new Date(targetDate);
     const dayOffset = Math.floor((tgtDate - srcDate) / (1000 * 60 * 60 * 24));
-    
+
     let copied = 0;
     let skipped = 0;
-    
+
+    // Build a lookup of all existing shifts on target days keyed by "date|shift_type|position"
+    // so we can match extras in order without collapsing them.
+    // Strategy: for each source day, group its shifts by shift_type. For each group,
+    // the first source shift maps to the first existing target shift of that type, etc.
+    // This lets us replace the 1st morning shift, 2nd morning shift, etc. independently.
+
+    // Group source shifts by (date, shift_type)
+    const sourceGroups = {};
     for (const shift of sourceShifts) {
-      const shiftDate = new Date(shift.date);
+      const key = `${shift.date}|${shift.shift_type}`;
+      if (!sourceGroups[key]) sourceGroups[key] = [];
+      sourceGroups[key].push(shift);
+    }
+
+    // For each (date, shift_type) group, fetch matching target shifts in id order
+    const targetGroups = {};
+    for (const key of Object.keys(sourceGroups)) {
+      const [sDate, sType] = key.split('|');
+      const shiftDate = new Date(sDate + 'T00:00:00');
       shiftDate.setDate(shiftDate.getDate() + dayOffset);
       const newDate = shiftDate.toISOString().split('T')[0];
-      
-      // Check if shift already exists
-      if (skipExisting) {
-        const existing = req.db.prepare(`
-          SELECT id FROM shifts WHERE date = ? AND shift_type = ?
-        `).get(newDate, shift.shift_type);
-        
-        if (existing) {
-          skipped++;
-          continue;
-        }
+      const tKey = `${newDate}|${sType}`;
+      if (!targetGroups[tKey]) {
+        targetGroups[tKey] = req.db.prepare(
+          'SELECT id FROM shifts WHERE date = ? AND shift_type = ? ORDER BY id'
+        ).all(newDate, sType);
       }
-      
-      // Create copied shift
-      req.db.prepare(`
-        INSERT OR REPLACE INTO shifts (date, shift_type, assigned_to, is_open, created_by)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(
-        newDate,
-        shift.shift_type,
-        keepAssignments ? shift.assigned_to : null,
-        keepAssignments ? shift.is_open : 1,
-        req.session.userId
-      );
-      
-      copied++;
     }
-    
+
+    for (const shift of sourceShifts) {
+      const shiftDate = new Date(shift.date + 'T00:00:00');
+      shiftDate.setDate(shiftDate.getDate() + dayOffset);
+      const newDate = shiftDate.toISOString().split('T')[0];
+
+      const sKey = `${shift.date}|${shift.shift_type}`;
+      const tKey = `${newDate}|${shift.shift_type}`;
+
+      // Determine position of this source shift within its (date, type) group
+      const posInGroup = sourceGroups[sKey].indexOf(shift);
+      const existingAtPos = targetGroups[tKey] ? targetGroups[tKey][posInGroup] : undefined;
+
+      const newAssignedTo = keepAssignments ? shift.assigned_to : null;
+      const newIsOpen     = keepAssignments ? shift.is_open     : 1;
+      const newStartTime  = shift.start_time || null;
+      const newEndTime    = shift.end_time   || null;
+
+      if (existingAtPos) {
+        // A shift of this type already exists at this position on the target day
+        if (replaceExisting) {
+          // Overwrite it in place
+          req.db.prepare(`
+            UPDATE shifts
+            SET assigned_to = ?, is_open = ?, start_time = ?, end_time = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(newAssignedTo, newIsOpen, newStartTime, newEndTime, existingAtPos.id);
+          copied++;
+        } else {
+          // Skip — leave the existing target shift untouched
+          skipped++;
+        }
+      } else {
+        // No existing shift at this position — always insert
+        req.db.prepare(`
+          INSERT INTO shifts (date, shift_type, assigned_to, is_open, start_time, end_time, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(newDate, shift.shift_type, newAssignedTo, newIsOpen, newStartTime, newEndTime, req.session.userId);
+        // Add to targetGroups so subsequent extra shifts in the same group see it
+        if (!targetGroups[tKey]) targetGroups[tKey] = [];
+        targetGroups[tKey].push({ id: null }); // placeholder; id not needed after insert
+        copied++;
+      }
+    }
+
     res.json({ success: true, copied, skipped });
   } catch (err) {
     console.error('Copy shifts error:', err);
