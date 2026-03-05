@@ -116,8 +116,15 @@ async function initializeDatabase() {
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE sessions (
+          sid TEXT PRIMARY KEY,
+          sess TEXT NOT NULL,
+          expire INTEGER NOT NULL
+        );
+
         CREATE INDEX idx_shifts_date ON shifts(date);
         CREATE INDEX idx_shifts_assigned ON shifts(assigned_to);
+        CREATE INDEX idx_sessions_expire ON sessions(expire);
       `);
       
       console.log('✅ Tables created');
@@ -145,6 +152,62 @@ async function initializeDatabase() {
     }
   } catch (err) {
     console.error('⚠️  Database init check failed:', err.message);
+  }
+}
+
+// ── Simple SQLite-based Session Store (Pure JavaScript) ────────────────────
+class SQLiteSessionStore extends session.Store {
+  constructor(db) {
+    super();
+    this.db = db;
+    // Clean up expired sessions every 24 hours
+    setInterval(() => this.cleanup(), 24 * 60 * 60 * 1000);
+  }
+
+  get(sid, callback) {
+    try {
+      const row = this.db.prepare('SELECT sess FROM sessions WHERE sid = ? AND expire > ?').get(sid, Math.floor(Date.now() / 1000));
+      if (!row) {
+        return callback(null, null);
+      }
+      const sess = JSON.parse(row.sess);
+      callback(null, sess);
+    } catch (err) {
+      callback(err);
+    }
+  }
+
+  set(sid, sess, callback) {
+    try {
+      const expire = Math.floor(Date.now() / 1000) + (sess.cookie.maxAge ? sess.cookie.maxAge / 1000 : 24 * 60 * 60);
+      const sessJson = JSON.stringify(sess);
+      
+      this.db.prepare('INSERT OR REPLACE INTO sessions (sid, sess, expire) VALUES (?, ?, ?)').run(sid, sessJson, expire);
+      callback(null);
+    } catch (err) {
+      callback(err);
+    }
+  }
+
+  destroy(sid, callback) {
+    try {
+      this.db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
+      callback(null);
+    } catch (err) {
+      callback(err);
+    }
+  }
+
+  cleanup() {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const result = this.db.prepare('DELETE FROM sessions WHERE expire <= ?').run(now);
+      if (result.changes > 0) {
+        console.log(`🧹 Cleaned up ${result.changes} expired sessions`);
+      }
+    } catch (err) {
+      console.error('Session cleanup error:', err);
+    }
   }
 }
 
@@ -210,6 +273,26 @@ initializeDatabase().then(() => {
     console.error('Shift time column migration failed:', err.message);
   }
 
+  // ── Sessions table migration (if upgrading from old version) ────────────
+  try {
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'
+    `).get();
+    if (!tableExists) {
+      db.exec(`
+        CREATE TABLE sessions (
+          sid TEXT PRIMARY KEY,
+          sess TEXT NOT NULL,
+          expire INTEGER NOT NULL
+        );
+        CREATE INDEX idx_sessions_expire ON sessions(expire);
+      `);
+      console.log('Migration: created sessions table for persistent session storage');
+    }
+  } catch (err) {
+    console.error('Sessions table migration failed:', err.message);
+  }
+
   // Initialize Telegram bot
   require('./server/telegram');
 
@@ -223,15 +306,11 @@ initializeDatabase().then(() => {
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
 
-  // Session configuration with SQLite store for persistence [FIXED]
-  const SqliteStore = require('express-session-sqlite');
+  // Session configuration with custom SQLite store (Pure JavaScript - no native modules) [FIXED]
+  const sessionStore = new SQLiteSessionStore(db);
 
   app.use(session({
-    store: new SqliteStore({
-      db: process.env.SESSIONS_DB_PATH || './database/sessions.db',
-      table: 'sessions',
-      cleanupInterval: 24 * 60 * 60 * 1000
-    }),
+    store: sessionStore,
     secret: process.env.SESSION_SECRET || 'fallback-secret-key',
     resave: false,
     saveUninitialized: false,
