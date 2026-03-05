@@ -985,8 +985,17 @@ function renderMonthView() {
   root.appendChild(grid);
 }
 
+function getShiftDisplayTime(shift) {
+  const def = SHIFT_DEFS[shift.shift_type];
+  if (shift.start_time && shift.end_time) {
+    return shift.start_time + ' \u2013 ' + shift.end_time;
+  }
+  return def ? def.time : '';
+}
+
 function createShiftTile(shift, viewType = 'week') {
   const def = SHIFT_DEFS[shift.shift_type];
+  const displayTime = getShiftDisplayTime(shift);
   const tile = document.createElement('div');
   tile.className = viewType === 'month' ? 'month-shift-tile' : 'shift-tile';
 
@@ -1067,7 +1076,7 @@ function createShiftTile(shift, viewType = 'week') {
       tile.innerHTML = `
         ${pendingBadge}
         <div class="month-shift-name">Open Shift</div>
-        <div class="month-shift-time">${def.icon} ${def.time}</div>
+        <div class="month-shift-time">${def.icon} ${displayTime}</div>
         <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
       `;
     } else {
@@ -1075,7 +1084,7 @@ function createShiftTile(shift, viewType = 'week') {
         ${pendingBadge}
         <div>
           <div class="t-name">Open Shift</div>
-          <div class="t-time">${def.time}</div>
+          <div class="t-time">${displayTime}</div>
         </div>
         <div class="t-foot" style="font-size:10px;opacity:0.7;">
           Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}
@@ -1134,7 +1143,7 @@ function createShiftTile(shift, viewType = 'week') {
       tile.innerHTML = `
         ${pendingBadge}
         <div class="month-shift-name">${shift.full_name || staff?.full_name || 'Unknown'}</div>
-        <div class="month-shift-time">${def.icon} ${def.time}</div>
+        <div class="month-shift-time">${def.icon} ${displayTime}</div>
         <div class="month-shift-hours ${hClass}">${hours.toFixed(1)}/40</div>
       `;
     } else {
@@ -1142,7 +1151,7 @@ function createShiftTile(shift, viewType = 'week') {
         ${pendingBadge}
         <div>
           <div class="t-name">${shift.full_name || 'Unknown'}</div>
-          <div class="t-time">${def.time}</div>
+          <div class="t-time">${displayTime}</div>
         </div>
         <div class="t-foot">
           <span class="t-hrs ${hClass}">${hours.toFixed(1)}/40.0</span>
@@ -1187,6 +1196,8 @@ function showAssignOpenShiftModal(shift) {
     <div id="assignHoursWarning" style="display:none;margin-top:8px;padding:8px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;"></div>
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
+      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', ${JSON.stringify(shift.start_time || '').replace(/'/g, "\\'")}, ${JSON.stringify(shift.end_time || '').replace(/'/g, "\\'")})">➕ Add Shift</button>
       <button class="b-pri" onclick="confirmAssignOpenShift(${shift.id})">Assign</button>
     </div>
   `;
@@ -1323,6 +1334,8 @@ function showReassignModal(shift) {
     </select>
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
+      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', ${JSON.stringify(shift.start_time || '').replace(/'/g, "\\'")}, ${JSON.stringify(shift.end_time || '').replace(/'/g, "\\'")})">➕ Add Shift</button>
       <button class="b-pri" onclick="saveReassignment(${shift.id})">Save</button>
     </div>
   `;
@@ -1394,6 +1407,208 @@ async function saveReassignment(shiftId) {
     
     // Show success message
     showSuccess('Shift reassigned successfully!');
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TIME PICKER HELPERS
+// ═══════════════════════════════════════════════════════════
+
+function parseTimeString(timeStr) {
+  // Parse strings like "7:00 AM", "3:30 PM", "12:00 PM"
+  if (!timeStr) return { hour: 12, minute: 0, ampm: 'AM' };
+  const m = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!m) return { hour: 12, minute: 0, ampm: 'AM' };
+  return { hour: parseInt(m[1]), minute: parseInt(m[2]), ampm: m[3].toUpperCase() };
+}
+
+function buildTimePicker(prefix, defaultTime) {
+  const t = parseTimeString(defaultTime);
+  const hourOpts = Array.from({length:12}, (_,i) => {
+    const h = i + 1;
+    return `<option value="${h}" ${h === t.hour ? 'selected' : ''}>${h}</option>`;
+  }).join('');
+  return `
+    <div class="time-picker-row">
+      <select id="${prefix}Hour" class="inp time-sel">${hourOpts}</select>
+      <span class="time-colon">:</span>
+      <select id="${prefix}Min" class="inp time-sel">
+        <option value="00" ${t.minute === 0 ? 'selected' : ''}>00</option>
+        <option value="15" ${t.minute === 15 ? 'selected' : ''}>15</option>
+        <option value="30" ${t.minute === 30 ? 'selected' : ''}>30</option>
+        <option value="45" ${t.minute === 45 ? 'selected' : ''}>45</option>
+      </select>
+      <select id="${prefix}Ampm" class="inp time-sel">
+        <option value="AM" ${t.ampm === 'AM' ? 'selected' : ''}>AM</option>
+        <option value="PM" ${t.ampm === 'PM' ? 'selected' : ''}>PM</option>
+      </select>
+    </div>`;
+}
+
+function readTimePicker(prefix) {
+  const h = document.getElementById(prefix + 'Hour').value;
+  const m = document.getElementById(prefix + 'Min').value;
+  const ap = document.getElementById(prefix + 'Ampm').value;
+  return h + ':' + m + ' ' + ap;
+}
+
+// ═══════════════════════════════════════════════════════════
+// EDIT SHIFT DIALOG
+// ═══════════════════════════════════════════════════════════
+
+function openEditShiftDialog(shiftId) {
+  const shift = allShifts.find(s => s.id === shiftId);
+  if (!shift) return;
+  const def = SHIFT_DEFS[shift.shift_type];
+  const dateStr = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  // Determine current start/end — use custom times if set, otherwise parse from template
+  const templateParts = def.time.split('\u2013').map(s => s.trim());  // e.g. ["7:00 AM", "3:00 PM"]
+  const currentStart = shift.start_time || templateParts[0] || '7:00 AM';
+  const currentEnd   = shift.end_time   || templateParts[1] || '3:00 PM';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.innerHTML = `
+    <h3>\u270f\ufe0f Edit Shift</h3>
+    <p><strong>Date:</strong> ${dateStr}</p>
+    <p><strong>Type:</strong> ${def.icon} ${shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)}</p>
+    <p><strong>Assigned:</strong> ${shift.is_open ? 'Open Shift' : (shift.full_name || allStaff.find(s => s.id === shift.assigned_to)?.full_name || 'Unknown')}</p>
+    <hr>
+    <label style="font-weight:600;margin-bottom:4px;display:block;">Start Time</label>
+    ${buildTimePicker('editShiftStart', currentStart)}
+    <label style="font-weight:600;margin:12px 0 4px;display:block;">End Time</label>
+    ${buildTimePicker('editShiftEnd', currentEnd)}
+    <div class="modal-actions">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="saveEditShift(${shift.id})">Save Times</button>
+    </div>
+  `;
+
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+}
+
+async function saveEditShift(shiftId) {
+  const startTime = readTimePicker('editShiftStart');
+  const endTime   = readTimePicker('editShiftEnd');
+
+  try {
+    showLoading();
+    await apiCall(`/shifts/${shiftId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ startTime, endTime })
+    });
+    document.querySelector('.modal-overlay')?.remove();
+    await loadShifts();
+    showSuccess('Shift times updated!');
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ADD SHIFT DIALOG
+// ═══════════════════════════════════════════════════════════
+
+function openAddShiftDialog(date, sourceShiftType, sourceStart, sourceEnd) {
+  const def = SHIFT_DEFS[sourceShiftType];
+  const dateStr = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  // Default times from the clicked tile (custom or template)
+  const templateParts = def.time.split('\u2013').map(s => s.trim());
+  const defaultStart = sourceStart || templateParts[0] || '7:00 AM';
+  const defaultEnd   = sourceEnd   || templateParts[1] || '3:00 PM';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.innerHTML = `
+    <h3>\u2795 Add Shift</h3>
+    <p><strong>Date:</strong> ${dateStr}</p>
+    <hr>
+    <label style="font-weight:600;margin-bottom:4px;display:block;">Shift Type</label>
+    <select id="addShiftType" class="inp" onchange="addShiftTypeChanged()">
+      ${Object.entries(SHIFT_DEFS).map(([key, d]) =>
+        `<option value="${key}" ${key === sourceShiftType ? 'selected' : ''}>${d.icon} ${d.label} (${d.time})</option>`
+      ).join('')}
+    </select>
+    <label style="font-weight:600;margin:12px 0 4px;display:block;">Start Time</label>
+    ${buildTimePicker('addShiftStart', defaultStart)}
+    <label style="font-weight:600;margin:12px 0 4px;display:block;">End Time</label>
+    ${buildTimePicker('addShiftEnd', defaultEnd)}
+    <label style="font-weight:600;margin:12px 0 4px;display:block;">Assign To</label>
+    <select id="addShiftAssign" class="inp">
+      <option value="OPEN" selected>\ud83d\udced Open Shift</option>
+      ${allStaff.filter(s => s.username !== '_open' && s.username !== 'admin').map(s =>
+        `<option value="${s.id}">${s.full_name} (${s.job_title})</option>`
+      ).join('')}
+    </select>
+    <div class="modal-actions">
+      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="saveAddShift('${date}')">Create Shift</button>
+    </div>
+  `;
+
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+}
+
+function addShiftTypeChanged() {
+  const sel = document.getElementById('addShiftType');
+  const def = SHIFT_DEFS[sel.value];
+  if (!def) return;
+  const parts = def.time.split('\u2013').map(s => s.trim());
+  if (parts.length === 2) {
+    const s = parseTimeString(parts[0]);
+    const e = parseTimeString(parts[1]);
+    document.getElementById('addShiftStartHour').value = s.hour;
+    document.getElementById('addShiftStartMin').value = String(s.minute).padStart(2, '0');
+    document.getElementById('addShiftStartAmpm').value = s.ampm;
+    document.getElementById('addShiftEndHour').value = e.hour;
+    document.getElementById('addShiftEndMin').value = String(e.minute).padStart(2, '0');
+    document.getElementById('addShiftEndAmpm').value = e.ampm;
+  }
+}
+
+async function saveAddShift(date) {
+  const shiftType = document.getElementById('addShiftType').value;
+  const startTime = readTimePicker('addShiftStart');
+  const endTime   = readTimePicker('addShiftEnd');
+  const assignVal = document.getElementById('addShiftAssign').value;
+  const isOpen    = (assignVal === 'OPEN');
+  const assignedTo = isOpen ? null : parseInt(assignVal);
+
+  try {
+    showLoading();
+    await apiCall('/shifts', {
+      method: 'POST',
+      body: JSON.stringify({
+        date,
+        shiftType,
+        assignedTo,
+        isOpen,
+        startTime,
+        endTime,
+        allowDuplicate: true
+      })
+    });
+    document.querySelector('.modal-overlay')?.remove();
+    await loadShifts();
+    showSuccess('New shift created!');
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
