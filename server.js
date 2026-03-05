@@ -195,6 +195,21 @@ initializeDatabase().then(() => {
     console.error('Phone/email column migration failed:', err.message);
   }
 
+  // ── Shift start_time / end_time column migration ─────────────────────
+  try {
+    const shiftColumns = db.pragma('table_info(shifts)').map(c => c.name);
+    if (!shiftColumns.includes('start_time')) {
+      db.prepare('ALTER TABLE shifts ADD COLUMN start_time TEXT').run();
+      console.log('Migration: added start_time column to shifts table');
+    }
+    if (!shiftColumns.includes('end_time')) {
+      db.prepare('ALTER TABLE shifts ADD COLUMN end_time TEXT').run();
+      console.log('Migration: added end_time column to shifts table');
+    }
+  } catch (err) {
+    console.error('Shift time column migration failed:', err.message);
+  }
+
   // Initialize Telegram bot
   require('./server/telegram');
 
