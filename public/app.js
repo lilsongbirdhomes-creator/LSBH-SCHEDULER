@@ -542,6 +542,7 @@ async function addStaff() {
   const jobTitle = document.getElementById('newJobTitle').value;
   const phone = document.getElementById('newPhone').value.trim();
   const email = document.getElementById('newEmail').value.trim();
+  const telegramId = document.getElementById('newTelegramId').value.trim();
   
   if (!username || !fullName) {
     alert('Please enter username and full name');
@@ -552,7 +553,7 @@ async function addStaff() {
     showLoading();
     const result = await apiCall('/staff', {
       method: 'POST',
-      body: JSON.stringify({ username, fullName, role, jobTitle, phone: phone || null, email: email || null })
+      body: JSON.stringify({ username, fullName, role, jobTitle, phone: phone || null, email: email || null, telegramId: telegramId || null })
     });
     
     alert(`Staff added!\nUsername: ${username}\nTemp Password: ${result.tempPassword}\n\nThey must change password on first login.`);
@@ -561,6 +562,7 @@ async function addStaff() {
     document.getElementById('newFullName').value = '';
     document.getElementById('newPhone').value = '';
     document.getElementById('newEmail').value = '';
+    document.getElementById('newTelegramId').value = '';
     
     // Await loadStaff to ensure allStaff array is updated
     await loadStaff();
@@ -612,6 +614,7 @@ function openEditStaff(staffId) {
   if (!staff) return;
 
   document.getElementById('editStaffId').value = staffId;
+  document.getElementById('editUsername').value = staff.username || '';
   document.getElementById('editFullName').value = staff.full_name;
   document.getElementById('editJobTitle').value = staff.job_title;
   document.getElementById('editTileColor').value = staff.tile_color || '#f5f5f5';
@@ -631,6 +634,7 @@ function closeEditStaffModal() {
 
 async function saveStaffEdit() {
   const staffId = document.getElementById('editStaffId').value;
+  const username = document.getElementById('editUsername').value.trim().toLowerCase();
   const fullName = document.getElementById('editFullName').value.trim();
   const jobTitle = document.getElementById('editJobTitle').value;
   const tileColor = document.getElementById('editTileColor').value;
@@ -644,6 +648,7 @@ async function saveStaffEdit() {
     await apiCall(`/staff/${staffId}`, {
       method: 'PUT',
       body: JSON.stringify({ 
+        username: username || undefined,
         fullName, 
         jobTitle, 
         tileColor, 
@@ -3501,19 +3506,4 @@ async function confirmEmergencyAbsence(shift) {
       body: JSON.stringify({ 
         shiftId: shift.id, 
         reason: reason.trim(),
-        reportedWhileOnDuty: false 
-      })
-    });
-    
-    // Exit emergency mode
-    emergencyAbsenceMode = false;
-    emergencyEligibleShifts = [];
-    
-    showSuccess('Emergency absence reported. House Manager and Admin have been notified.');
-    loadShifts();
-  } catch (err) {
-    alert('Error reporting absence: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
+        report
