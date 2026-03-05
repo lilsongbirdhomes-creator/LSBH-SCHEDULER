@@ -139,6 +139,7 @@
             <div class="frow">
               <input type="tel" id="newPhone" placeholder="Phone (optional)">
               <input type="email" id="newEmail" placeholder="Email (optional)">
+              <input type="text" id="newTelegramId" placeholder="Telegram ID (optional)">
               <button class="add-s-btn" onclick="addStaff()">Add Staff</button>
             </div>
           </div>
@@ -246,6 +247,10 @@
   <div class="modal">
     <h3>✏️ Edit Staff Member</h3>
     <input type="hidden" id="editStaffId">
+    <div class="fg">
+      <label>Username</label>
+      <input type="text" id="editUsername" placeholder="Lowercase, no spaces" autocomplete="off">
+    </div>
     <div class="fg">
       <label>Full Name</label>
       <input type="text" id="editFullName">
@@ -664,12 +669,4 @@
     <div id="importPreview"></div>
     
     <div class="modal-actions">
-      <button class="b-can" onclick="closeImportDialog()">Cancel</button>
-      <button class="b-pri" id="importButton" onclick="confirmImport()" disabled>Import Data</button>
-    </div>
-  </div>
-</div>
-
-<script src="/app.js"></script>
-</body>
-</html>
+  
