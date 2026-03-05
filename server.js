@@ -223,8 +223,15 @@ initializeDatabase().then(() => {
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
 
-  // Session configuration
+  // Session configuration with SQLite store for persistence [FIXED]
+  const SqliteStore = require('express-session-sqlite');
+
   app.use(session({
+    store: new SqliteStore({
+      db: process.env.SESSIONS_DB_PATH || './database/sessions.db',
+      table: 'sessions',
+      cleanupInterval: 24 * 60 * 60 * 1000
+    }),
     secret: process.env.SESSION_SECRET || 'fallback-secret-key',
     resave: false,
     saveUninitialized: false,
