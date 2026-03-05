@@ -2086,15 +2086,18 @@ function switchGenTab(tabName) {
 function populateStaffDropdowns() {
   const activeStaff = allStaff.filter(s => s.role === 'staff' && s.username !== '_open');
   
-  // Specific staff dropdown
+  // Specific staff dropdown — only exists inside the Shift Generator modal
   const specificSelect = document.getElementById('genSpecificStaff');
-  specificSelect.innerHTML = '<option value="">-- Select Staff --</option>';
-  activeStaff.forEach(s => {
-    specificSelect.innerHTML += `<option value="${s.id}">${s.full_name}</option>`;
-  });
+  if (specificSelect) {
+    specificSelect.innerHTML = '<option value="">-- Select Staff --</option>';
+    activeStaff.forEach(s => {
+      specificSelect.innerHTML += `<option value="${s.id}">${s.full_name}</option>`;
+    });
+  }
   
-  // Rotation list
+  // Rotation list — only exists inside the Shift Generator modal
   const rotationList = document.getElementById('rotationList');
+  if (!rotationList) return;
   rotationList.innerHTML = '';
   activeStaff.forEach(s => {
     const item = document.createElement('div');
@@ -2334,34 +2337,40 @@ async function copyShifts() {
 async function loadTemplates() {
   try {
     const templates = await apiCall('/shift-templates');
-    
-    document.getElementById('tmplMorningLabel').value = templates.morning?.label || 'Morning';
-    document.getElementById('tmplMorningTime').value = templates.morning?.time || '7:00 AM – 3:00 PM';
-    document.getElementById('tmplMorningHours').value = templates.morning?.hours || '8.0';
-    
-    document.getElementById('tmplAfternoonLabel').value = templates.afternoon?.label || 'Afternoon';
-    document.getElementById('tmplAfternoonTime').value = templates.afternoon?.time || '3:00 PM – 7:00 PM';
-    document.getElementById('tmplAfternoonHours').value = templates.afternoon?.hours || '4.0';
-    
-    document.getElementById('tmplOvernightLabel').value = templates.overnight?.label || 'Overnight';
-    document.getElementById('tmplOvernightTime').value = templates.overnight?.time || '7:00 PM – 7:00 AM';
-    document.getElementById('tmplOvernightHours').value = templates.overnight?.hours || '12.0';
-    
-    // Update SHIFT_DEFS with loaded values
+
+    // Always update SHIFT_DEFS (needed at startup for correct tile times)
     if (templates.morning) {
       SHIFT_DEFS.morning.label = templates.morning.label;
-      SHIFT_DEFS.morning.time = templates.morning.time;
+      SHIFT_DEFS.morning.time  = templates.morning.time;
       SHIFT_DEFS.morning.hours = templates.morning.hours;
     }
     if (templates.afternoon) {
       SHIFT_DEFS.afternoon.label = templates.afternoon.label;
-      SHIFT_DEFS.afternoon.time = templates.afternoon.time;
+      SHIFT_DEFS.afternoon.time  = templates.afternoon.time;
       SHIFT_DEFS.afternoon.hours = templates.afternoon.hours;
     }
     if (templates.overnight) {
       SHIFT_DEFS.overnight.label = templates.overnight.label;
-      SHIFT_DEFS.overnight.time = templates.overnight.time;
+      SHIFT_DEFS.overnight.time  = templates.overnight.time;
       SHIFT_DEFS.overnight.hours = templates.overnight.hours;
+    }
+
+    // Only write to the template form inputs when the Shift Generator modal is in the DOM.
+    // This function is also called at startup (before the modal is shown), so guard each
+    // getElementById call to avoid null-reference errors.
+    const tmplMorningLabel = document.getElementById('tmplMorningLabel');
+    if (tmplMorningLabel) {
+      tmplMorningLabel.value = templates.morning?.label || 'Morning';
+      document.getElementById('tmplMorningTime').value  = templates.morning?.time  || '7:00 AM \u2013 3:00 PM';
+      document.getElementById('tmplMorningHours').value = templates.morning?.hours || '8.0';
+
+      document.getElementById('tmplAfternoonLabel').value = templates.afternoon?.label || 'Afternoon';
+      document.getElementById('tmplAfternoonTime').value  = templates.afternoon?.time  || '3:00 PM \u2013 7:00 PM';
+      document.getElementById('tmplAfternoonHours').value = templates.afternoon?.hours || '4.0';
+
+      document.getElementById('tmplOvernightLabel').value = templates.overnight?.label || 'Overnight';
+      document.getElementById('tmplOvernightTime').value  = templates.overnight?.time  || '7:00 PM \u2013 7:00 AM';
+      document.getElementById('tmplOvernightHours').value = templates.overnight?.hours || '12.0';
     }
   } catch (err) {
     console.error('Load templates error:', err);
