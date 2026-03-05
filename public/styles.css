@@ -118,6 +118,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .modal-actions .b-pri{background:#667eea;color:white;}
 .modal-actions .b-pri:hover{background:#5568d3;}
 .modal-actions .b-pri:disabled{background:#ccc;cursor:not-allowed;}
+.modal-actions .b-del-shift{background:#dc3545;color:white;}
+.modal-actions .b-del-shift:hover{background:#c82333;}
+.modal-actions .b-del-confirm{background:#7b0000;color:white;animation:pulse-red .4s ease;}
+@keyframes pulse-red{0%{transform:scale(1)}50%{transform:scale(1.06)}100%{transform:scale(1)}}
 .modal-actions .b-edit-shift{background:#ffc107;color:#212529;}
 .modal-actions .b-edit-shift:hover{background:#e0a800;}
 .modal-actions .b-add-shift{background:#28a745;color:white;}
