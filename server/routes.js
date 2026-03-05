@@ -102,7 +102,7 @@ router.get('/staff', requireAuth, (req, res) => {
 
 // POST /api/staff - Add new staff member (admin only)
 router.post('/staff', requireAdmin, async (req, res) => {
-  const { username, fullName, role, jobTitle, tileColor, textColor, phone, email } = req.body;
+  const { username, fullName, role, jobTitle, tileColor, textColor, phone, email, telegramId } = req.body;
   
   if (!username || !fullName) {
     return res.status(400).json({ error: 'Username and full name required' });
@@ -119,8 +119,8 @@ router.post('/staff', requireAdmin, async (req, res) => {
   
   try {
     const result = req.db.prepare(`
-      INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, phone, email)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, phone, email, telegram_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       username.toLowerCase(),
       hashedPassword,
@@ -130,7 +130,8 @@ router.post('/staff', requireAdmin, async (req, res) => {
       tileColor || '#f5f5f5',
       textColor || 'black',
       phone || null,
-      email || null
+      email || null,
+      telegramId || null
     );
     
     res.json({ 
@@ -153,12 +154,28 @@ router.put('/staff/:id', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Not authorized' });
   }
   
-  const { fullName, role, jobTitle, tileColor, textColor, email, phone, telegramId } = req.body;
+  const { username, fullName, role, jobTitle, tileColor, textColor, email, phone, telegramId } = req.body;
   
   // Build update query based on what's provided
   const updates = [];
   const values = [];
-  
+
+  // Username update — admin only, must be unique and not reserved
+  if (isAdmin && username) {
+    const newUsername = username.toLowerCase().trim();
+    if (newUsername === '_open') {
+      return res.status(400).json({ error: 'That username is reserved' });
+    }
+    const conflict = req.db.prepare(
+      'SELECT id FROM users WHERE username = ? AND id != ?'
+    ).get(newUsername, staffId);
+    if (conflict) {
+      return res.status(400).json({ error: 'Username already taken' });
+    }
+    updates.push('username = ?');
+    values.push(newUsername);
+  }
+
   if (fullName) { updates.push('full_name = ?'); values.push(fullName); }
   if (isAdmin && role) { updates.push('role = ?'); values.push(role); }
   if (jobTitle) { updates.push('job_title = ?'); values.push(jobTitle); }
