@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════
 // GLOBAL STATE
-// ══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 let currentUser = null;
 let viewMode = 'week';
 
@@ -2085,13 +2085,16 @@ function formatDateShort(date) {
 // ═══════════════════════════════════════════════════════════
 
 function openShiftGenerator() {
-  // Show modal first
   const modal = document.getElementById('shiftGeneratorModal');
   if (!modal) {
-    console.error('Shift generator modal not found');
+    console.error('Shift generator modal not found in DOM - may have been removed');
+    alert('Error: Shift generator unavailable. Please refresh the page.');
     return;
   }
-  modal.style.display = 'flex';
+  
+  // Remove inline style and let CSS handle it
+  modal.style.display = '';
+  modal.classList.add('show-modal');
   
   // Load templates from localStorage
   loadTemplates();
@@ -2122,6 +2125,8 @@ function openShiftGenerator() {
 function closeShiftGenerator() {
   const modal = document.getElementById('shiftGeneratorModal');
   if (modal) {
+    modal.classList.remove('show-modal');
+    // Set display none as fallback
     modal.style.display = 'none';
   }
 }
