@@ -2085,6 +2085,14 @@ function formatDateShort(date) {
 // ═══════════════════════════════════════════════════════════
 
 function openShiftGenerator() {
+  // Show modal first
+  const modal = document.getElementById('shiftGeneratorModal');
+  if (!modal) {
+    console.error('Shift generator modal not found');
+    return;
+  }
+  modal.style.display = 'flex';
+  
   // Load templates from localStorage
   loadTemplates();
   
@@ -2096,13 +2104,15 @@ function openShiftGenerator() {
   const twoWeeks = new Date(today);
   twoWeeks.setDate(twoWeeks.getDate() + 14);
   
-  document.getElementById('genStartDate').value = formatDate(today);
-  document.getElementById('genEndDate').value = formatDate(twoWeeks);
-  document.getElementById('copySourceDate').value = formatDate(today);
-  document.getElementById('copyTargetDate').value = formatDate(twoWeeks);
+  const genStart = document.getElementById('genStartDate');
+  const genEnd = document.getElementById('genEndDate');
+  const copySource = document.getElementById('copySourceDate');
+  const copyTarget = document.getElementById('copyTargetDate');
   
-  // Show modal
-  document.getElementById('shiftGeneratorModal').style.display = 'flex';
+  if (genStart) genStart.value = formatDate(today);
+  if (genEnd) genEnd.value = formatDate(twoWeeks);
+  if (copySource) copySource.value = formatDate(today);
+  if (copyTarget) copyTarget.value = formatDate(twoWeeks);
   
   // Default to create tab
   switchGenTab('create');
@@ -2110,7 +2120,10 @@ function openShiftGenerator() {
 }
 
 function closeShiftGenerator() {
-  document.getElementById('shiftGeneratorModal').style.display = 'none';
+  const modal = document.getElementById('shiftGeneratorModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
 }
 
 function switchGenTab(tabName) {
