@@ -2338,17 +2338,21 @@ async function generateShifts() {
 
 async function copyShifts() {
   const copyFrom = document.querySelector('input[name="copyFrom"]:checked').value;
-  const sourceDate = new Date(document.getElementById('copySourceDate').value);
-  const targetDate = new Date(document.getElementById('copyTargetDate').value);
+  const sourceDate = document.getElementById('copySourceDate').value;
+  const targetDate = document.getElementById('copyTargetDate').value;
   const keepAssignments = document.getElementById('copyKeepAssignments').checked;
   const replaceExisting = document.getElementById('copyReplaceExisting').checked;
   
-  if (isNaN(sourceDate) || isNaN(targetDate)) {
+  if (!sourceDate || !targetDate) {
     alert('Please select both source and target dates');
     return;
   }
   
-  if (!confirm(`Copy shifts from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}?`)) {
+  // Format dates for display (parse as local date by adding noon time)
+  const sourceDisplay = new Date(sourceDate + 'T12:00:00').toLocaleDateString();
+  const targetDisplay = new Date(targetDate + 'T12:00:00').toLocaleDateString();
+  
+  if (!confirm(`Copy shifts from ${sourceDisplay} to ${targetDisplay}?`)) {
     return;
   }
   
@@ -2358,8 +2362,8 @@ async function copyShifts() {
     const result = await apiCall('/shifts/copy', {
       method: 'POST',
       body: JSON.stringify({
-        sourceDate: formatDate(sourceDate),
-        targetDate: formatDate(targetDate),
+        sourceDate: sourceDate,  // Already in YYYY-MM-DD format from input
+        targetDate: targetDate,  // Already in YYYY-MM-DD format from input
         copyType: copyFrom,
         keepAssignments,
         replaceExisting
