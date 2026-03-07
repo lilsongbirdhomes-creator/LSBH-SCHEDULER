@@ -3836,7 +3836,49 @@ async function confirmEmergencyAbsence(shift) {
 // PRINT FUNCTIONALITY
 // ═══════════════════════════════════════════════════════════
 
+// Helper function to convert color to grayscale
+function colorToGrayscale(hexColor) {
+  if (!hexColor || hexColor === 'white' || hexColor === 'black') return hexColor;
+  
+  // Remove # if present
+  const hex = hexColor.replace('#', '');
+  
+  // Handle short hex codes
+  if (hex.length === 3) {
+    const r = parseInt(hex[0] + hex[0], 16);
+    const g = parseInt(hex[1] + hex[1], 16);
+    const b = parseInt(hex[2] + hex[2], 16);
+    const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    const grayHex = gray.toString(16).padStart(2, '0');
+    return `#${grayHex}${grayHex}${grayHex}`;
+  }
+  
+  // Convert to RGB
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  
+  // Calculate grayscale using luminance formula
+  const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  
+  // Convert back to hex
+  const grayHex = gray.toString(16).padStart(2, '0');
+  return `#${grayHex}${grayHex}${grayHex}`;
+}
+
 function openPrintDialog() {
+  // Update dialog text based on current view mode
+  const isWeekView = viewMode === 'week';
+  
+  document.getElementById('printDialogTitle').textContent = 
+    isWeekView ? '🖨️ Print Week' : '🖨️ Print Month';
+  
+  document.getElementById('printOptionAll').textContent = 
+    isWeekView ? 'Full week (all shifts)' : 'Full month (all shifts)';
+  
+  document.getElementById('printOptionMy').textContent = 
+    isWeekView ? 'Full week (only my shifts)' : 'Full month (only my shifts)';
+  
   document.getElementById('printDialog').style.display = 'flex';
 }
 
@@ -3846,27 +3888,29 @@ function closePrintDialog() {
 
 function executePrint() {
   const printType = document.querySelector('input[name="printType"]:checked').value;
+  const blackWhite = document.getElementById('printBlackWhite').checked;
   closePrintDialog();
   
   // Small delay to let modal close
   setTimeout(() => {
     if (printType === 'list') {
-      printListView();
+      printListView(blackWhite);
     } else {
       // Check if we're in week or month view
       if (viewMode === 'week') {
-        printWeekView(printType === 'myshifts');
+        printWeekView(printType === 'myshifts', blackWhite);
       } else {
-        printCalendarView(printType === 'myshifts');
+        printCalendarView(printType === 'myshifts', blackWhite);
       }
     }
   }, 100);
 }
 
-function printCalendarView(myShiftsOnly) {
+function printCalendarView(myShiftsOnly, blackWhite = false) {
   // Debug logging
   console.log('📊 Print Calendar View:', {
     myShiftsOnly,
+    blackWhite,
     allShiftsCount: allShifts.length,
     allStaffCount: allStaff.length,
     currentUser: currentUser?.full_name,
@@ -3948,9 +3992,16 @@ function printCalendarView(myShiftsOnly) {
       // Get staff info for colors
       const staff = allStaff.find(s => s.id === shift.assigned_to);
       const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
-      const tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-      const textColor = isOpen ? 'white' : (staff?.text_color || 'black');
+      let tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
+      let textColor = isOpen ? 'white' : (staff?.text_color || 'black');
       
+      // Apply grayscale if black & white mode
+      if (blackWhite) {
+        tileColor = colorToGrayscale(tileColor);
+        const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
+        textColor = grayValue > 128 ? "black" : "white";
+      }
+
       html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px solid ${tileColor};">`;
       html += `<strong>${staffName}</strong>`;
       html += `${shiftDef.label || shift.shift_type}<br>`;
@@ -3987,10 +4038,11 @@ function printCalendarView(myShiftsOnly) {
   }, 250);
 }
 
-function printWeekView(myShiftsOnly) {
+function printWeekView(myShiftsOnly, blackWhite = false) {
   // Debug logging
   console.log('📊 Print Week View:', {
     myShiftsOnly,
+    blackWhite,
     allShiftsCount: allShifts.length,
     viewDate: formatDate(viewDate)
   });
@@ -4048,9 +4100,16 @@ function printWeekView(myShiftsOnly) {
       // Get staff info for colors
       const staff = allStaff.find(s => s.id === shift.assigned_to);
       const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
-      const tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-      const textColor = isOpen ? 'white' : (staff?.text_color || 'black');
+      let tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
+      let textColor = isOpen ? 'white' : (staff?.text_color || 'black');
       
+      // Apply grayscale if black & white mode
+      if (blackWhite) {
+        tileColor = colorToGrayscale(tileColor);
+        const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
+        textColor = grayValue > 128 ? "black" : "white";
+      }
+
       html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px solid ${tileColor};">`;
       html += `<strong>${staffName}</strong>`;
       html += `${shiftDef.label || shift.shift_type}<br>`;
@@ -4087,7 +4146,7 @@ function printWeekView(myShiftsOnly) {
   }, 250);
 }
 
-function printListView() {
+function printListView(blackWhite = false) {
   // Get current month info
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
