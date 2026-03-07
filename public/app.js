@@ -3861,8 +3861,12 @@ function colorToGrayscale(hexColor) {
   // Calculate grayscale using luminance formula
   const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
   
+  // Ensure background is light enough for black text
+  // If too dark (< 180), lighten it to ensure readability
+  const adjustedGray = gray < 180 ? Math.max(180, gray + 60) : gray;
+  
   // Convert back to hex
-  const grayHex = gray.toString(16).padStart(2, '0');
+  const grayHex = adjustedGray.toString(16).padStart(2, '0');
   return `#${grayHex}${grayHex}${grayHex}`;
 }
 
@@ -3888,7 +3892,8 @@ function closePrintDialog() {
 
 function executePrint() {
   const printType = document.querySelector('input[name="printType"]:checked').value;
-  const blackWhite = document.getElementById('printBlackWhite').checked;
+  const printInColor = document.getElementById('printInColor').checked;
+  const blackWhite = !printInColor; // Reverse: unchecked = B&W (default)
   closePrintDialog();
   
   // Small delay to let modal close
@@ -4000,7 +4005,7 @@ function printCalendarView(myShiftsOnly, blackWhite = false) {
       if (blackWhite) {
         tileColor = colorToGrayscale(tileColor);
         const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
-        textColor = grayValue > 128 ? "black" : "white";
+        textColor = "black";
         borderColor = "black";
       }
 
@@ -4111,7 +4116,7 @@ function printWeekView(myShiftsOnly, blackWhite = false) {
         tileColor = colorToGrayscale(tileColor);
         borderColor = "black";
         const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
-        textColor = grayValue > 128 ? "black" : "white";
+        textColor = "black";
       }
 
       html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px solid ${borderColor};">`;
