@@ -3993,16 +3993,18 @@ function printCalendarView(myShiftsOnly, blackWhite = false) {
       const staff = allStaff.find(s => s.id === shift.assigned_to);
       const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
       let tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-      let textColor = isOpen ? 'white' : (staff?.text_color || 'black');
+      let textColor = isOpen ? 'black' : (staff?.text_color || 'black');
       
+      let borderColor = isOpen ? "black" : tileColor;
       // Apply grayscale if black & white mode
       if (blackWhite) {
         tileColor = colorToGrayscale(tileColor);
         const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
         textColor = grayValue > 128 ? "black" : "white";
+        borderColor = "black";
       }
 
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px solid ${tileColor};">`;
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px solid ${borderColor};">`;
       html += `<strong>${staffName}</strong>`;
       html += `${shiftDef.label || shift.shift_type}<br>`;
       html += `${shift.start_time || shiftDef.time || ''}`;
@@ -4101,16 +4103,18 @@ function printWeekView(myShiftsOnly, blackWhite = false) {
       const staff = allStaff.find(s => s.id === shift.assigned_to);
       const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
       let tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-      let textColor = isOpen ? 'white' : (staff?.text_color || 'black');
+      let textColor = isOpen ? 'black' : (staff?.text_color || 'black');
       
+      let borderColor = isOpen ? "black" : tileColor;
       // Apply grayscale if black & white mode
       if (blackWhite) {
         tileColor = colorToGrayscale(tileColor);
+        borderColor = "black";
         const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
         textColor = grayValue > 128 ? "black" : "white";
       }
 
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px solid ${tileColor};">`;
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px solid ${borderColor};">`;
       html += `<strong>${staffName}</strong>`;
       html += `${shiftDef.label || shift.shift_type}<br>`;
       html += `${shift.start_time || shiftDef.time || ''}`;
