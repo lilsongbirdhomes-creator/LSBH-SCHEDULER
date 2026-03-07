@@ -779,9 +779,17 @@ async function loadShifts() {
   
   if (viewMode === 'month') {
     // Get first day of month
-    startDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
     // Get last day of month
-    endDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    const lastDay = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    
+    // Extend to full pay periods (complete weeks starting Sunday)
+    startDate = getWeekStart(firstDay); // Go back to Sunday if needed
+    endDate = new Date(lastDay);
+    // If last day isn't Saturday, extend to Saturday
+    if (endDate.getDay() !== 6) {
+      endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
+    }
   } else {
     // Week view
     startDate = getWeekStart(viewDate);
@@ -937,26 +945,33 @@ function renderMonthView() {
   // Get last day of month
   const lastDay = new Date(year, month + 1, 0).getDate();
   
-  // Add empty cells for days before month starts
-  for (let i = 0; i < startDay; i++) {
-    const emptyCell = document.createElement('div');
-    emptyCell.className = 'month-day-cell empty';
-    grid.appendChild(emptyCell);
-  }
+  // Calculate first date to show (Sunday of first week)
+  const firstDisplayDate = new Date(year, month, 1);
+  firstDisplayDate.setDate(firstDisplayDate.getDate() - startDay);
   
-  // Add cells for each day of month
-  for (let day = 1; day <= lastDay; day++) {
-    const d = new Date(year, month, day);
+  // Calculate how many days to show (always complete weeks)
+  const lastDayDate = new Date(year, month, lastDay);
+  const endDay = lastDayDate.getDay();
+  const daysToShow = startDay + lastDay + (endDay === 6 ? 0 : 6 - endDay);
+  
+  // Render all days (including previous/next month)
+  for (let i = 0; i < daysToShow; i++) {
+    const d = new Date(firstDisplayDate);
+    d.setDate(d.getDate() + i);
     const dateStr = formatDate(d);
     const isToday = dateStr === formatDate(new Date());
     const isWknd = d.getDay() === 0 || d.getDay() === 6;
+    const isCurrentMonth = d.getMonth() === month;
     
     const cell = document.createElement('div');
-    cell.className = 'month-day-cell' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
+    cell.className = 'month-day-cell' 
+      + (isWknd ? ' wknd' : '') 
+      + (isToday ? ' today' : '')
+      + (!isCurrentMonth ? ' other-month' : '');
     
     const dayNum = document.createElement('div');
     dayNum.className = 'month-day-num';
-    dayNum.textContent = day;
+    dayNum.textContent = d.getDate();
     cell.appendChild(dayNum);
     
     const shiftsContainer = document.createElement('div');
@@ -3815,4 +3830,203 @@ async function confirmEmergencyAbsence(shift) {
   } finally {
     hideLoading();
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// PRINT FUNCTIONALITY
+// ═══════════════════════════════════════════════════════════
+
+function openPrintDialog() {
+  document.getElementById('printDialog').style.display = 'flex';
+}
+
+function closePrintDialog() {
+  document.getElementById('printDialog').style.display = 'none';
+}
+
+function executePrint() {
+  const printType = document.querySelector('input[name="printType"]:checked').value;
+  closePrintDialog();
+  
+  // Small delay to let modal close
+  setTimeout(() => {
+    if (printType === 'list') {
+      printListView();
+    } else {
+      printCalendarView(printType === 'myshifts');
+    }
+  }, 100);
+}
+
+function printCalendarView(myShiftsOnly) {
+  // Get current month info
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  
+  // Calculate first date to show (Sunday of first week)
+  const firstDay = new Date(year, month, 1);
+  const startDay = firstDay.getDay();
+  const firstDisplayDate = new Date(year, month, 1);
+  firstDisplayDate.setDate(firstDisplayDate.getDate() - startDay);
+  
+  // Calculate last date (Saturday of last week)
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const lastDayDate = new Date(year, month, lastDay);
+  const endDay = lastDayDate.getDay();
+  const daysToShow = startDay + lastDay + (endDay === 6 ? 0 : 6 - endDay);
+  
+  // Build print HTML
+  let html = `
+    <div id="printContainer">
+      <div class="print-header">
+        <h1>LilSongBirdHomes Staff Schedule</h1>
+        <h2>${monthName}</h2>
+        ${myShiftsOnly ? '<h3>My Shifts Only</h3>' : ''}
+      </div>
+      <div class="print-calendar">
+        <div class="print-month-grid">
+  `;
+  
+  // Day headers
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  dayNames.forEach(day => {
+    html += `<div class="print-day-header">${day}</div>`;
+  });
+  
+  // Days with shifts
+  for (let i = 0; i < daysToShow; i++) {
+    const d = new Date(firstDisplayDate);
+    d.setDate(d.getDate() + i);
+    const dateStr = formatDate(d);
+    const isWknd = d.getDay() === 0 || d.getDay() === 6;
+    const isCurrentMonth = d.getMonth() === month;
+    
+    html += `<div class="print-day-cell${isWknd ? ' wknd' : ''}${!isCurrentMonth ? ' other-month' : ''}">`;
+    html += `<div class="print-day-num">${d.getDate()}</div>`;
+    
+    // Get shifts for this day
+    const dayShifts = allShifts
+      .filter(s => s.date === dateStr)
+      .sort((a, b) => {
+        const order = { morning: 1, afternoon: 2, overnight: 3 };
+        return order[a.shift_type] - order[b.shift_type];
+      });
+    
+    dayShifts.forEach(shift => {
+      // Filter for myShiftsOnly
+      if (myShiftsOnly && shift.assigned_to !== currentUser.id && !shift.is_open) {
+        return;
+      }
+      
+      const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
+      const isOpen = shift.is_open || !shift.assigned_to;
+      const staffName = isOpen ? 'OPEN' : (allStaff.find(s => s.id === shift.assigned_to)?.full_name || 'Unknown');
+      
+      html += `<div class="print-shift ${shift.shift_type}${isOpen ? ' open' : ''}">`;
+      html += `<strong>${shiftDef.label || shift.shift_type}</strong><br>`;
+      html += `${staffName}<br>`;
+      html += `${shift.start_time || shiftDef.time || ''}`;
+      html += `</div>`;
+    });
+    
+    html += `</div>`;
+  }
+  
+  html += `</div></div></div>`;
+  
+  // Create temporary container and print
+  const printDiv = document.createElement('div');
+  printDiv.innerHTML = html;
+  document.body.appendChild(printDiv);
+  
+  window.print();
+  
+  // Clean up
+  setTimeout(() => {
+    document.body.removeChild(printDiv);
+  }, 100);
+}
+
+function printListView() {
+  // Get current month info
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  
+  // Get my shifts for the current display period
+  const myShifts = allShifts
+    .filter(s => s.assigned_to === currentUser.id)
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+      const order = { morning: 1, afternoon: 2, overnight: 3 };
+      return order[a.shift_type] - order[b.shift_type];
+    });
+  
+  // Build HTML
+  let html = `
+    <div id="printContainer">
+      <div class="print-header">
+        <h1>LilSongBirdHomes Staff Schedule</h1>
+        <h2>${monthName} - ${currentUser.full_name}</h2>
+      </div>
+      <div class="print-list">
+        <table class="print-list-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Day</th>
+              <th>Shift Type</th>
+              <th>Time</th>
+              <th>Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+  `;
+  
+  let totalHours = 0;
+  
+  myShifts.forEach(shift => {
+    const d = new Date(shift.date + 'T12:00:00');
+    const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+    const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
+    const hours = shiftDef.hours || 0;
+    totalHours += hours;
+    
+    html += `
+      <tr>
+        <td>${dateFormatted}</td>
+        <td>${dayName}</td>
+        <td>${shiftDef.label || shift.shift_type}</td>
+        <td>${shift.start_time || shiftDef.time || ''}</td>
+        <td>${hours}</td>
+      </tr>
+    `;
+  });
+  
+  html += `
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4" style="text-align:right;font-weight:bold;">Total Hours:</td>
+              <td style="font-weight:bold;">${totalHours}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  `;
+  
+  // Create temporary container and print
+  const printDiv = document.createElement('div');
+  printDiv.innerHTML = html;
+  document.body.appendChild(printDiv);
+  
+  window.print();
+  
+  // Clean up
+  setTimeout(() => {
+    document.body.removeChild(printDiv);
+  }, 100);
 }
