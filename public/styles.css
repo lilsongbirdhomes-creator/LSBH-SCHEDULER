@@ -489,6 +489,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 }
 
 /* Print Styles */
+@page {
+  size: landscape;
+  margin: 0.5in;
+}
+
 @media print {
   /* Hide everything except print content */
   body > *:not(#printContainer) {
