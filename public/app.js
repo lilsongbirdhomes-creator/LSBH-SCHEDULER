@@ -3859,6 +3859,15 @@ function executePrint() {
 }
 
 function printCalendarView(myShiftsOnly) {
+  // Debug logging
+  console.log('📊 Print Calendar View:', {
+    myShiftsOnly,
+    allShiftsCount: allShifts.length,
+    allStaffCount: allStaff.length,
+    currentUser: currentUser?.full_name,
+    viewDate: formatDate(viewDate)
+  });
+  
   // Get current month info
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -3876,13 +3885,19 @@ function printCalendarView(myShiftsOnly) {
   const endDay = lastDayDate.getDay();
   const daysToShow = startDay + lastDay + (endDay === 6 ? 0 : 6 - endDay);
   
+  console.log('📅 Date range:', {
+    firstDisplayDate: formatDate(firstDisplayDate),
+    daysToShow,
+    month: monthName
+  });
+  
   // Build print HTML
   let html = `
     <div id="printContainer">
       <div class="print-header">
         <h1>LilSongBirdHomes Staff Schedule</h1>
         <h2>${monthName}</h2>
-        ${myShiftsOnly ? '<h3>My Shifts Only</h3>' : ''}
+        ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
       </div>
       <div class="print-calendar">
         <div class="print-month-grid">
@@ -3893,6 +3908,8 @@ function printCalendarView(myShiftsOnly) {
   dayNames.forEach(day => {
     html += `<div class="print-day-header">${day}</div>`;
   });
+  
+  let totalShiftsRendered = 0;
   
   // Days with shifts
   for (let i = 0; i < daysToShow; i++) {
@@ -3919,6 +3936,8 @@ function printCalendarView(myShiftsOnly) {
         return;
       }
       
+      totalShiftsRendered++;
+      
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
       const staffName = isOpen ? 'OPEN' : (allStaff.find(s => s.id === shift.assigned_to)?.full_name || 'Unknown');
@@ -3935,17 +3954,27 @@ function printCalendarView(myShiftsOnly) {
   
   html += `</div></div></div>`;
   
+  console.log('📄 Total shifts rendered:', totalShiftsRendered);
+  
+  if (totalShiftsRendered === 0) {
+    alert('No shifts to print for the selected period and filter.');
+    return;
+  }
+  
   // Create temporary container and print
   const printDiv = document.createElement('div');
   printDiv.innerHTML = html;
   document.body.appendChild(printDiv);
   
-  window.print();
-  
-  // Clean up
+  // Wait for DOM to update before printing
   setTimeout(() => {
-    document.body.removeChild(printDiv);
-  }, 100);
+    window.print();
+    
+    // Clean up after print dialog closes
+    setTimeout(() => {
+      document.body.removeChild(printDiv);
+    }, 500);
+  }, 250);
 }
 
 function printListView() {
@@ -3963,12 +3992,18 @@ function printListView() {
       return order[a.shift_type] - order[b.shift_type];
     });
   
+  console.log('📋 Print List View:', {
+    totalShifts: allShifts.length,
+    myShifts: myShifts.length,
+    currentUser: currentUser?.full_name
+  });
+  
   // Build HTML
   let html = `
     <div id="printContainer">
       <div class="print-header">
         <h1>LilSongBirdHomes Staff Schedule</h1>
-        <h2>${monthName} - ${currentUser.full_name}</h2>
+        <h2>${monthName} - ${currentUser?.full_name || 'Staff Member'}</h2>
       </div>
       <div class="print-list">
         <table class="print-list-table">
@@ -3986,24 +4021,32 @@ function printListView() {
   
   let totalHours = 0;
   
-  myShifts.forEach(shift => {
-    const d = new Date(shift.date + 'T12:00:00');
-    const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
-    const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
-    const hours = shiftDef.hours || 0;
-    totalHours += hours;
-    
+  if (myShifts.length === 0) {
     html += `
       <tr>
-        <td>${dateFormatted}</td>
-        <td>${dayName}</td>
-        <td>${shiftDef.label || shift.shift_type}</td>
-        <td>${shift.start_time || shiftDef.time || ''}</td>
-        <td>${hours}</td>
+        <td colspan="5" style="text-align:center;padding:20px;">No shifts assigned for this period</td>
       </tr>
     `;
-  });
+  } else {
+    myShifts.forEach(shift => {
+      const d = new Date(shift.date + 'T12:00:00');
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+      const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
+      const hours = shiftDef.hours || 0;
+      totalHours += hours;
+      
+      html += `
+        <tr>
+          <td>${dateFormatted}</td>
+          <td>${dayName}</td>
+          <td>${shiftDef.label || shift.shift_type}</td>
+          <td>${shift.start_time || shiftDef.time || ''}</td>
+          <td>${hours}</td>
+        </tr>
+      `;
+    });
+  }
   
   html += `
           </tbody>
@@ -4023,10 +4066,13 @@ function printListView() {
   printDiv.innerHTML = html;
   document.body.appendChild(printDiv);
   
-  window.print();
-  
-  // Clean up
+  // Wait for DOM to update before printing
   setTimeout(() => {
-    document.body.removeChild(printDiv);
-  }, 100);
+    window.print();
+    
+    // Clean up after print dialog closes
+    setTimeout(() => {
+      document.body.removeChild(printDiv);
+    }, 500);
+  }, 250);
 }
