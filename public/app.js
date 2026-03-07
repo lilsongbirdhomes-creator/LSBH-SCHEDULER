@@ -3891,16 +3891,15 @@ function printCalendarView(myShiftsOnly) {
     month: monthName
   });
   
-  // Build print HTML
+  // Build print HTML (without outer wrapper - added by createElement below)
   let html = `
-    <div id="printContainer">
-      <div class="print-header">
-        <h1>LilSongBirdHomes Staff Schedule</h1>
-        <h2>${monthName}</h2>
-        ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
-      </div>
-      <div class="print-calendar">
-        <div class="print-month-grid">
+    <div class="print-header">
+      <h1>LilSongBirdHomes Staff Schedule</h1>
+      <h2>${monthName}</h2>
+      ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
+    </div>
+    <div class="print-calendar">
+      <div class="print-month-grid">
   `;
   
   // Day headers
@@ -3952,7 +3951,7 @@ function printCalendarView(myShiftsOnly) {
     html += `</div>`;
   }
   
-  html += `</div></div></div>`;
+  html += `</div></div>`;
   
   console.log('📄 Total shifts rendered:', totalShiftsRendered);
   
@@ -3961,8 +3960,9 @@ function printCalendarView(myShiftsOnly) {
     return;
   }
   
-  // Create temporary container and print
+  // Create temporary container with correct ID
   const printDiv = document.createElement('div');
+  printDiv.id = 'printContainer';
   printDiv.innerHTML = html;
   document.body.appendChild(printDiv);
   
@@ -3998,25 +3998,24 @@ function printListView() {
     currentUser: currentUser?.full_name
   });
   
-  // Build HTML
+  // Build HTML (without outer wrapper - added by createElement below)
   let html = `
-    <div id="printContainer">
-      <div class="print-header">
-        <h1>LilSongBirdHomes Staff Schedule</h1>
-        <h2>${monthName} - ${currentUser?.full_name || 'Staff Member'}</h2>
-      </div>
-      <div class="print-list">
-        <table class="print-list-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Day</th>
-              <th>Shift Type</th>
-              <th>Time</th>
-              <th>Hours</th>
-            </tr>
-          </thead>
-          <tbody>
+    <div class="print-header">
+      <h1>LilSongBirdHomes Staff Schedule</h1>
+      <h2>${monthName} - ${currentUser?.full_name || 'Staff Member'}</h2>
+    </div>
+    <div class="print-list">
+      <table class="print-list-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Day</th>
+            <th>Shift Type</th>
+            <th>Time</th>
+            <th>Hours</th>
+          </tr>
+        </thead>
+        <tbody>
   `;
   
   let totalHours = 0;
@@ -4058,11 +4057,11 @@ function printListView() {
           </tfoot>
         </table>
       </div>
-    </div>
   `;
   
-  // Create temporary container and print
+  // Create temporary container with correct ID
   const printDiv = document.createElement('div');
+  printDiv.id = 'printContainer';
   printDiv.innerHTML = html;
   document.body.appendChild(printDiv);
   
