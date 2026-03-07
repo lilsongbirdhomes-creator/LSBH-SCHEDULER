@@ -3853,7 +3853,12 @@ function executePrint() {
     if (printType === 'list') {
       printListView();
     } else {
-      printCalendarView(printType === 'myshifts');
+      // Check if we're in week or month view
+      if (viewMode === 'week') {
+        printWeekView(printType === 'myshifts');
+      } else {
+        printCalendarView(printType === 'myshifts');
+      }
     }
   }, 100);
 }
@@ -3939,11 +3944,116 @@ function printCalendarView(myShiftsOnly) {
       
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
-      const staffName = isOpen ? 'OPEN' : (allStaff.find(s => s.id === shift.assigned_to)?.full_name || 'Unknown');
       
-      html += `<div class="print-shift ${shift.shift_type}${isOpen ? ' open' : ''}">`;
-      html += `<strong>${shiftDef.label || shift.shift_type}</strong><br>`;
-      html += `${staffName}<br>`;
+      // Get staff info for colors
+      const staff = allStaff.find(s => s.id === shift.assigned_to);
+      const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
+      const tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
+      const textColor = isOpen ? 'white' : (staff?.text_color || 'black');
+      
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px solid ${tileColor};">`;
+      html += `<strong>${staffName}</strong>`;
+      html += `${shiftDef.label || shift.shift_type}<br>`;
+      html += `${shift.start_time || shiftDef.time || ''}`;
+      html += `</div>`;
+    });
+    
+    html += `</div>`;
+  }
+  
+  html += `</div></div>`;
+  
+  console.log('📄 Total shifts rendered:', totalShiftsRendered);
+  
+  if (totalShiftsRendered === 0) {
+    alert('No shifts to print for the selected period and filter.');
+    return;
+  }
+  
+  // Create temporary container with correct ID
+  const printDiv = document.createElement('div');
+  printDiv.id = 'printContainer';
+  printDiv.innerHTML = html;
+  document.body.appendChild(printDiv);
+  
+  // Wait for DOM to update before printing
+  setTimeout(() => {
+    window.print();
+    
+    // Clean up after print dialog closes
+    setTimeout(() => {
+      document.body.removeChild(printDiv);
+    }, 500);
+  }, 250);
+}
+
+function printWeekView(myShiftsOnly) {
+  // Debug logging
+  console.log('📊 Print Week View:', {
+    myShiftsOnly,
+    allShiftsCount: allShifts.length,
+    viewDate: formatDate(viewDate)
+  });
+  
+  // Get week start (Sunday)
+  const weekStart = getWeekStart(viewDate);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  
+  const weekLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  
+  // Build print HTML (without outer wrapper - added by createElement below)
+  let html = `
+    <div class="print-header">
+      <h1>LilSongBirdHomes Staff Schedule</h1>
+      <h2>Week of ${weekLabel}</h2>
+      ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
+    </div>
+    <div class="print-calendar">
+      <div class="print-week-grid">
+  `;
+  
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let totalShiftsRendered = 0;
+  
+  // Generate each day column
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const dateStr = formatDate(d);
+    const isWknd = i === 0 || i === 6;
+    
+    html += `<div class="print-week-day${isWknd ? ' wknd' : ''}">`;
+    html += `<div class="print-week-header">${dayNames[i]}<br>${d.getDate()}</div>`;
+    
+    // Get shifts for this day
+    const dayShifts = allShifts
+      .filter(s => s.date === dateStr)
+      .sort((a, b) => {
+        const order = { morning: 1, afternoon: 2, overnight: 3 };
+        return order[a.shift_type] - order[b.shift_type];
+      });
+    
+    dayShifts.forEach(shift => {
+      // Filter for myShiftsOnly
+      if (myShiftsOnly && shift.assigned_to !== currentUser.id && !shift.is_open) {
+        return;
+      }
+      
+      totalShiftsRendered++;
+      
+      const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
+      const isOpen = shift.is_open || !shift.assigned_to;
+      
+      // Get staff info for colors
+      const staff = allStaff.find(s => s.id === shift.assigned_to);
+      const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
+      const tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
+      const textColor = isOpen ? 'white' : (staff?.text_color || 'black');
+      
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px solid ${tileColor};">`;
+      html += `<strong>${staffName}</strong>`;
+      html += `${shiftDef.label || shift.shift_type}<br>`;
       html += `${shift.start_time || shiftDef.time || ''}`;
       html += `</div>`;
     });
