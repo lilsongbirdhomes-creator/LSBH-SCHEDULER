@@ -40,6 +40,7 @@ async function initializeDatabase() {
           is_approved INTEGER DEFAULT 1,
           is_active INTEGER DEFAULT 1,
           must_change_password INTEGER DEFAULT 0,
+          password_expires_at DATETIME,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -116,15 +117,8 @@ async function initializeDatabase() {
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE sessions (
-          sid TEXT PRIMARY KEY,
-          sess TEXT NOT NULL,
-          expire INTEGER NOT NULL
-        );
-
         CREATE INDEX idx_shifts_date ON shifts(date);
         CREATE INDEX idx_shifts_assigned ON shifts(assigned_to);
-        CREATE INDEX idx_sessions_expire ON sessions(expire);
       `);
       
       console.log('✅ Tables created');
@@ -142,72 +136,28 @@ async function initializeDatabase() {
         VALUES (2, '_open', 'no-login', 'Open Shift', 'system')
       `).run();
       
+      // Create guest user with temporary password
+      const guestPassword = Math.random().toString(36).substring(2, 10); // 8 random chars
+      const hashedGuestPassword = await bcrypt.hash(guestPassword, 10);
+      const guestExpiry = new Date();
+      guestExpiry.setDate(guestExpiry.getDate() + 7); // Expires in 7 days
+      
+      db.prepare(`
+        INSERT INTO users (id, username, password, full_name, role, job_title, must_change_password, password_expires_at)
+        VALUES (3, 'guest', ?, 'Guest Viewer', 'guest', 'Guest', 0, ?)
+      `).run(hashedGuestPassword, guestExpiry.toISOString());
+      
       // Set timezone
       db.prepare(`
         INSERT INTO settings (key, value) VALUES ('timezone', 'America/Chicago')
       `).run();
       
       console.log('✅ Admin user created: admin / admin123');
+      console.log('✅ Guest user created: guest / ' + guestPassword + ' (expires in 7 days)');
       console.log('🎉 Database initialization complete!');
     }
   } catch (err) {
     console.error('⚠️  Database init check failed:', err.message);
-  }
-}
-
-// ── Simple SQLite-based Session Store (Pure JavaScript) ────────────────────
-class SQLiteSessionStore extends session.Store {
-  constructor(db) {
-    super();
-    this.db = db;
-    // Clean up expired sessions every 24 hours
-    setInterval(() => this.cleanup(), 24 * 60 * 60 * 1000);
-  }
-
-  get(sid, callback) {
-    try {
-      const row = this.db.prepare('SELECT sess FROM sessions WHERE sid = ? AND expire > ?').get(sid, Math.floor(Date.now() / 1000));
-      if (!row) {
-        return callback(null, null);
-      }
-      const sess = JSON.parse(row.sess);
-      callback(null, sess);
-    } catch (err) {
-      callback(err);
-    }
-  }
-
-  set(sid, sess, callback) {
-    try {
-      const expire = Math.floor(Date.now() / 1000) + (sess.cookie.maxAge ? sess.cookie.maxAge / 1000 : 24 * 60 * 60);
-      const sessJson = JSON.stringify(sess);
-      
-      this.db.prepare('INSERT OR REPLACE INTO sessions (sid, sess, expire) VALUES (?, ?, ?)').run(sid, sessJson, expire);
-      callback(null);
-    } catch (err) {
-      callback(err);
-    }
-  }
-
-  destroy(sid, callback) {
-    try {
-      this.db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
-      callback(null);
-    } catch (err) {
-      callback(err);
-    }
-  }
-
-  cleanup() {
-    try {
-      const now = Math.floor(Date.now() / 1000);
-      const result = this.db.prepare('DELETE FROM sessions WHERE expire <= ?').run(now);
-      if (result.changes > 0) {
-        console.log(`🧹 Cleaned up ${result.changes} expired sessions`);
-      }
-    } catch (err) {
-      console.error('Session cleanup error:', err);
-    }
   }
 }
 
@@ -254,8 +204,33 @@ initializeDatabase().then(() => {
       db.prepare('ALTER TABLE users ADD COLUMN email TEXT').run();
       console.log('Migration: added email column to users table');
     }
+    if (!userColumns.includes('password_expires_at')) {
+      db.prepare('ALTER TABLE users ADD COLUMN password_expires_at DATETIME').run();
+      console.log('Migration: added password_expires_at column to users table');
+    }
   } catch (err) {
     console.error('Phone/email column migration failed:', err.message);
+  }
+
+  // ── Guest user migration ─────────────────────────────────────────────────
+  try {
+    const guestExists = db.prepare('SELECT id FROM users WHERE username = ?').get('guest');
+    if (!guestExists) {
+      const bcrypt = require('bcrypt');
+      const guestPassword = Math.random().toString(36).substring(2, 10);
+      const hashedGuestPassword = bcrypt.hashSync(guestPassword, 10);
+      const guestExpiry = new Date();
+      guestExpiry.setDate(guestExpiry.getDate() + 7);
+      
+      db.prepare(`
+        INSERT INTO users (username, password, full_name, role, job_title, password_expires_at)
+        VALUES ('guest', ?, 'Guest Viewer', 'guest', 'Guest', ?)
+      `).run(hashedGuestPassword, guestExpiry.toISOString());
+      
+      console.log('Migration: created guest user with password: ' + guestPassword + ' (expires in 7 days)');
+    }
+  } catch (err) {
+    console.error('Guest user migration failed:', err.message);
   }
 
   // ── Shift start_time / end_time column migration ─────────────────────
@@ -273,26 +248,6 @@ initializeDatabase().then(() => {
     console.error('Shift time column migration failed:', err.message);
   }
 
-  // ── Sessions table migration (if upgrading from old version) ────────────
-  try {
-    const tableExists = db.prepare(`
-      SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'
-    `).get();
-    if (!tableExists) {
-      db.exec(`
-        CREATE TABLE sessions (
-          sid TEXT PRIMARY KEY,
-          sess TEXT NOT NULL,
-          expire INTEGER NOT NULL
-        );
-        CREATE INDEX idx_sessions_expire ON sessions(expire);
-      `);
-      console.log('Migration: created sessions table for persistent session storage');
-    }
-  } catch (err) {
-    console.error('Sessions table migration failed:', err.message);
-  }
-
   // Initialize Telegram bot
   require('./server/telegram');
 
@@ -306,11 +261,8 @@ initializeDatabase().then(() => {
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
 
-  // Session configuration with custom SQLite store (Pure JavaScript - no native modules) [FIXED]
-  const sessionStore = new SQLiteSessionStore(db);
-
+  // Session configuration
   app.use(session({
-    store: sessionStore,
     secret: process.env.SESSION_SECRET || 'fallback-secret-key',
     resave: false,
     saveUninitialized: false,
