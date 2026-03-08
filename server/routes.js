@@ -281,6 +281,30 @@ router.post('/staff/:id/reset-password', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/staff/:id/guest-info - Get guest account info (admin only)
+router.get('/staff/:id/guest-info', requireAdmin, (req, res) => {
+  const staffId = parseInt(req.params.id);
+  
+  try {
+    const user = req.db.prepare(`
+      SELECT username, role, password_expires_at 
+      FROM users 
+      WHERE id = ?
+    `).get(staffId);
+    
+    if (!user || user.role !== 'guest') {
+      return res.status(400).json({ error: 'Not a guest account' });
+    }
+    
+    res.json({ 
+      username: user.username,
+      passwordExpiresAt: user.password_expires_at
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get guest info' });
+  }
+});
+
 // POST /api/staff/:id/toggle-active (admin only) - Activate/Deactivate staff
 router.post('/staff/:id/toggle-active', requireAdmin, (req, res) => {
   const staffId = parseInt(req.params.id);
