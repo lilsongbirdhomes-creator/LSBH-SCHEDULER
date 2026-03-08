@@ -2047,24 +2047,6 @@ router.post('/settings/schedule-changes', requireAdmin, (req, res) => {
     res.status(500).json({ error: 'Failed to save schedule changes' });
   }
 });
-  
-  try {
-    // Insert or update timezone setting
-    req.db.prepare(`
-      INSERT INTO settings (key, value, updated_at) 
-      VALUES ('timezone', ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(key) DO UPDATE SET 
-        value = excluded.value,
-        updated_at = CURRENT_TIMESTAMP
-    `).run(timezone);
-    
-    console.log('✅ System timezone updated to:', timezone);
-    res.json({ success: true, timezone });
-  } catch (err) {
-    console.error('Update timezone error:', err);
-    res.status(500).json({ error: 'Failed to update timezone' });
-  }
-});
 
 // POST /api/test-telegram - Test Telegram notification (admin only)
 router.post('/test-telegram', requireAdmin, async (req, res) => {
