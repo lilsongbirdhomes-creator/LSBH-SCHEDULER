@@ -4059,11 +4059,20 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
     
     dayShifts.forEach(shift => {
       // Filter for myShiftsOnly
-      if (myShiftsOnly && shift.assigned_to !== currentUser.id && !shift.is_open) {
-        return;
+      if (myShiftsOnly) {
+        const isHouseManager = currentUser?.jobTitle === 'House Manager';
+        const isStaffView = currentUser?.role === 'staff';
+        const isMine = shift.assigned_to === currentUser.id;
+        const isOpenForHM = shift.is_open && isHouseManager && isStaffView;
+        
+        // Keep shift if: assigned to me OR (open and I'm House Manager)
+        if (!isMine && !isOpenForHM) {
+          return; // Skip this shift
+        }
       }
       
       totalShiftsRendered++;
+      
       
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
@@ -4198,11 +4207,20 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
     
     dayShifts.forEach(shift => {
       // Filter for myShiftsOnly
-      if (myShiftsOnly && shift.assigned_to !== currentUser.id && !shift.is_open) {
-        return;
+      if (myShiftsOnly) {
+        const isHouseManager = currentUser?.jobTitle === 'House Manager';
+        const isStaffView = currentUser?.role === 'staff';
+        const isMine = shift.assigned_to === currentUser.id;
+        const isOpenForHM = shift.is_open && isHouseManager && isStaffView;
+        
+        // Keep shift if: assigned to me OR (open and I'm House Manager)
+        if (!isMine && !isOpenForHM) {
+          return; // Skip this shift
+        }
       }
       
       totalShiftsRendered++;
+      
       
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
