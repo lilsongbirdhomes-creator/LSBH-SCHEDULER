@@ -3938,6 +3938,12 @@ function openPrintDialog() {
   document.getElementById('printOptionMy').textContent = 
     isWeekView ? 'Full week (only my shifts)' : 'Full month (only my shifts)';
   
+  // Show House Manager option only for admins
+  const houseManagerSection = document.getElementById('printAsHouseManagerSection');
+  if (houseManagerSection) {
+    houseManagerSection.style.display = currentUser?.role === 'admin' ? 'block' : 'none';
+  }
+  
   document.getElementById('printDialog').style.display = 'flex';
 }
 
@@ -3949,6 +3955,11 @@ function executePrint() {
   const printType = document.querySelector('input[name="printType"]:checked').value;
   const printInColor = document.getElementById('printInColor').checked;
   const blackWhite = !printInColor; // Reverse: unchecked = B&W (default)
+  
+  // Check if admin wants to print as House Manager view
+  const printAsHouseManagerEl = document.getElementById('printAsHouseManager');
+  const printAsHouseManager = printAsHouseManagerEl ? printAsHouseManagerEl.checked : false;
+  
   closePrintDialog();
   
   // Small delay to let modal close
@@ -3958,19 +3969,20 @@ function executePrint() {
     } else {
       // Check if we're in week or month view
       if (viewMode === 'week') {
-        printWeekView(printType === 'myshifts', blackWhite);
+        printWeekView(printType === 'myshifts', blackWhite, printAsHouseManager);
       } else {
-        printCalendarView(printType === 'myshifts', blackWhite);
+        printCalendarView(printType === 'myshifts', blackWhite, printAsHouseManager);
       }
     }
   }, 100);
 }
 
-function printCalendarView(myShiftsOnly, blackWhite = false) {
+function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager = false) {
   // Debug logging
   console.log('📊 Print Calendar View:', {
     myShiftsOnly,
     blackWhite,
+    printAsHouseManager,
     allShiftsCount: allShifts.length,
     allStaffCount: allStaff.length,
     currentUser: currentUser?.full_name,
@@ -4049,24 +4061,51 @@ function printCalendarView(myShiftsOnly, blackWhite = false) {
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
       
+      // Check if this is House Manager viewing their own print
+      const isHouseManager = currentUser?.jobTitle === 'House Manager';
+      const showAsTentative = isOpen && ((isHouseManager && myShiftsOnly) || printAsHouseManager);
+      
       // Get staff info for colors
-      const staff = allStaff.find(s => s.id === shift.assigned_to);
-      const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
-      let tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-      let textColor = isOpen ? 'black' : (staff?.text_color || 'black');
+      let staff, staffName, tileColor, textColor;
+      
+      if (showAsTentative) {
+        // House Manager: show open shifts as tentatively assigned to them
+        // If admin printing as HM, find the House Manager; otherwise use current user
+        if (printAsHouseManager) {
+          staff = allStaff.find(s => s.job_title === 'House Manager');
+          staffName = staff?.full_name || 'House Manager';
+        } else {
+          staff = allStaff.find(s => s.id === currentUser.id);
+          staffName = currentUser?.full_name || 'House Manager';
+        }
+        tileColor = staff?.tile_color || '#f5f5f5';
+        textColor = staff?.text_color || 'black';
+      } else {
+        // Normal rendering
+        staff = allStaff.find(s => s.id === shift.assigned_to);
+        staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
+        tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
+        textColor = isOpen ? 'black' : (staff?.text_color || 'black');
+      }
       
       let borderColor = isOpen ? "black" : tileColor;
+      
       // Apply grayscale if black & white mode
       if (blackWhite) {
         tileColor = colorToGrayscale(tileColor);
-        const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
         textColor = "black";
         borderColor = "black";
       }
+      
+      // Use dashed border for tentative assignments
+      const borderStyle = showAsTentative ? 'dashed' : 'solid';
 
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px solid ${borderColor};">`;
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px ${borderStyle} ${borderColor};">`;
       html += `<strong>${staffName}</strong>`;
-      html += `${shiftDef.label || shift.shift_type}<br>`;
+      if (showAsTentative) {
+        html += ` <em style="font-size:8px;opacity:0.8;">(tentative)</em>`;
+      }
+      html += `<br>${shiftDef.label || shift.shift_type}<br>`;
       html += `${shift.start_time || shiftDef.time || ''}`;
       html += `</div>`;
     });
@@ -4100,11 +4139,12 @@ function printCalendarView(myShiftsOnly, blackWhite = false) {
   }, 250);
 }
 
-function printWeekView(myShiftsOnly, blackWhite = false) {
+function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = false) {
   // Debug logging
   console.log('📊 Print Week View:', {
     myShiftsOnly,
     blackWhite,
+    printAsHouseManager,
     allShiftsCount: allShifts.length,
     viewDate: formatDate(viewDate)
   });
@@ -4159,24 +4199,51 @@ function printWeekView(myShiftsOnly, blackWhite = false) {
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
       
+      // Check if this is House Manager viewing their own print
+      const isHouseManager = currentUser?.jobTitle === 'House Manager';
+      const showAsTentative = isOpen && ((isHouseManager && myShiftsOnly) || printAsHouseManager);
+      
       // Get staff info for colors
-      const staff = allStaff.find(s => s.id === shift.assigned_to);
-      const staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
-      let tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-      let textColor = isOpen ? 'black' : (staff?.text_color || 'black');
+      let staff, staffName, tileColor, textColor;
+      
+      if (showAsTentative) {
+        // House Manager: show open shifts as tentatively assigned to them
+        // If admin printing as HM, find the House Manager; otherwise use current user
+        if (printAsHouseManager) {
+          staff = allStaff.find(s => s.job_title === 'House Manager');
+          staffName = staff?.full_name || 'House Manager';
+        } else {
+          staff = allStaff.find(s => s.id === currentUser.id);
+          staffName = currentUser?.full_name || 'House Manager';
+        }
+        tileColor = staff?.tile_color || '#f5f5f5';
+        textColor = staff?.text_color || 'black';
+      } else {
+        // Normal rendering
+        staff = allStaff.find(s => s.id === shift.assigned_to);
+        staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
+        tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
+        textColor = isOpen ? 'black' : (staff?.text_color || 'black');
+      }
       
       let borderColor = isOpen ? "black" : tileColor;
+      
       // Apply grayscale if black & white mode
       if (blackWhite) {
         tileColor = colorToGrayscale(tileColor);
         borderColor = "black";
-        const grayValue = parseInt(tileColor.replace("#", "").substr(0, 2), 16);
         textColor = "black";
       }
+      
+      // Use dashed border for tentative assignments
+      const borderStyle = showAsTentative ? 'dashed' : 'solid';
 
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px solid ${borderColor};">`;
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px ${borderStyle} ${borderColor};">`;
       html += `<strong>${staffName}</strong>`;
-      html += `${shiftDef.label || shift.shift_type}<br>`;
+      if (showAsTentative) {
+        html += ` <em style="font-size:8px;opacity:0.8;">(tentative)</em>`;
+      }
+      html += `<br>${shiftDef.label || shift.shift_type}<br>`;
       html += `${shift.start_time || shiftDef.time || ''}`;
       html += `</div>`;
     });
