@@ -2240,17 +2240,17 @@ function togglePatternOptions() {
 }
 
 function updateGeneratorPreview() {
-  const startDate = new Date(document.getElementById('genStartDate').value);
-  const endDate = new Date(document.getElementById('genEndDate').value);
+  const startDateStr = document.getElementById('genStartDate').value;
+  const endDateStr = document.getElementById('genEndDate').value;
   
-  if (isNaN(startDate) || isNaN(endDate)) {
+  if (!startDateStr || !endDateStr) {
     document.getElementById('genPreviewText').textContent = 'Select dates';
     return;
   }
   
-  // Count selected days
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const selectedDays = days.filter((_, i) => document.getElementById('day' + days[i]).checked);
+  // Parse dates correctly (add noon to avoid timezone issues)
+  const startDate = new Date(startDateStr + 'T12:00:00');
+  const endDate = new Date(endDateStr + 'T12:00:00');
   
   // Count selected shift types
   const shiftTypes = [];
@@ -2262,26 +2262,20 @@ function updateGeneratorPreview() {
   const dayCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
   const pattern = document.getElementById('genPattern').value;
   
-  const estimatedShifts = selectedDays.length * shiftTypes.length * Math.ceil(dayCount / 7);
+  const estimatedShifts = dayCount * shiftTypes.length;
   
   let patternText = pattern === 'open' ? 'as open shifts' : 
                    pattern === 'specific' ? 'assigned to selected staff' : 
                    'rotating through staff';
   
   document.getElementById('genPreviewText').textContent = 
-    `Will create ~${estimatedShifts} shifts (${selectedDays.length} days/week × ${shiftTypes.length} shift types × ${Math.ceil(dayCount/7)} weeks) ${patternText}`;
+    `Will create ${estimatedShifts} shifts (${dayCount} days × ${shiftTypes.length} shift types) ${patternText}`;
 }
 
 async function generateShifts() {
-  const startDate = new Date(document.getElementById('genStartDate').value);
-  const endDate = new Date(document.getElementById('genEndDate').value);
+  const startDate = document.getElementById('genStartDate').value;
+  const endDate = document.getElementById('genEndDate').value;
   const pattern = document.getElementById('genPattern').value;
-  
-  // Get selected days
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const selectedDays = days.map((day, i) => 
-    document.getElementById('day' + day).checked ? i : -1
-  ).filter(i => i !== -1);
   
   // Get selected shift types
   const shiftTypes = [];
@@ -2313,7 +2307,11 @@ async function generateShifts() {
     }
   }
   
-  if (!confirm(`This will create shifts from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}. Continue?`)) {
+  // Format dates for display (parse as local date by adding noon time)
+  const startDisplay = new Date(startDate + 'T12:00:00').toLocaleDateString();
+  const endDisplay = new Date(endDate + 'T12:00:00').toLocaleDateString();
+  
+  if (!confirm(`This will create shifts from ${startDisplay} to ${endDisplay}. Continue?`)) {
     return;
   }
   
@@ -2323,13 +2321,11 @@ async function generateShifts() {
     const shifts = [];
     let rotationIndex = 0;
     
-    // Generate shifts for each day in range
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      
-      // Skip if this day not selected
-      if (!selectedDays.includes(dayOfWeek)) continue;
-      
+    // Generate shifts for each day in range (using string dates to avoid timezone issues)
+    const start = new Date(startDate + 'T12:00:00');
+    const end = new Date(endDate + 'T12:00:00');
+    
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = formatDate(d);
       
       // Create each shift type for this day
@@ -2504,7 +2500,7 @@ async function saveTemplates() {
 
 // Add event listeners for preview updates
 document.addEventListener('DOMContentLoaded', function() {
-  const genInputs = ['genStartDate', 'genEndDate', 'daySun', 'dayMon', 'dayTue', 'dayWed', 'dayThu', 'dayFri', 'daySat', 
+  const genInputs = ['genStartDate', 'genEndDate', 
                      'shiftMorning', 'shiftAfternoon', 'shiftOvernight', 'genPattern'];
   genInputs.forEach(id => {
     const el = document.getElementById(id);
