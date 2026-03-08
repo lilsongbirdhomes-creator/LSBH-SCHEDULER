@@ -231,8 +231,8 @@ router.delete('/staff/:id', requireAdmin, (req, res) => {
   const staffId = parseInt(req.params.id);
   
   // Can't delete admin
-  const user = req.db.prepare('SELECT role FROM users WHERE id = ?').get(staffId);
-  if (user && user.role === 'admin') {
+  const user = req.db.prepare('SELECT job_title FROM users WHERE id = ?').get(staffId);
+  if (user && user.job_title === 'Admin') {
     return res.status(400).json({ error: 'Cannot delete admin users' });
   }
   
@@ -269,8 +269,8 @@ router.post('/staff/:id/toggle-active', requireAdmin, (req, res) => {
   const { isActive } = req.body;
   
   // Can't deactivate admin
-  const user = req.db.prepare('SELECT role FROM users WHERE id = ?').get(staffId);
-  if (user && user.role === 'admin') {
+  const user = req.db.prepare('SELECT job_title FROM users WHERE id = ?').get(staffId);
+  if (user && user.job_title === 'Admin') {
     return res.status(400).json({ error: 'Cannot deactivate admin users' });
   }
   
