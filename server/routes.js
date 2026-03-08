@@ -2008,6 +2008,47 @@ router.post('/settings/timezone', requireAdmin, (req, res) => {
   }
   
   try {
+    req.db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run('timezone', timezone);
+    
+    res.json({ success: true, timezone });
+  } catch (err) {
+    console.error('Set timezone error:', err);
+    res.status(500).json({ error: 'Failed to set timezone' });
+  }
+});
+
+// GET /api/settings/schedule-changes - Get pending schedule changes (admin only)
+router.get('/settings/schedule-changes', requireAdmin, (req, res) => {
+  try {
+    const setting = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('schedule_changes');
+    res.json({ value: setting?.value || null });
+  } catch (err) {
+    console.error('Get schedule changes error:', err);
+    res.status(500).json({ error: 'Failed to get schedule changes' });
+  }
+});
+
+// POST /api/settings/schedule-changes - Save pending schedule changes (admin only)
+router.post('/settings/schedule-changes', requireAdmin, (req, res) => {
+  const { value } = req.body;
+  
+  try {
+    req.db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run('schedule_changes', value);
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Save schedule changes error:', err);
+    res.status(500).json({ error: 'Failed to save schedule changes' });
+  }
+});
+  
+  try {
     // Insert or update timezone setting
     req.db.prepare(`
       INSERT INTO settings (key, value, updated_at) 
