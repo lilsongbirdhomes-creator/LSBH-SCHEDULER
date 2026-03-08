@@ -3986,8 +3986,15 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
     allShiftsCount: allShifts.length,
     allStaffCount: allStaff.length,
     currentUser: currentUser?.full_name,
+    'currentUser.role': currentUser?.role,
+    'currentUser.jobTitle': currentUser?.jobTitle,
+    'currentUser.id': currentUser?.id,
     viewDate: formatDate(viewDate)
   });
+  
+  // Count open shifts for debugging
+  const openShiftsCount = allShifts.filter(s => s.is_open).length;
+  console.log('🔓 Open shifts in data:', openShiftsCount);
   
   // Get current month info
   const year = viewDate.getFullYear();
@@ -4064,7 +4071,7 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
       // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
       const isStaffView = currentUser?.role === 'staff';
-      const showAsTentative = isOpen && (((isHouseManager && isStaffView) && myShiftsOnly) || printAsHouseManager);
+      const showAsTentative = isOpen && ((isHouseManager && isStaffView && myShiftsOnly) || printAsHouseManager);
       
       // Get staff info for colors
       let staff, staffName, tileColor, textColor;
@@ -4203,7 +4210,7 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
       // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
       const isStaffView = currentUser?.role === 'staff';
-      const showAsTentative = isOpen && (((isHouseManager && isStaffView) && myShiftsOnly) || printAsHouseManager);
+      const showAsTentative = isOpen && ((isHouseManager && isStaffView && myShiftsOnly) || printAsHouseManager);
       
       // Get staff info for colors
       let staff, staffName, tileColor, textColor;
