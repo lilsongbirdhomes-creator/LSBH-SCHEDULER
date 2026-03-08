@@ -4071,7 +4071,7 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
       // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
       const isStaffView = currentUser?.role === 'staff';
-      const showAsTentative = isOpen && ((isHouseManager && isStaffView && myShiftsOnly) || printAsHouseManager);
+      const showAsTentative = isOpen && ((isHouseManager && isStaffView) || printAsHouseManager);
       
       // Get staff info for colors
       let staff, staffName, tileColor, textColor;
@@ -4084,7 +4084,7 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
           staffName = staff?.full_name || 'House Manager';
         } else {
           staff = allStaff.find(s => s.id === currentUser.id);
-          staffName = currentUser?.full_name || 'House Manager';
+          staffName = currentUser?.fullName || 'House Manager';
         }
         tileColor = staff?.tile_color || '#f5f5f5';
         textColor = staff?.text_color || 'black';
@@ -4210,7 +4210,7 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
       // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
       const isStaffView = currentUser?.role === 'staff';
-      const showAsTentative = isOpen && ((isHouseManager && isStaffView && myShiftsOnly) || printAsHouseManager);
+      const showAsTentative = isOpen && ((isHouseManager && isStaffView) || printAsHouseManager);
       
       // Get staff info for colors
       let staff, staffName, tileColor, textColor;
@@ -4223,7 +4223,7 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
           staffName = staff?.full_name || 'House Manager';
         } else {
           staff = allStaff.find(s => s.id === currentUser.id);
-          staffName = currentUser?.full_name || 'House Manager';
+          staffName = currentUser?.fullName || 'House Manager';
         }
         tileColor = staff?.tile_color || '#f5f5f5';
         textColor = staff?.text_color || 'black';
@@ -4292,9 +4292,18 @@ function printListView(blackWhite = false) {
   const month = viewDate.getMonth();
   const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
+  // Check if House Manager
+  const isHouseManager = currentUser?.jobTitle === 'House Manager';
+  const isStaffView = currentUser?.role === 'staff';
+  
   // Get my shifts for the current display period
+  // House Manager includes open shifts as tentative
   const myShifts = allShifts
-    .filter(s => s.assigned_to === currentUser.id)
+    .filter(s => {
+      if (s.assigned_to === currentUser.id) return true;
+      if (isHouseManager && isStaffView && s.is_open) return true;  // Include open for HM
+      return false;
+    })
     .sort((a, b) => {
       if (a.date !== b.date) return a.date < b.date ? -1 : 1;
       const order = { morning: 1, afternoon: 2, overnight: 3 };
@@ -4304,14 +4313,15 @@ function printListView(blackWhite = false) {
   console.log('📋 Print List View:', {
     totalShifts: allShifts.length,
     myShifts: myShifts.length,
-    currentUser: currentUser?.full_name
+    currentUser: currentUser?.fullName,
+    isHouseManager
   });
   
   // Build HTML (without outer wrapper - added by createElement below)
   let html = `
     <div class="print-header">
       <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>${monthName} - ${currentUser?.full_name || 'Staff Member'}</h2>
+      <h2>${monthName} - ${currentUser?.fullName || 'Staff Member'}</h2>
     </div>
     <div class="print-list">
       <table class="print-list-table">
@@ -4322,6 +4332,7 @@ function printListView(blackWhite = false) {
             <th>Shift Type</th>
             <th>Time</th>
             <th>Hours</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
@@ -4344,6 +4355,10 @@ function printListView(blackWhite = false) {
       const hours = shiftDef.hours || 0;
       totalHours += hours;
       
+      // Check if this is a tentative assignment (open shift for House Manager)
+      const isTentative = shift.is_open && isHouseManager && isStaffView;
+      const statusText = isTentative ? '<em style="font-style:italic;">Tentative</em>' : 'Assigned';
+      
       html += `
         <tr>
           <td>${dateFormatted}</td>
@@ -4351,6 +4366,7 @@ function printListView(blackWhite = false) {
           <td>${shiftDef.label || shift.shift_type}</td>
           <td>${shift.start_time || shiftDef.time || ''}</td>
           <td>${hours}</td>
+          <td>${statusText}</td>
         </tr>
       `;
     });
