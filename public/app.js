@@ -1063,48 +1063,98 @@ function createShiftTile(shift, viewType = 'week') {
   }
 
   if (shift.is_open) {
-    if (!isPending) {
-      tile.style.background = '#f5f5f5';
-      tile.style.color = 'black';
-    }
+    // Special case: House Manager sees open shifts as tentatively assigned to them
+    const isHouseManager = currentUser?.jobTitle === 'House Manager';
+    const isStaffView = currentUser?.role === 'staff';
     
-    // Trade mode: grey out ineligible shifts
-    if (requestMode && !isTradeEligible) {
-      tile.style.opacity = '0.3';
-      tile.style.cursor = 'not-allowed';
-    } else {
-      tile.style.cursor = 'pointer';
-    }
-
-    tile.onclick = () => {
-      if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
-      if (currentUser.role === 'admin') {
-        if (isPending) showAdminPendingShiftModal(shift);
-        else showAssignOpenShiftModal(shift);
-      } else {
-        confirmRequestShift(shift.id);
+    if (isHouseManager && isStaffView) {
+      // Render as if assigned to House Manager, but with special styling
+      const staff = allStaff.find(s => s.id === currentUser.id);
+      const hours = shift.running_hours || 0;
+      const hClass = hours >= 40 ? 'hrs-over' : hours >= 36 ? 'hrs-warn' : 'hrs-ok';
+      
+      if (!isPending) {
+        tile.style.background = staff?.tile_color || '#f5f5f5';
+        tile.style.color = staff?.text_color || 'black';
+        // Add dashed border to indicate tentative assignment
+        tile.style.border = '2px dashed #ff9800';
+        tile.style.boxShadow = '0 0 8px rgba(255, 152, 0, 0.3)';
       }
-    };
-
-    const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
-    if (viewType === 'month') {
-      tile.innerHTML = `
-        ${pendingBadge}
-        <div class="month-shift-name">Open Shift</div>
-        <div class="month-shift-time">${def.icon} ${displayTime}</div>
-        <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
-      `;
+      
+      tile.style.cursor = 'pointer';
+      
+      tile.onclick = () => {
+        if (requestMode) { handleTilePick(shift); return; }
+        
+        // House Manager can still request to assign it to someone else or confirm self-assignment
+        confirmRequestShift(shift.id);
+      };
+      
+      const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
+      if (viewType === 'month') {
+        tile.innerHTML = `
+          ${pendingBadge}
+          <div class="month-shift-name">${currentUser.fullName}</div>
+          <div class="month-shift-time">${def.icon} ${displayTime}</div>
+          <div class="month-shift-hours ${hClass}" style="font-size:9px;font-style:italic;">(Tentative - ${hours}h)</div>
+        `;
+      } else {
+        tile.innerHTML = `
+          ${pendingBadge}
+          <div>
+            <div class="t-name">${currentUser.fullName}</div>
+            <div class="t-time">${displayTime}</div>
+          </div>
+          <div class="t-foot ${hClass}" style="font-style:italic;">
+            Tentative - ${hours > 0 ? hours + 'h total' : 'Available for request'}
+          </div>
+        `;
+      }
     } else {
-      tile.innerHTML = `
-        ${pendingBadge}
-        <div>
-          <div class="t-name">Open Shift</div>
-          <div class="t-time">${displayTime}</div>
-        </div>
-        <div class="t-foot" style="font-size:10px;opacity:0.7;">
-          Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}
-        </div>
-      `;
+      // Regular open shift view for everyone else (including admin)
+      if (!isPending) {
+        tile.style.background = '#f5f5f5';
+        tile.style.color = 'black';
+      }
+      
+      // Trade mode: grey out ineligible shifts
+      if (requestMode && !isTradeEligible) {
+        tile.style.opacity = '0.3';
+        tile.style.cursor = 'not-allowed';
+      } else {
+        tile.style.cursor = 'pointer';
+      }
+
+      tile.onclick = () => {
+        if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
+        if (currentUser.role === 'admin') {
+          if (isPending) showAdminPendingShiftModal(shift);
+          else showAssignOpenShiftModal(shift);
+        } else {
+          confirmRequestShift(shift.id);
+        }
+      };
+
+      const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
+      if (viewType === 'month') {
+        tile.innerHTML = `
+          ${pendingBadge}
+          <div class="month-shift-name">Open Shift</div>
+          <div class="month-shift-time">${def.icon} ${displayTime}</div>
+          <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
+        `;
+      } else {
+        tile.innerHTML = `
+          ${pendingBadge}
+          <div>
+            <div class="t-name">Open Shift</div>
+            <div class="t-time">${displayTime}</div>
+          </div>
+          <div class="t-foot" style="font-size:10px;opacity:0.7;">
+            Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}
+          </div>
+        `;
+      }
     }
   } else {
     const staff = allStaff.find(s => s.id === shift.assigned_to);
@@ -2032,15 +2082,22 @@ function renderPayPeriodSummary() {
   const nextPeriodEnd = new Date(nextPeriodStart);
   nextPeriodEnd.setDate(nextPeriodEnd.getDate() + 6);
   
+  // House Manager sees open shifts as tentatively assigned to them
+  const isHouseManager = currentUser?.jobTitle === 'House Manager';
+  
   // Get shifts for current and next period
   const currentShifts = allShifts.filter(s => {
     const date = new Date(s.date);
-    return s.assigned_to === currentUser.id && date >= currentPeriodStart && date <= currentPeriodEnd;
+    const isInPeriod = date >= currentPeriodStart && date <= currentPeriodEnd;
+    // Include assigned shifts OR (if House Manager) open shifts
+    return isInPeriod && (s.assigned_to === currentUser.id || (isHouseManager && s.is_open));
   });
   
   const nextShifts = allShifts.filter(s => {
     const date = new Date(s.date);
-    return s.assigned_to === currentUser.id && date >= nextPeriodStart && date <= nextPeriodEnd;
+    const isInPeriod = date >= nextPeriodStart && date <= nextPeriodEnd;
+    // Include assigned shifts OR (if House Manager) open shifts
+    return isInPeriod && (s.assigned_to === currentUser.id || (isHouseManager && s.is_open));
   });
   
   const currentHours = currentShifts.reduce((sum, s) => sum + (SHIFT_DEFS[s.shift_type]?.hours || 0), 0);
@@ -2059,7 +2116,8 @@ function renderPayPeriodSummary() {
         <div class="period-list">
           ${currentShifts.slice(0, 3).map(s => {
             const def = SHIFT_DEFS[s.shift_type];
-            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}</div>`;
+            const isTentative = isHouseManager && s.is_open;
+            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}${isTentative ? ' <span style="font-style:italic;opacity:0.7;">(tentative)</span>' : ''}</div>`;
           }).join('')}
           ${currentShifts.length > 3 ? `<div class="period-more">+${currentShifts.length - 3} more</div>` : ''}
         </div>
@@ -2074,7 +2132,8 @@ function renderPayPeriodSummary() {
         <div class="period-list">
           ${nextShifts.slice(0, 3).map(s => {
             const def = SHIFT_DEFS[s.shift_type];
-            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}</div>`;
+            const isTentative = isHouseManager && s.is_open;
+            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}${isTentative ? ' <span style="font-style:italic;opacity:0.7;">(tentative)</span>' : ''}</div>`;
           }).join('')}
           ${nextShifts.length > 3 ? `<div class="period-more">+${nextShifts.length - 3} more</div>` : ''}
         </div>
