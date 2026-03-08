@@ -262,14 +262,19 @@ async function showApp() {
   document.getElementById('roleBadge').textContent = currentUser.role === 'admin' ? 'Admin' : 'Staff';
   
   // Set default view based on role
+  // Set default view mode based on role
   if (currentUser.role === 'admin') {
     viewMode = 'month';
+  } else if (currentUser.role === 'guest') {
+    viewMode = 'month'; // Guest gets month view only
   } else {
     viewMode = 'week';
   }
   
   // Load shift templates from database
-  loadTemplates();
+  if (currentUser.role !== 'guest') {
+    loadTemplates();
+  }
   
   // Load staff data (needed for tile colors in staff view)
   await loadStaff();
@@ -280,6 +285,12 @@ async function showApp() {
     
     // Load any pending schedule changes that haven't been sent
     await loadScheduleChangesFromDB();
+  } else if (currentUser.role === 'guest') {
+    // Guest gets read-only calendar view only
+    document.getElementById('staffDashboard').classList.remove('hidden');
+    // Hide action buttons for guest
+    const actionButtons = document.querySelectorAll('.staff-actions, #payPeriodSummary, .cal-nav .v-btn');
+    actionButtons.forEach(btn => btn.style.display = 'none');
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
     loadDashboard();
@@ -681,7 +692,11 @@ async function resetPassword(staffId) {
       method: 'POST'
     });
     
-    alert(`Password reset!\nNew temp password: ${result.tempPassword}\n\nUser must change on next login.`);
+    if (result.expiresInDays) {
+      alert(`Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires in ${result.expiresInDays} days\n\nShare this with the guest - they can log in immediately.`);
+    } else {
+      alert(`Password reset!\n\nNew temp password: ${result.tempPassword}\n\nUser must change on next login.`);
+    }
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
@@ -1129,6 +1144,7 @@ function createShiftTile(shift, viewType = 'week') {
       }
 
       tile.onclick = () => {
+        if (currentUser.role === 'guest') return; // Guest can't interact
         if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
         if (currentUser.role === 'admin') {
           if (isPending) showAdminPendingShiftModal(shift);
@@ -1139,12 +1155,14 @@ function createShiftTile(shift, viewType = 'week') {
       };
 
       const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
+      const isGuest = currentUser.role === 'guest';
+      
       if (viewType === 'month') {
         tile.innerHTML = `
           ${pendingBadge}
           <div class="month-shift-name">Open Shift</div>
           <div class="month-shift-time">${def.icon} ${displayTime}</div>
-          <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
+          ${isGuest ? '' : `<div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>`}
         `;
       } else {
         tile.innerHTML = `
@@ -1153,9 +1171,7 @@ function createShiftTile(shift, viewType = 'week') {
             <div class="t-name">Open Shift</div>
             <div class="t-time">${displayTime}</div>
           </div>
-          <div class="t-foot" style="font-size:10px;opacity:0.7;">
-            Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}
-          </div>
+          ${isGuest ? '' : `<div class="t-foot" style="font-size:10px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>`}
         `;
       }
     }
@@ -1163,10 +1179,19 @@ function createShiftTile(shift, viewType = 'week') {
     const staff = allStaff.find(s => s.id === shift.assigned_to);
     const hours = shift.running_hours || 0;
     const hClass = hours >= 40 ? 'hrs-over' : hours >= 36 ? 'hrs-warn' : 'hrs-ok';
+    
+    // Guest view: grey tiles, "Assigned" text
+    const isGuestView = currentUser.role === 'guest';
+    const displayName = isGuestView ? 'Assigned' : (shift.full_name || staff?.full_name || 'Unknown');
 
     if (!isPending) {
-      tile.style.background = staff?.tile_color || '#f5f5f5';
-      tile.style.color = staff?.text_color || 'black';
+      if (isGuestView) {
+        tile.style.background = '#e0e0e0'; // Grey for guest
+        tile.style.color = '#666';
+      } else {
+        tile.style.background = staff?.tile_color || '#f5f5f5';
+        tile.style.color = staff?.text_color || 'black';
+      }
     }
     
     // Emergency mode: grey out non-eligible shifts
@@ -1190,6 +1215,7 @@ function createShiftTile(shift, viewType = 'week') {
     }
 
     tile.onclick = () => {
+      if (currentUser.role === 'guest') return; // Guest can't interact
       if (requestMode) { handleTilePick(shift); return; }
       
       // Handle emergency absence mode
@@ -1210,18 +1236,18 @@ function createShiftTile(shift, viewType = 'week') {
     if (viewType === 'month') {
       tile.innerHTML = `
         ${pendingBadge}
-        <div class="month-shift-name">${shift.full_name || staff?.full_name || 'Unknown'}</div>
+        <div class="month-shift-name">${displayName}</div>
         <div class="month-shift-time">${def.icon} ${displayTime}</div>
-        <div class="month-shift-hours ${hClass}">${hours.toFixed(1)}/40</div>
+        ${isGuestView ? '' : `<div class="month-shift-hours ${hClass}">${hours.toFixed(1)}/40</div>`}
       `;
     } else {
       tile.innerHTML = `
         ${pendingBadge}
         <div>
-          <div class="t-name">${shift.full_name || 'Unknown'}</div>
+          <div class="t-name">${displayName}</div>
           <div class="t-time">${displayTime}</div>
         </div>
-        <div class="t-foot">
+        ${isGuestView ? '' : `<div class="t-foot">`}
           <span class="t-hrs ${hClass}">${hours.toFixed(1)}/40.0</span>
         </div>
       `;
