@@ -54,7 +54,7 @@ async function login(db, username, password) {
       id: user.id,
       username: user.username,
       fullName: user.full_name,
-      role: user.role,
+      role: user.job_title === 'Admin' ? 'admin' : 'staff',  // Derive from job_title
       jobTitle: user.job_title,
       tileColor: user.tile_color,
       textColor: user.text_color,
@@ -132,7 +132,7 @@ function getCurrentUser(db, userId) {
     id: user.id,
     username: user.username,
     fullName: user.full_name,
-    role: user.role,
+    role: user.job_title === 'Admin' ? 'admin' : 'staff',  // Derive from job_title
     jobTitle: user.job_title,
     tileColor: user.tile_color,
     textColor: user.text_color,
