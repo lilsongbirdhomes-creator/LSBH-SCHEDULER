@@ -251,13 +251,31 @@ router.post('/staff/:id/reset-password', requireAdmin, async (req, res) => {
   const hashedPassword = await bcrypt.hash(tempPassword, 10);
   
   try {
-    req.db.prepare(`
-      UPDATE users 
-      SET password = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(hashedPassword, staffId);
+    // Check if this is the guest user
+    const user = req.db.prepare('SELECT username, role FROM users WHERE id = ?').get(staffId);
     
-    res.json({ success: true, tempPassword });
+    if (user && user.role === 'guest') {
+      // Guest password expires in 7 days
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 7);
+      
+      req.db.prepare(`
+        UPDATE users 
+        SET password = ?, must_change_password = 0, password_expires_at = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(hashedPassword, expiryDate.toISOString(), staffId);
+      
+      res.json({ success: true, tempPassword, expiresInDays: 7 });
+    } else {
+      // Regular staff - no expiration, must change password
+      req.db.prepare(`
+        UPDATE users 
+        SET password = ?, must_change_password = 1, password_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(hashedPassword, staffId);
+      
+      res.json({ success: true, tempPassword });
+    }
   } catch (err) {
     res.status(500).json({ error: 'Failed to reset password' });
   }
