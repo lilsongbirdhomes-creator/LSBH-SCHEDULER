@@ -27,7 +27,7 @@ async function login(db, username, password) {
   const user = db.prepare(`
     SELECT id, username, password, full_name, role, job_title, 
            tile_color, text_color, is_approved, is_active, must_change_password,
-           email, phone, telegram_id
+           email, phone, telegram_id, password_expires_at
     FROM users 
     WHERE username = ? AND is_active = 1
   `).get(username.toLowerCase().trim());
@@ -40,6 +40,15 @@ async function login(db, username, password) {
     return { success: false, error: 'Account pending approval' };
   }
 
+  // Check if password has expired
+  if (user.password_expires_at) {
+    const expiryDate = new Date(user.password_expires_at);
+    const now = new Date();
+    if (now > expiryDate) {
+      return { success: false, error: 'Password has expired. Contact admin for new credentials.' };
+    }
+  }
+
   const passwordMatch = await bcrypt.compare(password, user.password);
   if (!passwordMatch) {
     return { success: false, error: 'Invalid username or password' };
@@ -48,13 +57,23 @@ async function login(db, username, password) {
   // Don't send password hash to client
   delete user.password;
 
+  // Derive role from job_title or use explicit role for guest
+  let role;
+  if (user.role === 'guest') {
+    role = 'guest';
+  } else if (user.job_title === 'Admin') {
+    role = 'admin';
+  } else {
+    role = 'staff';
+  }
+
   return {
     success: true,
     user: {
       id: user.id,
       username: user.username,
       fullName: user.full_name,
-      role: user.job_title === 'Admin' ? 'admin' : 'staff',  // Derive from job_title
+      role: role,
       jobTitle: user.job_title,
       tileColor: user.tile_color,
       textColor: user.text_color,
