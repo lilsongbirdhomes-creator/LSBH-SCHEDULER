@@ -301,6 +301,46 @@
   </div>
 </div>
 
+<!-- Guest User Management Modal -->
+<div id="editGuestModal" class="ov">
+  <div class="modal">
+    <h3>👀 Guest Account Management</h3>
+    <p style="margin:0 0 20px 0; color:#666; font-size:14px;">
+      Guest account provides <strong>read-only, sanitized</strong> access to the schedule (no staff names shown).
+    </p>
+    
+    <div class="fg">
+      <label>Current Password (After Reset)</label>
+      <input type="text" id="guestCurrentPassword" readonly style="background:#f5f5f5; font-family:monospace; font-size:16px; font-weight:bold;">
+      <button style="margin-top:8px; padding:8px 16px; background:#4CAF50; color:white; border:none; border-radius:4px; cursor:pointer; font-weight:600;" onclick="copyGuestPassword()">
+        📋 Copy Password
+      </button>
+      <p style="margin:8px 0 0 0; font-size:11px; color:#666; font-style:italic;">
+        💡 Password is encrypted in database. Click "Reset Password" below to generate a new temporary password.
+      </p>
+    </div>
+    
+    <div class="fg">
+      <label>Password Expires</label>
+      <input type="text" id="guestPasswordExpiry" readonly style="background:#f5f5f5; font-weight:600;">
+    </div>
+    
+    <div style="background:#fff3cd; border-left:4px solid #ffc107; padding:12px; margin:20px 0; border-radius:4px;">
+      <strong>⏰ Auto-Expiration:</strong> Guest passwords automatically expire after 7 days for security.
+    </div>
+    
+    <div class="fg">
+      <label>Username (Fixed)</label>
+      <input type="text" value="guest" readonly style="background:#f5f5f5;">
+    </div>
+    
+    <div class="mbtn-row">
+      <button class="mc" onclick="closeEditGuestModal()">Close</button>
+      <button class="mok" style="background:#ff9800; min-width:160px;" onclick="resetGuestPassword()">🔄 Reset Password</button>
+    </div>
+  </div>
+</div>
+
 <!-- Loading Indicator -->
 <div id="loading" class="loading-overlay hidden">
   <div class="spinner"></div>
