@@ -4063,7 +4063,8 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
       
       // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
-      const showAsTentative = isOpen && ((isHouseManager && myShiftsOnly) || printAsHouseManager);
+      const isStaffView = currentUser?.role === 'staff';
+      const showAsTentative = isOpen && (((isHouseManager && isStaffView) && myShiftsOnly) || printAsHouseManager);
       
       // Get staff info for colors
       let staff, staffName, tileColor, textColor;
@@ -4201,7 +4202,8 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
       
       // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
-      const showAsTentative = isOpen && ((isHouseManager && myShiftsOnly) || printAsHouseManager);
+      const isStaffView = currentUser?.role === 'staff';
+      const showAsTentative = isOpen && (((isHouseManager && isStaffView) && myShiftsOnly) || printAsHouseManager);
       
       // Get staff info for colors
       let staff, staffName, tileColor, textColor;
