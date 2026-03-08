@@ -3965,7 +3965,7 @@ function executePrint() {
   // Small delay to let modal close
   setTimeout(() => {
     if (printType === 'list') {
-      printListView(blackWhite);
+      printListView(blackWhite, printAsHouseManager);
     } else {
       // Check if we're in week or month view
       if (viewMode === 'week') {
@@ -3995,6 +3995,21 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
   // Count open shifts for debugging
   const openShiftsCount = allShifts.filter(s => s.is_open).length;
   console.log('🔓 Open shifts in data:', openShiftsCount);
+  
+  // Determine who we're printing for
+  let targetUserId;
+  if (printAsHouseManager) {
+    // Admin printing as House Manager - find the actual HM
+    const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
+    if (!houseManagerStaff) {
+      alert('House Manager not found in staff list');
+      return;
+    }
+    targetUserId = houseManagerStaff.id;
+  } else {
+    // Regular user printing their own shifts
+    targetUserId = currentUser.id;
+  }
   
   // Get current month info
   const year = viewDate.getFullYear();
@@ -4062,8 +4077,8 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
       if (myShiftsOnly) {
         const isHouseManager = currentUser?.jobTitle === 'House Manager';
         const isStaffView = currentUser?.role === 'staff';
-        const isMine = shift.assigned_to === currentUser.id;
-        const isOpenForHM = shift.is_open && isHouseManager && isStaffView;
+        const isMine = shift.assigned_to === targetUserId;  // Use target user, not current
+        const isOpenForHM = shift.is_open && ((isHouseManager && isStaffView) || printAsHouseManager);
         
         // Keep shift if: assigned to me OR (open and I'm House Manager)
         if (!isMine && !isOpenForHM) {
@@ -4166,6 +4181,21 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
     viewDate: formatDate(viewDate)
   });
   
+  // Determine who we're printing for
+  let targetUserId;
+  if (printAsHouseManager) {
+    // Admin printing as House Manager - find the actual HM
+    const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
+    if (!houseManagerStaff) {
+      alert('House Manager not found in staff list');
+      return;
+    }
+    targetUserId = houseManagerStaff.id;
+  } else {
+    // Regular user printing their own shifts
+    targetUserId = currentUser.id;
+  }
+  
   // Get week start (Sunday)
   const weekStart = getWeekStart(viewDate);
   const weekEnd = new Date(weekStart);
@@ -4210,8 +4240,8 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
       if (myShiftsOnly) {
         const isHouseManager = currentUser?.jobTitle === 'House Manager';
         const isStaffView = currentUser?.role === 'staff';
-        const isMine = shift.assigned_to === currentUser.id;
-        const isOpenForHM = shift.is_open && isHouseManager && isStaffView;
+        const isMine = shift.assigned_to === targetUserId;  // Use target user, not current
+        const isOpenForHM = shift.is_open && ((isHouseManager && isStaffView) || printAsHouseManager);
         
         // Keep shift if: assigned to me OR (open and I'm House Manager)
         if (!isMine && !isOpenForHM) {
@@ -4304,22 +4334,41 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
   }, 250);
 }
 
-function printListView(blackWhite = false) {
+function printListView(blackWhite = false, printAsHouseManager = false) {
   // Get current month info
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
-  // Check if House Manager
-  const isHouseManager = currentUser?.jobTitle === 'House Manager';
-  const isStaffView = currentUser?.role === 'staff';
+  // Determine who we're printing for
+  let targetUser, targetIsHM;
   
-  // Get my shifts for the current display period
+  if (printAsHouseManager) {
+    // Admin printing as House Manager - find the actual HM
+    const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
+    targetUser = houseManagerStaff ? {
+      id: houseManagerStaff.id,
+      fullName: houseManagerStaff.full_name,
+      jobTitle: 'House Manager'
+    } : null;
+    targetIsHM = true;
+  } else {
+    // Regular user printing their own shifts
+    targetUser = currentUser;
+    targetIsHM = currentUser?.jobTitle === 'House Manager' && currentUser?.role === 'staff';
+  }
+  
+  if (!targetUser) {
+    alert('House Manager not found in staff list');
+    return;
+  }
+  
+  // Get shifts for target user
   // House Manager includes open shifts as tentative
   const myShifts = allShifts
     .filter(s => {
-      if (s.assigned_to === currentUser.id) return true;
-      if (isHouseManager && isStaffView && s.is_open) return true;  // Include open for HM
+      if (s.assigned_to === targetUser.id) return true;
+      if (targetIsHM && s.is_open) return true;  // Include open for HM
       return false;
     })
     .sort((a, b) => {
@@ -4331,15 +4380,15 @@ function printListView(blackWhite = false) {
   console.log('📋 Print List View:', {
     totalShifts: allShifts.length,
     myShifts: myShifts.length,
-    currentUser: currentUser?.fullName,
-    isHouseManager
+    targetUser: targetUser?.fullName,
+    printAsHouseManager
   });
   
   // Build HTML (without outer wrapper - added by createElement below)
   let html = `
     <div class="print-header">
       <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>${monthName} - ${currentUser?.fullName || 'Staff Member'}</h2>
+      <h2>${monthName} - ${targetUser?.fullName || 'Staff Member'}</h2>
     </div>
     <div class="print-list">
       <table class="print-list-table">
@@ -4374,7 +4423,7 @@ function printListView(blackWhite = false) {
       totalHours += hours;
       
       // Check if this is a tentative assignment (open shift for House Manager)
-      const isTentative = shift.is_open && isHouseManager && isStaffView;
+      const isTentative = shift.is_open && targetIsHM;
       const statusText = isTentative ? '<em style="font-style:italic;">Tentative</em>' : 'Assigned';
       
       html += `
