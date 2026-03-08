@@ -6,6 +6,27 @@ const { calculateWeeklyHours, buildRunningTotals, checkHoursLimit, getPayPeriodS
 const notify = require('../utils/notifications');
 const telegram = require("../server/telegram");
 
+// Helper function to format timestamps in system timezone
+function formatTimestamp(db) {
+  try {
+    const timezoneRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('timezone');
+    const timezone = timezoneRow?.value || 'America/Chicago';
+    const now = new Date();
+    return now.toLocaleString('en-US', { 
+      timeZone: timezone,
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (err) {
+    console.error('Timezone format error:', err);
+    return new Date().toLocaleString('en-US');
+  }
+}
+
 // ═══════════════════════════════════════════════════════════
 // AUTH ROUTES
 // ═══════════════════════════════════════════════════════════
@@ -1822,7 +1843,7 @@ router.post('/report-issue', requireAuth, async (req, res) => {
     const message =
       `⚠️ <b>Issue Report</b>\n\n` +
       `<b>Reported by:</b> ${reporter?.full_name || 'Staff'}\n` +
-      `<b>Time:</b> ${new Date().toLocaleString('en-US')}\n\n` +
+      `<b>Time:</b> ${formatTimestamp(req.db)}\n\n` +
       `<b>Details:</b>\n${details}`;
 
     const recipients = [
@@ -2016,7 +2037,7 @@ router.post('/test-telegram', requireAdmin, async (req, res) => {
       });
     }
     
-    const testMessage = `🔔 Test Notification\n\nThis is a test from LilSongBirdHomes Scheduler.\n\nTime: ${new Date().toLocaleString()}`;
+    const testMessage = `🔔 Test Notification\n\nThis is a test from LilSongBirdHomes Scheduler.\n\nTime: ${formatTimestamp(req.db)}`;
     
     const telegram = require('./telegram');
     const sent = await telegram.sendNotification(admin.telegram_id, testMessage);
