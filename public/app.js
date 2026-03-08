@@ -288,7 +288,10 @@ async function showApp() {
   } else if (currentUser.role === 'guest') {
     // Guest gets read-only calendar view only
     document.getElementById('staffDashboard').classList.remove('hidden');
-    // Hide action buttons for guest
+    // Note: Don't call loadDashboard() as it loads personal stats
+    // Calendar will be loaded by loadShifts() call below
+    
+    // Hide action buttons and stats for guest
     const actionButtons = document.querySelectorAll('.staff-actions, #payPeriodSummary, .cal-nav .v-btn');
     actionButtons.forEach(btn => btn.style.display = 'none');
   } else {
@@ -627,6 +630,12 @@ function openEditStaff(staffId) {
   const staff = allStaff.find(s => s.id === staffId);
   if (!staff) return;
 
+  // Check if this is the guest user
+  if (staff.username === 'guest' || staff.role === 'guest') {
+    openEditGuestModal(staff);
+    return;
+  }
+
   document.getElementById('editStaffId').value = staffId;
   document.getElementById('editUsername').value = staff.username || '';
   document.getElementById('editFullName').value = staff.full_name;
@@ -640,6 +649,99 @@ function openEditStaff(staffId) {
   buildSwatchGrid(staff.tile_color || '#f5f5f5');
 
   document.getElementById('editStaffModal').classList.add('show');
+}
+
+async function openEditGuestModal(staff) {
+  // Fetch current guest info from server to get password expiration
+  try {
+    const guestInfo = await apiCall(`/staff/${staff.id}/guest-info`);
+    
+    // Can't display current password (it's hashed), show placeholder
+    document.getElementById('guestCurrentPassword').value = '(Password is encrypted - reset to get new one)';
+    document.getElementById('guestCurrentPassword').style.color = '#999';
+    
+    // Display expiration date
+    if (guestInfo.passwordExpiresAt) {
+      const expiryDate = new Date(guestInfo.passwordExpiresAt);
+      const now = new Date();
+      const daysLeft = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+      
+      if (daysLeft > 0) {
+        document.getElementById('guestPasswordExpiry').value = `${expiryDate.toLocaleDateString()} (${daysLeft} days left)`;
+        document.getElementById('guestPasswordExpiry').style.color = '#4CAF50';
+      } else {
+        document.getElementById('guestPasswordExpiry').value = `EXPIRED - Reset password to grant access`;
+        document.getElementById('guestPasswordExpiry').style.color = '#f44336';
+      }
+    } else {
+      document.getElementById('guestPasswordExpiry').value = 'Never set - Reset password to activate';
+      document.getElementById('guestPasswordExpiry').style.color = '#ff9800';
+    }
+    
+    // Store staff ID for reset function
+    window.currentGuestId = staff.id;
+    
+    document.getElementById('editGuestModal').classList.add('show');
+  } catch (err) {
+    alert('Error loading guest info: ' + err.message);
+  }
+}
+
+function closeEditGuestModal() {
+  document.getElementById('editGuestModal').classList.remove('show');
+}
+
+async function resetGuestPassword() {
+  if (!confirm('Generate a new 7-day password for the guest account?\n\nThe old password will stop working immediately.')) return;
+  
+  try {
+    showLoading();
+    const result = await apiCall(`/staff/${window.currentGuestId}/reset-password`, {
+      method: 'POST'
+    });
+    
+    // Update display with new password
+    document.getElementById('guestCurrentPassword').value = result.tempPassword;
+    document.getElementById('guestCurrentPassword').style.color = '#2196F3';
+    
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 7);
+    document.getElementById('guestPasswordExpiry').value = `${expiryDate.toLocaleDateString()} (7 days)`;
+    document.getElementById('guestPasswordExpiry').style.color = '#4CAF50';
+    
+    // Auto-copy to clipboard
+    navigator.clipboard.writeText(result.tempPassword).catch(() => {});
+    
+    alert(`✅ Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires: ${expiryDate.toLocaleDateString()}\n\n📋 Password copied to clipboard!\n\nShare this with the guest viewer.`);
+  } catch (err) {
+    alert('Error resetting guest password: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function copyGuestPassword() {
+  const passwordField = document.getElementById('guestCurrentPassword');
+  const password = passwordField.value;
+  
+  if (password.includes('encrypted') || password.includes('reset')) {
+    alert('Please reset the password first to generate new credentials.');
+    return;
+  }
+  
+  navigator.clipboard.writeText(password).then(() => {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.textContent = '✅ Copied!';
+    btn.style.background = '#2e7d32';
+    
+    setTimeout(() => {
+      btn.textContent = originalText;
+      btn.style.background = '#4CAF50';
+    }, 2000);
+  }).catch(err => {
+    alert('Failed to copy: ' + err.message);
+  });
 }
 
 function closeEditStaffModal() {
@@ -845,7 +947,7 @@ function renderCalendar() {
 }
 
 function renderWeekView() {
-  const isStaff = currentUser && currentUser.role === 'staff';
+  const isStaff = currentUser && (currentUser.role === 'staff' || currentUser.role === 'guest');
   const rootId = isStaff ? 'calendarRootStaff' : 'calendarRoot';
   const titleId = isStaff ? 'calTitleStaff' : 'calTitle';
   const root = document.getElementById(rootId);
@@ -931,7 +1033,7 @@ function computeMonthHours(shifts) {
 
 function renderMonthView() {
   computeMonthHours(allShifts);
-  const isStaff = currentUser && currentUser.role === 'staff';
+  const isStaff = currentUser && (currentUser.role === 'staff' || currentUser.role === 'guest');
   const rootId = isStaff ? 'calendarRootStaff' : 'calendarRoot';
   const titleId = isStaff ? 'calTitleStaff' : 'calTitle';
   const root = document.getElementById(rootId);
