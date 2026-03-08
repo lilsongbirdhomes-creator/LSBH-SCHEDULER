@@ -277,6 +277,9 @@ async function showApp() {
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
     loadPendingApprovals();
+    
+    // Load any pending schedule changes that haven't been sent
+    await loadScheduleChangesFromDB();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
     loadDashboard();
@@ -2730,6 +2733,10 @@ function trackChange(changeType, shift, oldStaffId, newStaffId) {
   }
   
   console.log('📊 Total changes:', Object.keys(scheduleChanges).length);
+  
+  // Save to database
+  saveScheduleChangesToDB();
+  
   updateNotificationButton();
   startReminderTimer();
 }
@@ -2745,6 +2752,40 @@ function startReminderTimer() {
       remindAdminToNotify();
     }, 30 * 60 * 1000); // 30 minutes
     console.log('⏰ Reminder timer set for 30 minutes');
+  }
+}
+
+// Save scheduleChanges to database
+async function saveScheduleChangesToDB() {
+  if (currentUser?.role !== 'admin') return; // Only admins track changes
+  
+  try {
+    await apiCall('/settings/schedule-changes', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        value: JSON.stringify(scheduleChanges)
+      })
+    });
+    console.log('💾 Saved schedule changes to database');
+  } catch (err) {
+    console.error('❌ Failed to save schedule changes:', err);
+  }
+}
+
+// Load scheduleChanges from database
+async function loadScheduleChangesFromDB() {
+  if (currentUser?.role !== 'admin') return; // Only admins track changes
+  
+  try {
+    const result = await apiCall('/settings/schedule-changes');
+    if (result?.value) {
+      scheduleChanges = JSON.parse(result.value);
+      console.log('📥 Loaded schedule changes from database:', Object.keys(scheduleChanges).length, 'changes');
+      updateNotificationButton();
+      startReminderTimer();
+    }
+  } catch (err) {
+    console.log('ℹ️ No saved schedule changes found (this is normal on first use)');
   }
 }
 
@@ -2815,6 +2856,10 @@ async function sendScheduleNotifications() {
       clearTimeout(changeTimer);
       changeTimer = null;
     }
+    
+    // Save empty state to database
+    await saveScheduleChangesToDB();
+    
     updateNotificationButton();
     
   } catch (err) {
@@ -2835,6 +2880,10 @@ function clearScheduleChanges() {
       clearTimeout(changeTimer);
       changeTimer = null;
     }
+    
+    // Save empty state to database
+    saveScheduleChangesToDB();
+    
     updateNotificationButton();
     showSuccess('Changes cleared');
   }
