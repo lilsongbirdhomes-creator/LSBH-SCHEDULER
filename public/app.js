@@ -610,17 +610,26 @@ async function loadGuestInfo(guestId) {
   try {
     const guestInfo = await apiCall(`/staff/${guestId}/guest-info`);
     
-    // Display password status
-    document.getElementById(`guestPwDisplay${guestId}`).textContent = '(Encrypted - reset to view)';
-    document.getElementById(`guestPwDisplay${guestId}`).style.color = '#999';
+    // Display actual password if available
+    const pwDisplay = document.getElementById(`guestPwDisplay${guestId}`);
+    if (guestInfo.currentPassword) {
+      pwDisplay.textContent = guestInfo.currentPassword;
+      pwDisplay.style.color = '#2196F3';
+      pwDisplay.style.fontWeight = 'bold';
+      pwDisplay.style.fontFamily = 'monospace';
+    } else {
+      pwDisplay.textContent = '(Not set - click Reset PW)';
+      pwDisplay.style.color = '#ff9800';
+      pwDisplay.style.fontWeight = 'normal';
+    }
     
     // Display expiration
+    const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
     if (guestInfo.passwordExpiresAt) {
       const expiryDate = new Date(guestInfo.passwordExpiresAt);
       const now = new Date();
       const daysLeft = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
       
-      const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
       if (daysLeft > 0) {
         expDisplay.textContent = `${expiryDate.toLocaleDateString()} (${daysLeft} days left)`;
         expDisplay.style.color = '#4CAF50';
@@ -629,7 +638,6 @@ async function loadGuestInfo(guestId) {
         expDisplay.style.color = '#f44336';
       }
     } else {
-      const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
       expDisplay.textContent = 'Never set - Reset to activate';
       expDisplay.style.color = '#ff9800';
     }
@@ -778,9 +786,16 @@ async function openEditGuestModal(staff) {
   try {
     const guestInfo = await apiCall(`/staff/${staff.id}/guest-info`);
     
-    // Can't display current password (it's hashed), show placeholder
-    document.getElementById('guestCurrentPassword').value = '(Password is encrypted - reset to get new one)';
-    document.getElementById('guestCurrentPassword').style.color = '#999';
+    // Display actual password if available
+    if (guestInfo.currentPassword) {
+      document.getElementById('guestCurrentPassword').value = guestInfo.currentPassword;
+      document.getElementById('guestCurrentPassword').style.color = '#2196F3';
+      document.getElementById('guestCurrentPassword').style.fontWeight = 'bold';
+    } else {
+      document.getElementById('guestCurrentPassword').value = '(Not set - click Reset Password)';
+      document.getElementById('guestCurrentPassword').style.color = '#ff9800';
+      document.getElementById('guestCurrentPassword').style.fontWeight = 'normal';
+    }
     
     // Display expiration date
     if (guestInfo.passwordExpiresAt) {
