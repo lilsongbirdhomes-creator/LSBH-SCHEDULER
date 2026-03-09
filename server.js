@@ -147,6 +147,11 @@ async function initializeDatabase() {
         VALUES (3, 'guest', ?, 'Guest Viewer', 'guest', 'Guest', 0, ?)
       `).run(hashedGuestPassword, guestExpiry.toISOString());
       
+      // Store guest password in settings
+      db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('guest_current_password', ?)
+      `).run(guestPassword);
+      
       // Set timezone
       db.prepare(`
         INSERT INTO settings (key, value) VALUES ('timezone', 'America/Chicago')
@@ -226,6 +231,12 @@ initializeDatabase().then(() => {
         INSERT INTO users (username, password, full_name, role, job_title, password_expires_at)
         VALUES ('guest', ?, 'Guest Viewer', 'guest', 'Guest', ?)
       `).run(hashedGuestPassword, guestExpiry.toISOString());
+      
+      // Store guest password in settings
+      db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('guest_current_password', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(guestPassword);
       
       console.log('Migration: created guest user with password: ' + guestPassword + ' (expires in 7 days)');
     }
