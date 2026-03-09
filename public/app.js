@@ -291,9 +291,39 @@ async function showApp() {
     // Note: Don't call loadDashboard() as it loads personal stats
     // Calendar will be loaded by loadShifts() call below
     
-    // Hide action buttons and stats for guest
-    const actionButtons = document.querySelectorAll('.staff-actions, #payPeriodSummary, .cal-nav .v-btn');
-    actionButtons.forEach(btn => btn.style.display = 'none');
+    // Add guest welcome banner
+    const staffDashboard = document.getElementById('staffDashboard');
+    const guestBanner = document.createElement('div');
+    guestBanner.style.cssText = 'background:#e3f2fd;border-left:4px solid #2196F3;padding:16px;margin-bottom:16px;border-radius:4px;';
+    guestBanner.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-size:24px;">👀</span>
+        <div>
+          <div style="font-weight:600;font-size:16px;margin-bottom:4px;">Guest View - Read Only</div>
+          <div style="font-size:13px;color:#555;">
+            You are viewing the schedule in guest mode. Staff names are hidden for privacy.
+            <span style="margin-left:8px;cursor:pointer;text-decoration:underline;" onclick="handleLogout()">Logout</span>
+          </div>
+        </div>
+      </div>
+    `;
+    staffDashboard.insertBefore(guestBanner, staffDashboard.firstChild);
+    
+    // Hide all dashboard cards (Your Dashboard, Trade Requests)
+    const dashboardCards = document.querySelectorAll('.dashboard-card');
+    dashboardCards.forEach(card => card.style.display = 'none');
+    
+    // Hide all action buttons (Request/Trade, Emergency, Contact, Settings, Logout)
+    const actionBar = document.querySelector('.staff-action-bar');
+    if (actionBar) actionBar.style.display = 'none';
+    
+    // Hide pay period summary
+    const payPeriod = document.getElementById('payPeriodSummary');
+    if (payPeriod) payPeriod.style.display = 'none';
+    
+    // Hide view mode buttons (Week/Month toggle) - guest only gets month view
+    const viewButtons = document.querySelectorAll('.cal-nav .v-btn');
+    viewButtons.forEach(btn => btn.style.display = 'none');
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
     loadDashboard();
