@@ -265,6 +265,12 @@ router.post('/staff/:id/reset-password', requireAdmin, async (req, res) => {
         WHERE id = ?
       `).run(hashedPassword, expiryDate.toISOString(), staffId);
       
+      // Store plain-text guest password in settings for admin to retrieve
+      req.db.prepare(`
+        INSERT INTO settings (key, value) VALUES ('guest_current_password', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(tempPassword);
+      
       res.json({ success: true, tempPassword, expiresInDays: 7 });
     } else {
       // Regular staff - no expiration, must change password
@@ -296,9 +302,13 @@ router.get('/staff/:id/guest-info', requireAdmin, (req, res) => {
       return res.status(400).json({ error: 'Not a guest account' });
     }
     
+    // Get stored guest password from settings
+    const passwordSetting = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('guest_current_password');
+    
     res.json({ 
       username: user.username,
-      passwordExpiresAt: user.password_expires_at
+      passwordExpiresAt: user.password_expires_at,
+      currentPassword: passwordSetting?.value || null
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to get guest info' });
