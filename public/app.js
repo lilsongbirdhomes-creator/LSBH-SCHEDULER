@@ -1216,7 +1216,7 @@ function createShiftTile(shift, viewType = 'week') {
           ${pendingBadge}
           <div class="month-shift-name">${currentUser.fullName}</div>
           <div class="month-shift-time">${def.icon} ${displayTime}</div>
-          <div class="month-shift-hours ${hClass}" style="font-size:9px;font-style:italic;">(Tentative - ${hours}h)</div>
+          <div class="month-shift-hours ${hClass}" style="font-size:9px;font-style:italic;">(Tent-Open ${hours}h)</div>
         `;
       } else {
         tile.innerHTML = `
@@ -1226,7 +1226,7 @@ function createShiftTile(shift, viewType = 'week') {
             <div class="t-time">${displayTime}</div>
           </div>
           <div class="t-foot ${hClass}" style="font-style:italic;">
-            Tentative - ${hours > 0 ? hours + 'h total' : 'Available for request'}
+            Tent-Open ${hours > 0 ? hours + 'h' : ''}
           </div>
         `;
       }
