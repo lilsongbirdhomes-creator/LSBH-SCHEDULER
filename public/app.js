@@ -523,11 +523,67 @@ function renderStaffList() {
   if (!list) return; // Staff tab not visible for non-admin
   list.innerHTML = "";
   
-  allStaff.forEach(staff => {
+  // Sort: Admin first, then Guest, then everyone else
+  const sortedStaff = [...allStaff].sort((a, b) => {
+    if (a.username === 'admin') return -1;
+    if (b.username === 'admin') return 1;
+    if (a.username === 'guest') return -1;
+    if (b.username === 'guest') return 1;
+    return 0;
+  });
+  
+  sortedStaff.forEach(staff => {
     const isOpen = staff.username === '_open';
+    const isAdmin = staff.username === 'admin';
+    const isGuest = staff.username === 'guest' || staff.role === 'guest';
     const isActive = staff.is_active === 1 || staff.is_active === undefined;
     const item = document.createElement('div');
     item.className = 's-item' + (!isActive ? ' inactive' : '');
+    
+    // Special handling for Guest user
+    if (isGuest) {
+      item.innerHTML = `
+        <div class="col-dot" style="background:#e0e0e0;"></div>
+        <div class="s-det">
+          <div class="s-nm">${staff.full_name} <span style="background:#9e9e9e;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:4px;">GUEST</span></div>
+          <div class="s-me">@${staff.username} • Read-only view access</div>
+          <div id="guestInfo${staff.id}" style="margin-top:8px;font-size:12px;color:#666;">
+            <div style="margin-bottom:4px;">
+              <strong>Password:</strong> <span id="guestPwDisplay${staff.id}" style="font-family:monospace;color:#999;">Loading...</span>
+            </div>
+            <div>
+              <strong>Expires:</strong> <span id="guestExpDisplay${staff.id}" style="font-weight:600;">Loading...</span>
+            </div>
+          </div>
+        </div>
+        <div class="s-act">
+          <button class="bsm b-rpw" onclick="resetPasswordGuest(${staff.id})">Reset PW</button>
+        </div>
+      `;
+      list.appendChild(item);
+      
+      // Load guest info asynchronously
+      loadGuestInfo(staff.id);
+      return;
+    }
+    
+    // Special handling for Admin user (Edit button only)
+    if (isAdmin) {
+      item.innerHTML = `
+        <div class="col-dot" style="background:${staff.tile_color || '#f5f5f5'};"></div>
+        <div class="s-det">
+          <div class="s-nm">${staff.full_name} <span style="background:#2196F3;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:4px;">ADMIN</span></div>
+          <div class="s-me">@${staff.username} • System Administrator</div>
+        </div>
+        <div class="s-act">
+          <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
+        </div>
+      `;
+      list.appendChild(item);
+      return;
+    }
+    
+    // Regular staff and _open system user
     item.innerHTML = `
       <div class="col-dot" style="background:${staff.tile_color || '#f5f5f5'};${!isActive ? 'opacity:0.5;' : ''}"></div>
       <div class="s-det">
@@ -539,17 +595,83 @@ function renderStaffList() {
       </div>
       <div class="s-act">
         <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
-        ${!isOpen && staff.username !== 'admin' ? `
+        ${!isOpen ? `
           <button class="bsm b-rpw" onclick="resetPassword(${staff.id})">Reset PW</button>
-          <button class="bsm ${isActive ? 'b-deact' : 'b-act'}" onclick="toggleStaffActive(${staff.id}, ${!isActive})">
-            ${isActive ? 'Deactivate' : 'Activate'}
-          </button>
           <button class="bsm b-del" onclick="deleteStaff(${staff.id})">Delete</button>
         ` : ''}
       </div>
     `;
     list.appendChild(item);
   });
+}
+
+// Load guest password expiration info
+async function loadGuestInfo(guestId) {
+  try {
+    const guestInfo = await apiCall(`/staff/${guestId}/guest-info`);
+    
+    // Display password status
+    document.getElementById(`guestPwDisplay${guestId}`).textContent = '(Encrypted - reset to view)';
+    document.getElementById(`guestPwDisplay${guestId}`).style.color = '#999';
+    
+    // Display expiration
+    if (guestInfo.passwordExpiresAt) {
+      const expiryDate = new Date(guestInfo.passwordExpiresAt);
+      const now = new Date();
+      const daysLeft = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+      
+      const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
+      if (daysLeft > 0) {
+        expDisplay.textContent = `${expiryDate.toLocaleDateString()} (${daysLeft} days left)`;
+        expDisplay.style.color = '#4CAF50';
+      } else {
+        expDisplay.textContent = 'EXPIRED - Reset required';
+        expDisplay.style.color = '#f44336';
+      }
+    } else {
+      const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
+      expDisplay.textContent = 'Never set - Reset to activate';
+      expDisplay.style.color = '#ff9800';
+    }
+  } catch (err) {
+    console.error('Failed to load guest info:', err);
+    document.getElementById(`guestPwDisplay${guestId}`).textContent = '(Error loading)';
+    document.getElementById(`guestExpDisplay${guestId}`).textContent = '(Error loading)';
+  }
+}
+
+// Reset guest password from staff list
+async function resetPasswordGuest(guestId) {
+  if (!confirm('Generate a new 7-day password for the guest account?\n\nThe old password will stop working immediately.')) return;
+  
+  try {
+    showLoading();
+    const result = await apiCall(`/staff/${guestId}/reset-password`, {
+      method: 'POST'
+    });
+    
+    // Update inline display
+    const pwDisplay = document.getElementById(`guestPwDisplay${guestId}`);
+    const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
+    
+    pwDisplay.textContent = result.tempPassword;
+    pwDisplay.style.color = '#2196F3';
+    pwDisplay.style.fontWeight = 'bold';
+    
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 7);
+    expDisplay.textContent = `${expiryDate.toLocaleDateString()} (7 days)`;
+    expDisplay.style.color = '#4CAF50';
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(result.tempPassword).catch(() => {});
+    
+    alert(`✅ Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires: ${expiryDate.toLocaleDateString()}\n\n📋 Password copied to clipboard!\n\nShare with guest viewer.`);
+  } catch (err) {
+    alert('Error resetting guest password: ' + err.message);
+  } finally {
+    hideLoading();
+  }
 }
 
 async function addStaff() {
