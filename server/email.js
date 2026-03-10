@@ -1,33 +1,22 @@
 // ═══════════════════════════════════════════════════════════
-// EMAIL SERVICE MODULE
+// EMAIL SERVICE MODULE - RESEND VERSION
 // ═══════════════════════════════════════════════════════════
-// Handles all email notifications using Gmail SMTP
+// Handles all email notifications using Resend HTTPS API
+// (Compatible with Railway - no SMTP blocking)
+// FREE: 3,000 emails/month forever - https://resend.com
 
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 // Email configuration from environment variables
-const GMAIL_USER = process.env.GMAIL_USER || 'noreply.lsbh.scheduler@gmail.com';
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply.lsbh.scheduler@gmail.com';
 const REPLY_TO_EMAIL = process.env.REPLY_TO_EMAIL || 'lilsongbirdhomes@gmail.com';
 const SCHEDULER_URL = process.env.SCHEDULER_URL || 'https://lsbh-scheduler-production.up.railway.app';
 const TELEGRAM_BOT = process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot';
 const ORG_NAME = process.env.ORG_NAME || 'LSBH';
 
-// Create reusable transporter
-let transporter = null;
-
-function getTransporter() {
-  if (!transporter && GMAIL_APP_PASSWORD) {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: GMAIL_USER,
-        pass: GMAIL_APP_PASSWORD
-      }
-    });
-  }
-  return transporter;
-}
+// Initialize Resend
+const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 // ═══════════════════════════════════════════════════════════
 // EMAIL TEMPLATES
@@ -90,7 +79,7 @@ ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
+Please do not reply to ${FROM_EMAIL}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -127,7 +116,7 @@ ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
+Please do not reply to ${FROM_EMAIL}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -187,7 +176,7 @@ ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
+Please do not reply to ${FROM_EMAIL}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -232,7 +221,7 @@ Contact: ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
+Please do not reply to ${FROM_EMAIL}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -246,8 +235,8 @@ function getTestEmailTemplate() {
 EMAIL CONFIGURATION TEST
 ═══════════════════════════════════════
 
-✓ SMTP Connection: Working
-✓ From Address: ${GMAIL_USER}
+✓ Resend API: Working
+✓ From Address: ${FROM_EMAIL}
 ✓ Reply-To Address: ${REPLY_TO_EMAIL}
 ✓ Scheduler URL: ${SCHEDULER_URL}
 ✓ Telegram Bot: ${TELEGRAM_BOT}
@@ -260,8 +249,10 @@ CONFIGURATION DETAILS
 ═══════════════════════════════════════
 
 Organization: ${ORG_NAME}
-From: ${ORG_NAME} Scheduler <${GMAIL_USER}>
+From: ${ORG_NAME} Scheduler <${FROM_EMAIL}>
 Reply-To: ${REPLY_TO_EMAIL}
+Email Provider: Resend (HTTPS API)
+Free Tier: 3,000 emails/month
 
 When staff reply to emails, their responses will go to:
 ${REPLY_TO_EMAIL}
@@ -278,6 +269,7 @@ You can now:
 
 ---
 This is a test message from ${ORG_NAME} Scheduler.
+Powered by Resend - https://resend.com
 ${SCHEDULER_URL}`;
 }
 
@@ -286,26 +278,28 @@ ${SCHEDULER_URL}`;
 // ═══════════════════════════════════════════════════════════
 
 async function sendEmail(to, subject, text) {
-  const transport = getTransporter();
-  
-  if (!transport) {
-    throw new Error('Email not configured. Please set GMAIL_APP_PASSWORD environment variable.');
+  if (!resend) {
+    throw new Error('Email not configured. Please set RESEND_API_KEY environment variable.');
   }
 
-  const mailOptions = {
-    from: `${ORG_NAME} Scheduler <${GMAIL_USER}>`,
-    to: to,
-    replyTo: REPLY_TO_EMAIL,
-    subject: subject,
-    text: text
-  };
-
   try {
-    const info = await transport.sendMail(mailOptions);
-    console.log('✅ Email sent:', info.messageId, 'to', to);
-    return { success: true, messageId: info.messageId };
+    const { data, error } = await resend.emails.send({
+      from: `${ORG_NAME} Scheduler <${FROM_EMAIL}>`,
+      to: [to],
+      reply_to: REPLY_TO_EMAIL,
+      subject: subject,
+      text: text
+    });
+
+    if (error) {
+      console.error('❌ Resend error:', error);
+      throw error;
+    }
+
+    console.log('✅ Email sent via Resend:', data.id, 'to', to);
+    return { success: true, messageId: data.id };
   } catch (error) {
-    console.error('❌ Email error:', error);
+    console.error('❌ Email sending error:', error);
     throw error;
   }
 }
@@ -350,5 +344,5 @@ module.exports = {
   sendTelegramSetupEmail,
   sendGuestCredentialsEmail,
   sendTestEmail,
-  isConfigured: () => !!GMAIL_APP_PASSWORD
+  isConfigured: () => !!RESEND_API_KEY
 };
