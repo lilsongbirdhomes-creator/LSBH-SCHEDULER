@@ -5,6 +5,7 @@ const { requireAuth, requireAdmin, login, changePassword, getCurrentUser } = req
 const { calculateWeeklyHours, buildRunningTotals, checkHoursLimit, getPayPeriodStart, SHIFT_DEFS } = require('../utils/hours');
 const notify = require('../utils/notifications');
 const telegram = require("../server/telegram");
+const email = require('./email');
 
 // Helper function to format timestamps in system timezone
 function formatTimestamp(db) {
@@ -123,7 +124,7 @@ router.get('/staff', requireAuth, (req, res) => {
 
 // POST /api/staff - Add new staff member (admin only)
 router.post('/staff', requireAdmin, async (req, res) => {
-  const { username, fullName, role, jobTitle, tileColor, textColor, phone, email, telegramId } = req.body;
+  const { username, fullName, role, jobTitle, tileColor, textColor, phone, email: staffEmail, telegramId, sendEmail, includeTelegram } = req.body;
   
   if (!username || !fullName) {
     return res.status(400).json({ error: 'Username and full name required' });
@@ -140,8 +141,8 @@ router.post('/staff', requireAdmin, async (req, res) => {
   
   try {
     const result = req.db.prepare(`
-      INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, phone, email, telegram_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO users (username, password, full_name, role, job_title, tile_color, text_color, phone, email, telegram_id, must_change_password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
     `).run(
       username.toLowerCase(),
       hashedPassword,
@@ -151,14 +152,34 @@ router.post('/staff', requireAdmin, async (req, res) => {
       tileColor || '#f5f5f5',
       textColor || 'black',
       phone || null,
-      email || null,
+      staffEmail || null,
       telegramId || null
     );
+    
+    // Send welcome email if requested and email provided
+    let emailSent = false;
+    if (sendEmail && staffEmail && email.isConfigured()) {
+      try {
+        await email.sendWelcomeEmail(
+          staffEmail,
+          fullName,
+          username.toLowerCase(),
+          tempPassword,
+          includeTelegram !== false
+        );
+        emailSent = true;
+        console.log(`✅ Welcome email sent to ${staffEmail}`);
+      } catch (emailError) {
+        console.error('❌ Failed to send welcome email:', emailError);
+        // Don't fail the whole request if email fails
+      }
+    }
     
     res.json({ 
       success: true, 
       staffId: result.lastInsertRowid,
-      tempPassword 
+      tempPassword,
+      emailSent
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to create staff member' });
@@ -247,12 +268,13 @@ router.delete('/staff/:id', requireAdmin, (req, res) => {
 // POST /api/staff/:id/reset-password (admin only)
 router.post('/staff/:id/reset-password', requireAdmin, async (req, res) => {
   const staffId = parseInt(req.params.id);
+  const { sendEmail: shouldSendEmail } = req.body;
   const tempPassword = 'temp' + Math.floor(Math.random() * 10000);
   const hashedPassword = await bcrypt.hash(tempPassword, 10);
   
   try {
     // Check if this is the guest user
-    const user = req.db.prepare('SELECT username, role FROM users WHERE id = ?').get(staffId);
+    const user = req.db.prepare('SELECT username, role, full_name, email FROM users WHERE id = ?').get(staffId);
     
     if (user && user.role === 'guest') {
       // Guest password expires in 7 days
@@ -280,7 +302,25 @@ router.post('/staff/:id/reset-password', requireAdmin, async (req, res) => {
         WHERE id = ?
       `).run(hashedPassword, staffId);
       
-      res.json({ success: true, tempPassword });
+      // Send password reset email if requested and email available
+      let emailSent = false;
+      if (shouldSendEmail && user && user.email && email.isConfigured()) {
+        try {
+          await email.sendPasswordResetEmail(
+            user.email,
+            user.full_name,
+            user.username,
+            tempPassword
+          );
+          emailSent = true;
+          console.log(`✅ Password reset email sent to ${user.email}`);
+        } catch (emailError) {
+          console.error('❌ Failed to send password reset email:', emailError);
+          // Don't fail the whole request if email fails
+        }
+      }
+      
+      res.json({ success: true, tempPassword, emailSent });
     }
   } catch (err) {
     res.status(500).json({ error: 'Failed to reset password' });
@@ -2127,4 +2167,124 @@ router.post('/test-telegram', requireAdmin, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// EMAIL ROUTES
+// ═══════════════════════════════════════════════════════════
+
+// POST /api/email/test - Send test email (admin only)
+router.post('/email/test', requireAdmin, async (req, res) => {
+  const { recipientEmail } = req.body;
+  
+  if (!recipientEmail) {
+    return res.status(400).json({ error: 'Recipient email required' });
+  }
+  
+  if (!email.isConfigured()) {
+    return res.status(400).json({ error: 'Email not configured. Please set GMAIL_APP_PASSWORD environment variable.' });
+  }
+  
+  try {
+    await email.sendTestEmail(recipientEmail);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Test email error:', err);
+    res.status(500).json({ error: 'Failed to send test email: ' + err.message });
+  }
+});
+
+// POST /api/email/telegram-instructions - Send Telegram setup instructions (admin only)
+router.post('/email/telegram-instructions', requireAdmin, async (req, res) => {
+  const { staffIds } = req.body; // Array of staff IDs or 'all'
+  
+  if (!email.isConfigured()) {
+    return res.status(400).json({ error: 'Email not configured' });
+  }
+  
+  try {
+    let staffList;
+    if (staffIds === 'all') {
+      staffList = req.db.prepare(`
+        SELECT id, full_name, email 
+        FROM users 
+        WHERE role = 'staff' AND email IS NOT NULL AND email != ''
+      `).all();
+    } else if (Array.isArray(staffIds)) {
+      const placeholders = staffIds.map(() => '?').join(',');
+      staffList = req.db.prepare(`
+        SELECT id, full_name, email 
+        FROM users 
+        WHERE id IN (${placeholders}) AND email IS NOT NULL AND email != ''
+      `).all(...staffIds);
+    } else {
+      return res.status(400).json({ error: 'Invalid staffIds parameter' });
+    }
+    
+    let sent = 0;
+    let failed = 0;
+    
+    for (const staff of staffList) {
+      try {
+        await email.sendTelegramSetupEmail(staff.email, staff.full_name);
+        sent++;
+      } catch (err) {
+        console.error(`Failed to send to ${staff.email}:`, err);
+        failed++;
+      }
+    }
+    
+    res.json({ success: true, sent, failed, total: staffList.length });
+  } catch (err) {
+    console.error('Bulk email error:', err);
+    res.status(500).json({ error: 'Failed to send emails' });
+  }
+});
+
+// POST /api/email/guest-credentials - Send guest credentials via email (admin only)
+router.post('/email/guest-credentials', requireAdmin, async (req, res) => {
+  const { recipientEmail, recipientName } = req.body;
+  
+  if (!recipientEmail) {
+    return res.status(400).json({ error: 'Recipient email required' });
+  }
+  
+  if (!email.isConfigured()) {
+    return res.status(400).json({ error: 'Email not configured' });
+  }
+  
+  try {
+    // Get guest password and expiration
+    const guestPassword = req.db.prepare('SELECT value FROM settings WHERE key = ?').get('guest_current_password');
+    const guestUser = req.db.prepare('SELECT password_expires_at FROM users WHERE username = ?').get('guest');
+    
+    if (!guestPassword || !guestPassword.value) {
+      return res.status(400).json({ error: 'Guest password not set. Please reset guest password first.' });
+    }
+    
+    await email.sendGuestCredentialsEmail(
+      recipientEmail,
+      recipientName || '',
+      guestPassword.value,
+      guestUser?.password_expires_at
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Guest credentials email error:', err);
+    res.status(500).json({ error: 'Failed to send email: ' + err.message });
+  }
+});
+
+// GET /api/email/status - Check email configuration status (admin only)
+router.get('/email/status', requireAdmin, (req, res) => {
+  res.json({
+    configured: email.isConfigured(),
+    gmailUser: process.env.GMAIL_USER || 'noreply.lsbh.scheduler@gmail.com',
+    replyTo: process.env.REPLY_TO_EMAIL || 'lilsongbirdhomes@gmail.com',
+    schedulerUrl: process.env.SCHEDULER_URL || 'https://lsbh-scheduler-production.up.railway.app',
+    telegramBot: process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot',
+    orgName: process.env.ORG_NAME || 'LSBH'
+  });
+});
+
 module.exports = router;
