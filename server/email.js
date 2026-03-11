@@ -1,14 +1,10 @@
 // ═══════════════════════════════════════════════════════════
-// EMAIL SERVICE MODULE - BREVO VERSION
+// EMAIL SERVICE - BREVO (v4.x SDK - SIMPLE METHOD)
 // ═══════════════════════════════════════════════════════════
-// THIS FILE USES BREVO (@getbrevo/brevo) NOT RESEND!
-// Handles all email notifications using Brevo (Sendinblue) HTTPS API
-// (Compatible with Railway - no SMTP blocking)
-// FREE: 300 emails/day forever - https://brevo.com
 
-const brevo = require('@getbrevo/brevo');
+const { BrevoClient } = require('@getbrevo/brevo');
 
-// Email configuration from environment variables
+// Configuration
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
 const FROM_EMAIL = process.env.FROM_EMAIL || 'lilsongbirdhomes@gmail.com';
 const FROM_NAME = process.env.FROM_NAME || 'LSBH Scheduler';
@@ -17,13 +13,10 @@ const SCHEDULER_URL = process.env.SCHEDULER_URL || 'https://lsbh-scheduler-produ
 const TELEGRAM_BOT = process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot';
 const ORG_NAME = process.env.ORG_NAME || 'LSBH';
 
-// Initialize Brevo
-let apiInstance = null;
+// Initialize Brevo client
+let brevo = null;
 if (BREVO_API_KEY) {
-  const defaultClient = brevo.ApiClient.instance;
-  const apiKey = defaultClient.authentications['api-key'];
-  apiKey.apiKey = BREVO_API_KEY;
-  apiInstance = new brevo.TransactionalEmailsApi();
+  brevo = new BrevoClient({ apiKey: BREVO_API_KEY });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -278,35 +271,37 @@ ${SCHEDULER_URL}`;
 }
 
 // ═══════════════════════════════════════════════════════════
-// EMAIL SENDING FUNCTIONS
+// SEND EMAIL FUNCTION
 // ═══════════════════════════════════════════════════════════
 
-async function sendEmail(to, subject, text) {
-  if (!apiInstance) {
-    throw new Error('Email not configured. Please set BREVO_API_KEY environment variable.');
+async function sendEmail(to, subject, textContent) {
+  if (!brevo) {
+    throw new Error('Email not configured. Please set BREVO_API_KEY.');
   }
 
-  const sendSmtpEmail = new brevo.SendSmtpEmail();
-  
-  sendSmtpEmail.sender = {
-    name: FROM_NAME,
-    email: FROM_EMAIL
-  };
-  
-  sendSmtpEmail.to = [{ email: to }];
-  sendSmtpEmail.replyTo = { email: REPLY_TO_EMAIL };
-  sendSmtpEmail.subject = subject;
-  sendSmtpEmail.textContent = text;
-
   try {
-    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log('✅ Email sent via Brevo:', data.messageId, 'to', to);
-    return { success: true, messageId: data.messageId };
+    const result = await brevo.transactionalEmails.sendTransacEmail({
+      subject: subject,
+      textContent: textContent,
+      sender: {
+        name: FROM_NAME,
+        email: FROM_EMAIL
+      },
+      to: [{ email: to }],
+      replyTo: { email: REPLY_TO_EMAIL }
+    });
+
+    console.log('✅ Email sent via Brevo:', result.messageId, 'to', to);
+    return { success: true, messageId: result.messageId };
   } catch (error) {
     console.error('❌ Brevo error:', error);
     throw error;
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// PUBLIC API FUNCTIONS
+// ═══════════════════════════════════════════════════════════
 
 async function sendWelcomeEmail(staffEmail, staffName, username, tempPassword, includeTelegram = true) {
   const subject = `Welcome to ${ORG_NAME} Scheduler - Account Created`;
@@ -338,6 +333,10 @@ async function sendTestEmail(recipientEmail) {
   return sendEmail(recipientEmail, subject, text);
 }
 
+function isConfigured() {
+  return !!BREVO_API_KEY;
+}
+
 // ═══════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════
@@ -348,5 +347,5 @@ module.exports = {
   sendTelegramSetupEmail,
   sendGuestCredentialsEmail,
   sendTestEmail,
-  isConfigured: () => !!BREVO_API_KEY
+  isConfigured
 };
