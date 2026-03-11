@@ -2279,8 +2279,9 @@ router.post('/email/guest-credentials', requireAdmin, async (req, res) => {
 router.get('/email/status', requireAdmin, (req, res) => {
   res.json({
     configured: email.isConfigured(),
-    provider: 'Resend',
-    fromEmail: process.env.FROM_EMAIL || 'noreply.lsbh.scheduler@gmail.com',
+    provider: 'Brevo',
+    fromEmail: process.env.FROM_EMAIL || 'lilsongbirdhomes@gmail.com',
+    fromName: process.env.FROM_NAME || 'LSBH Scheduler',
     replyTo: process.env.REPLY_TO_EMAIL || 'lilsongbirdhomes@gmail.com',
     schedulerUrl: process.env.SCHEDULER_URL || 'https://lsbh-scheduler-production.up.railway.app',
     telegramBot: process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot',
