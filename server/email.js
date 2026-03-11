@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════
 // EMAIL SERVICE MODULE - BREVO VERSION
 // ═══════════════════════════════════════════════════════════
+// THIS FILE USES BREVO (@getbrevo/brevo) NOT RESEND!
 // Handles all email notifications using Brevo (Sendinblue) HTTPS API
 // (Compatible with Railway - no SMTP blocking)
 // FREE: 300 emails/day forever - https://brevo.com
