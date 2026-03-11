@@ -720,9 +720,16 @@ async function addStaff() {
   const phone = document.getElementById('newPhone').value.trim();
   const email = document.getElementById('newEmail').value.trim();
   const telegramId = document.getElementById('newTelegramId').value.trim();
+  const sendEmail = document.getElementById('sendWelcomeEmail').checked;
+  const includeTelegram = document.getElementById('includeTelegramInstructions').checked;
   
   if (!username || !fullName) {
     alert('Please enter username and full name');
+    return;
+  }
+  
+  if (sendEmail && !email) {
+    alert('Please enter an email address to send welcome email');
     return;
   }
   
@@ -730,16 +737,35 @@ async function addStaff() {
     showLoading();
     const result = await apiCall('/staff', {
       method: 'POST',
-      body: JSON.stringify({ username, fullName, role, jobTitle, phone: phone || null, email: email || null, telegramId: telegramId || null })
+      body: JSON.stringify({ 
+        username, 
+        fullName, 
+        role, 
+        jobTitle, 
+        phone: phone || null, 
+        email: email || null, 
+        telegramId: telegramId || null,
+        sendEmail,
+        includeTelegram
+      })
     });
     
-    alert(`Staff added!\nUsername: ${username}\nTemp Password: ${result.tempPassword}\n\nThey must change password on first login.`);
+    let message = `Staff added!\nUsername: ${username}\nTemp Password: ${result.tempPassword}\n\nThey must change password on first login.`;
+    
+    if (result.emailSent) {
+      message += '\n\n✅ Welcome email sent!';
+    } else if (sendEmail) {
+      message += '\n\n⚠️ Email could not be sent.';
+    }
+    
+    alert(message);
     
     document.getElementById('newUsername').value = '';
     document.getElementById('newFullName').value = '';
     document.getElementById('newPhone').value = '';
     document.getElementById('newEmail').value = '';
     document.getElementById('newTelegramId').value = '';
+    document.getElementById('sendWelcomeEmail').checked = false;
     
     // Await loadStaff to ensure allStaff array is updated
     await loadStaff();
@@ -953,19 +979,37 @@ async function saveStaffEdit() {
 }
 
 async function resetPassword(staffId) {
-  if (!confirm('Reset password for this staff member?')) return;
+  const staff = allStaff.find(s => s.id === staffId);
+  const hasEmail = staff && staff.email;
+  
+  let sendEmail = false;
+  if (hasEmail) {
+    sendEmail = confirm(`Reset password for ${staff.full_name}?\n\n📧 Send new password via email to ${staff.email}?\n\nClick OK to send email, or Cancel to just reset without email.`);
+  } else {
+    if (!confirm(`Reset password for this staff member?`)) return;
+  }
   
   try {
     showLoading();
     const result = await apiCall(`/staff/${staffId}/reset-password`, {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify({ sendEmail })
     });
     
+    let message = '';
     if (result.expiresInDays) {
-      alert(`Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires in ${result.expiresInDays} days\n\nShare this with the guest - they can log in immediately.`);
+      message = `Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires in ${result.expiresInDays} days\n\nShare this with the guest - they can log in immediately.`;
     } else {
-      alert(`Password reset!\n\nNew temp password: ${result.tempPassword}\n\nUser must change on next login.`);
+      message = `Password reset!\n\nNew temp password: ${result.tempPassword}\n\nUser must change on next login.`;
     }
+    
+    if (result.emailSent) {
+      message += '\n\n✅ Email sent with new password!';
+    } else if (sendEmail) {
+      message += '\n\n⚠️ Email could not be sent.';
+    }
+    
+    alert(message);
   } catch (err) {
     alert('Error: ' + err.message);
   } finally {
@@ -4810,4 +4854,75 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
       document.body.removeChild(printDiv);
     }, 500);
   }, 250);
+}
+
+// ═══════════════════════════════════════════════════════════
+// EMAIL TOOLS
+// ═══════════════════════════════════════════════════════════
+
+async function sendTelegramInstructionsToAll() {
+  const staffWithEmail = allStaff.filter(s => s.email && s.role !== 'guest' && s.is_active);
+  
+  if (staffWithEmail.length === 0) {
+    alert('No active staff members have email addresses configured.');
+    return;
+  }
+  
+  if (!confirm(`Send Telegram setup instructions to ${staffWithEmail.length} staff members?\n\n${staffWithEmail.map(s => `• ${s.full_name} (${s.email})`).join('\n')}`)) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    const result = await apiCall('/api/email/telegram-instructions', {
+      method: 'POST',
+      body: JSON.stringify({ staffIds: 'all' })
+    });
+    
+    alert(`✅ Telegram instructions sent to ${result.sent} staff members!`);
+  } catch (err) {
+    alert('Error sending emails: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function sendGuestCredentialsEmail() {
+  const email = prompt('Enter email address to send guest credentials:');
+  if (!email) return;
+  
+  const name = prompt('Recipient name (optional):') || '';
+  
+  try {
+    showLoading();
+    await apiCall('/api/email/guest-credentials', {
+      method: 'POST',
+      body: JSON.stringify({ recipientEmail: email, recipientName: name })
+    });
+    
+    alert(`✅ Guest credentials sent to ${email}!`);
+  } catch (err) {
+    alert('Error sending email: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function sendTestEmail() {
+  const email = prompt('Enter email address for test:', currentUser.email || '');
+  if (!email) return;
+  
+  try {
+    showLoading();
+    await apiCall('/api/email/test', {
+      method: 'POST',
+      body: JSON.stringify({ recipientEmail: email })
+    });
+    
+    alert(`✅ Test email sent to ${email}!\n\nCheck your inbox (and spam folder).`);
+  } catch (err) {
+    alert('Error sending test email: ' + err.message);
+  } finally {
+    hideLoading();
+  }
 }
