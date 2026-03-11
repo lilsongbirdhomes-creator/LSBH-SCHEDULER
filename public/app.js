@@ -620,6 +620,7 @@ function renderStaffList() {
         <div class="s-nm">
           ${staff.full_name}
           ${!isActive ? '<span class="inactive-badge">Inactive</span>' : ''}
+          ${staff.telegram_id ? '<span style="background:#26a69a;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:4px;">📱 Linked</span>' : ''}
         </div>
         <div class="s-me">${isOpen ? 'Placeholder for unassigned shifts' : `@${staff.username} • ${staff.job_title}`}</div>
       </div>
@@ -627,6 +628,7 @@ function renderStaffList() {
         <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
         ${!isOpen ? `
           <button class="bsm b-rpw" onclick="resetPassword(${staff.id})">Reset PW</button>
+          ${!staff.telegram_id && staff.email ? `<button class="bsm" style="background:#26a69a;color:white;" onclick="generateTelegramLink(${staff.id})">📱 Link</button>` : ''}
           <button class="bsm b-del" onclick="deleteStaff(${staff.id})">Delete</button>
         ` : ''}
       </div>
@@ -4990,6 +4992,141 @@ async function sendTestEmail() {
     alert(`✅ Test email sent to ${email}!\n\nCheck your inbox (and spam folder).`);
   } catch (err) {
     alert('Error sending test email: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TELEGRAM MAGIC LINK
+// ═══════════════════════════════════════════════════════════
+
+async function generateTelegramLink(staffId) {
+  const staff = allStaff.find(s => s.id === staffId);
+  if (!staff) return;
+  
+  try {
+    showLoading();
+    const result = await apiCall('/telegram/generate-link', {
+      method: 'POST',
+      body: JSON.stringify({ staffId })
+    });
+    
+    // Create modal to show the link
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.onclick = (e) => {
+      if (e.target === modal) modal.remove();
+    };
+    
+    const content = document.createElement('div');
+    content.className = 'modal-content';
+    content.style.maxWidth = '600px';
+    
+    content.innerHTML = `
+      <h3>📱 Telegram Magic Link</h3>
+      <p style="color:#666;font-size:13px;margin-bottom:16px;">
+        Send this link to <strong>${staff.full_name}</strong> to instantly connect their Telegram account.
+      </p>
+      
+      <div style="background:#f0f9ff;padding:12px;border-radius:6px;margin-bottom:16px;border:1px solid #bfdbfe;">
+        <div style="font-size:12px;color:#666;margin-bottom:4px;">Magic Link (expires in ${result.expiresInDays} days):</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input 
+            type="text" 
+            id="magicLinkInput" 
+            value="${result.magicLink}" 
+            readonly 
+            style="flex:1;font-family:monospace;font-size:12px;padding:8px;border:1px solid #cbd5e1;border-radius:4px;"
+            onclick="this.select()"
+          >
+          <button 
+            class="b-pri" 
+            onclick="copyToClipboard('magicLinkInput')"
+            style="white-space:nowrap;padding:8px 16px;"
+          >
+            📋 Copy
+          </button>
+        </div>
+      </div>
+      
+      <div style="background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:16px;border:1px solid #ffd966;">
+        <div style="font-weight:600;margin-bottom:8px;">📲 How it works:</div>
+        <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.6;">
+          <li>Copy the link above</li>
+          <li>Send it to ${staff.full_name} via email or text</li>
+          <li>They click the link → Opens Telegram</li>
+          <li>They tap "START" → Automatically linked! ✨</li>
+        </ol>
+      </div>
+      
+      ${staff.email ? `
+        <div style="margin-bottom:16px;">
+          <button class="b-sec" onclick="emailTelegramLink(${staffId}, '${result.magicLink}')" style="width:100%;">
+            📧 Email Link to ${staff.full_name}
+          </button>
+        </div>
+      ` : ''}
+      
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="b-sec" onclick="this.closest('.modal-overlay').remove()">Close</button>
+      </div>
+    `;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+  } catch (err) {
+    alert('Error generating link: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+function copyToClipboard(inputId) {
+  const input = document.getElementById(inputId);
+  input.select();
+  document.execCommand('copy');
+  
+  // Visual feedback
+  const btn = event.target;
+  const originalText = btn.textContent;
+  btn.textContent = '✅ Copied!';
+  btn.style.background = '#26a69a';
+  setTimeout(() => {
+    btn.textContent = originalText;
+    btn.style.background = '';
+  }, 2000);
+}
+
+async function emailTelegramLink(staffId, magicLink) {
+  const staff = allStaff.find(s => s.id === staffId);
+  if (!staff || !staff.email) return;
+  
+  if (!confirm(`Send Telegram setup link to ${staff.full_name} at ${staff.email}?`)) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    
+    // Send email with the magic link
+    await apiCall('/email/telegram-instructions', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        staffIds: [staffId],
+        includeMagicLink: true,
+        magicLink: magicLink
+      })
+    });
+    
+    alert(`✅ Telegram setup link sent to ${staff.email}!`);
+    
+    // Close modal
+    document.querySelector('.modal-overlay').remove();
+    
+  } catch (err) {
+    alert('Error sending email: ' + err.message);
   } finally {
     hideLoading();
   }
