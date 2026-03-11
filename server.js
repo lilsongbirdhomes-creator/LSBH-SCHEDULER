@@ -272,6 +272,32 @@ initializeDatabase().then(() => {
     console.error('Shift time column migration failed:', err.message);
   }
 
+  // ── Telegram link codes table migration ──────────────────────────────
+  try {
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='telegram_link_codes'").get();
+    if (!tables) {
+      db.prepare(`
+        CREATE TABLE telegram_link_codes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          code TEXT UNIQUE NOT NULL,
+          staff_id INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          used INTEGER DEFAULT 0,
+          used_at INTEGER,
+          FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `).run();
+      
+      db.prepare('CREATE INDEX idx_link_codes_code ON telegram_link_codes(code)').run();
+      db.prepare('CREATE INDEX idx_link_codes_staff ON telegram_link_codes(staff_id)').run();
+      
+      console.log('Migration: created telegram_link_codes table');
+    }
+  } catch (err) {
+    console.error('Telegram link codes migration failed:', err.message);
+  }
+
   // Initialize Telegram bot
   console.log('🔧 Loading Telegram module...');
   const telegram = require('./server/telegram');
