@@ -4874,7 +4874,7 @@ async function sendTelegramInstructionsToAll() {
   
   try {
     showLoading();
-    const result = await apiCall('/api/email/telegram-instructions', {
+    const result = await apiCall('/email/telegram-instructions', {
       method: 'POST',
       body: JSON.stringify({ staffIds: 'all' })
     });
@@ -4895,7 +4895,7 @@ async function sendGuestCredentialsEmail() {
   
   try {
     showLoading();
-    await apiCall('/api/email/guest-credentials', {
+    await apiCall('/email/guest-credentials', {
       method: 'POST',
       body: JSON.stringify({ recipientEmail: email, recipientName: name })
     });
@@ -4914,7 +4914,7 @@ async function sendTestEmail() {
   
   try {
     showLoading();
-    await apiCall('/api/email/test', {
+    await apiCall('/email/test', {
       method: 'POST',
       body: JSON.stringify({ recipientEmail: email })
     });
