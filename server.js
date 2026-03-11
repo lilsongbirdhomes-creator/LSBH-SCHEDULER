@@ -273,7 +273,9 @@ initializeDatabase().then(() => {
   }
 
   // Initialize Telegram bot
+  console.log('🔧 Loading Telegram module...');
   const telegram = require('./server/telegram');
+  console.log('✅ Telegram module loaded successfully');
 
   // Import routes
   const routes = require('./server/routes');
