@@ -2181,7 +2181,7 @@ router.post('/email/test', requireAdmin, async (req, res) => {
   }
   
   if (!email.isConfigured()) {
-    return res.status(400).json({ error: 'Email not configured. Please set GMAIL_APP_PASSWORD environment variable.' });
+    return res.status(400).json({ error: 'Email not configured. Please set BREVO_API_KEY environment variable.' });
   }
   
   try {
