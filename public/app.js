@@ -4860,7 +4860,7 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
 // EMAIL TOOLS
 // ═══════════════════════════════════════════════════════════
 
-async function sendTelegramInstructionsToAll() {
+async function sendTelegramInstructions() {
   const staffWithEmail = allStaff.filter(s => s.email && s.role !== 'guest' && s.is_active);
   
   if (staffWithEmail.length === 0) {
@@ -4868,18 +4868,86 @@ async function sendTelegramInstructionsToAll() {
     return;
   }
   
-  if (!confirm(`Send Telegram setup instructions to ${staffWithEmail.length} staff members?\n\n${staffWithEmail.map(s => `• ${s.full_name} (${s.email})`).join('\n')}`)) {
+  // Create modal for staff selection
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
+  
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+  content.style.maxWidth = '500px';
+  
+  content.innerHTML = `
+    <h3>📱 Send Telegram Instructions</h3>
+    <p style="color:#666;font-size:13px;margin-bottom:16px;">
+      Select staff members to receive Telegram setup instructions via email.
+    </p>
+    
+    <div style="margin-bottom:16px;">
+      <label style="display:flex;align-items:center;gap:8px;padding:8px;background:#f0f9ff;border-radius:4px;cursor:pointer;margin-bottom:8px;">
+        <input type="checkbox" id="selectAllStaff" onchange="toggleAllStaffSelection()" style="cursor:pointer;">
+        <strong>Select All (${staffWithEmail.length} staff)</strong>
+      </label>
+    </div>
+    
+    <div style="max-height:300px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:4px;padding:8px;margin-bottom:16px;">
+      ${staffWithEmail.map(s => `
+        <label style="display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border-radius:4px;" 
+               onmouseover="this.style.background='#f9fafb'" 
+               onmouseout="this.style.background='transparent'">
+          <input type="checkbox" class="staff-checkbox" value="${s.id}" style="cursor:pointer;">
+          <div style="flex:1;">
+            <div style="font-weight:500;">${s.full_name}</div>
+            <div style="font-size:12px;color:#666;">${s.email}</div>
+          </div>
+        </label>
+      `).join('')}
+    </div>
+    
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="b-sec" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-pri" onclick="confirmSendTelegramInstructions()">Send Instructions</button>
+    </div>
+  `;
+  
+  modal.appendChild(content);
+  document.body.appendChild(modal);
+}
+
+function toggleAllStaffSelection() {
+  const selectAll = document.getElementById('selectAllStaff');
+  const checkboxes = document.querySelectorAll('.staff-checkbox');
+  checkboxes.forEach(cb => cb.checked = selectAll.checked);
+}
+
+async function confirmSendTelegramInstructions() {
+  const selectedIds = Array.from(document.querySelectorAll('.staff-checkbox:checked'))
+    .map(cb => parseInt(cb.value));
+  
+  if (selectedIds.length === 0) {
+    alert('Please select at least one staff member.');
     return;
   }
+  
+  const selectedStaff = allStaff.filter(s => selectedIds.includes(s.id));
+  
+  if (!confirm(`Send Telegram instructions to ${selectedStaff.length} staff member(s)?\n\n${selectedStaff.map(s => `• ${s.full_name}`).join('\n')}`)) {
+    return;
+  }
+  
+  // Close modal
+  document.querySelector('.modal-overlay').remove();
   
   try {
     showLoading();
     const result = await apiCall('/email/telegram-instructions', {
       method: 'POST',
-      body: JSON.stringify({ staffIds: 'all' })
+      body: JSON.stringify({ staffIds: selectedIds })
     });
     
-    alert(`✅ Telegram instructions sent to ${result.sent} staff members!`);
+    alert(`✅ Telegram instructions sent to ${result.sent} staff member(s)!`);
   } catch (err) {
     alert('Error sending emails: ' + err.message);
   } finally {
