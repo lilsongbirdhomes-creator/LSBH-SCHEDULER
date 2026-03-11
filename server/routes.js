@@ -2289,4 +2289,94 @@ router.get('/email/status', requireAdmin, (req, res) => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════
+// TELEGRAM LINK CODES
+// ═══════════════════════════════════════════════════════════
+
+// POST /api/telegram/generate-link - Generate magic link for staff (admin only)
+router.post('/telegram/generate-link', requireAdmin, async (req, res) => {
+  const { staffId } = req.body;
+  
+  if (!staffId) {
+    return res.status(400).json({ error: 'Staff ID required' });
+  }
+  
+  try {
+    const staff = req.db.prepare('SELECT id, full_name, username FROM users WHERE id = ?').get(staffId);
+    
+    if (!staff) {
+      return res.status(404).json({ error: 'Staff not found' });
+    }
+    
+    // Generate unique code
+    const code = `${staff.username.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    const now = Date.now();
+    const expiresIn = 7 * 24 * 60 * 60 * 1000; // 7 days
+    
+    // Invalidate old codes for this staff
+    req.db.prepare('UPDATE telegram_link_codes SET used = 1 WHERE staff_id = ? AND used = 0').run(staffId);
+    
+    // Insert new code
+    req.db.prepare(`
+      INSERT INTO telegram_link_codes (code, staff_id, created_at, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(code, staffId, now, now + expiresIn);
+    
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot';
+    const magicLink = `https://t.me/${botUsername.replace('@', '')}?start=${code}`;
+    
+    res.json({ 
+      success: true, 
+      code,
+      magicLink,
+      expiresInDays: 7,
+      staffName: staff.full_name
+    });
+  } catch (err) {
+    console.error('Error generating link:', err);
+    res.status(500).json({ error: 'Failed to generate link' });
+  }
+});
+
+// GET /api/telegram/link-status/:staffId - Check if staff has active link (admin only)
+router.get('/telegram/link-status/:staffId', requireAdmin, (req, res) => {
+  const { staffId } = req.params;
+  
+  try {
+    const activeLink = req.db.prepare(`
+      SELECT code, created_at, expires_at 
+      FROM telegram_link_codes 
+      WHERE staff_id = ? AND used = 0 AND expires_at > ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(staffId, Date.now());
+    
+    if (activeLink) {
+      const botUsername = process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot';
+      const magicLink = `https://t.me/${botUsername.replace('@', '')}?start=${activeLink.code}`;
+      const expiresInDays = Math.ceil((activeLink.expires_at - Date.now()) / (24 * 60 * 60 * 1000));
+      
+      res.json({
+        hasActiveLink: true,
+        magicLink,
+        expiresInDays
+      });
+    } else {
+      res.json({ hasActiveLink: false });
+    }
+  } catch (err) {
+    console.error('Error checking link status:', err);
+    res.status(500).json({ error: 'Failed to check link status' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// TELEGRAM WEBHOOK
+// ═══════════════════════════════════════════════════════════
+
+// POST /api/telegram/webhook - Receive Telegram bot updates
+router.post('/telegram/webhook', (req, res) => {
+  telegram.handleWebhook(req, res);
+});
+
 module.exports = router;
