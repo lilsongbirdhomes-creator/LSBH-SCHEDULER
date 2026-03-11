@@ -5,17 +5,7 @@ const { requireAuth, requireAdmin, login, changePassword, getCurrentUser } = req
 const { calculateWeeklyHours, buildRunningTotals, checkHoursLimit, getPayPeriodStart, SHIFT_DEFS } = require('../utils/hours');
 const notify = require('../utils/notifications');
 const telegram = require("../server/telegram");
-// const email = require('./email'); // DISABLED - causing crashes
-
-// Dummy email functions
-const email = {
-  isConfigured: () => false,
-  sendWelcomeEmail: async () => ({ success: false }),
-  sendPasswordResetEmail: async () => ({ success: false }),
-  sendTelegramSetupEmail: async () => ({ success: false }),
-  sendGuestCredentialsEmail: async () => ({ success: false }),
-  sendTestEmail: async () => ({ success: false })
-};
+const email = require('./email');
 
 // Helper function to format timestamps in system timezone
 function formatTimestamp(db) {
