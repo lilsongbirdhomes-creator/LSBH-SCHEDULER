@@ -2,21 +2,92 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
+const webhookUrl = process.env.APP_URL || process.env.SCHEDULER_URL;
 let bot = null;
 let isEnabled = false;
 
 // Initialize bot if token is configured
 if (token && token !== 'your-telegram-bot-token-here') {
   try {
-    bot = new TelegramBot(token, { polling: false });
+    bot = new TelegramBot(token, { 
+      polling: false,
+      webHook: false // We'll set webhook manually via route
+    });
     isEnabled = true;
     
-    // Handle /start command
-    bot.onText(/\/start/, (msg) => {
+    // Handle /start command (with optional link code)
+    bot.onText(/\/start(.*)/, async (msg, match) => {
       const chatId = msg.chat.id;
       const username = msg.from.username;
       const firstName = msg.from.first_name;
+      const linkCode = match[1] ? match[1].trim() : '';
       
+      // If there's a link code, try to auto-link
+      if (linkCode) {
+        try {
+          // Link codes are stored in database temporarily
+          const db = require('./database');
+          const linkRecord = db.prepare('SELECT staff_id FROM telegram_link_codes WHERE code = ? AND used = 0 AND expires_at > ?')
+            .get(linkCode, Date.now());
+          
+          if (linkRecord) {
+            // Get staff info
+            const staff = db.prepare('SELECT id, full_name, email FROM users WHERE id = ?').get(linkRecord.staff_id);
+            
+            if (staff) {
+              // Link the Telegram ID
+              db.prepare('UPDATE users SET telegram_id = ? WHERE id = ?').run(chatId.toString(), staff.id);
+              
+              // Mark code as used
+              db.prepare('UPDATE telegram_link_codes SET used = 1, used_at = ? WHERE code = ?').run(Date.now(), linkCode);
+              
+              // Send success message to staff
+              bot.sendMessage(chatId,
+                `✅ <b>Connected Successfully!</b>\n\n` +
+                `Hi <b>${staff.full_name}</b>! Your Telegram account is now linked to your LSBH Scheduler account.\n\n` +
+                `You'll receive notifications for:\n` +
+                `• New shift assignments\n` +
+                `• Schedule changes\n` +
+                `• Shift requests\n` +
+                `• Emergency alerts\n\n` +
+                `Your admin has been notified. ✨`,
+                { parse_mode: 'HTML' }
+              );
+              
+              // Notify admin (get admin telegram IDs)
+              const admins = db.prepare('SELECT telegram_id, full_name FROM users WHERE role = ? AND telegram_id IS NOT NULL').all('admin');
+              for (const admin of admins) {
+                try {
+                  bot.sendMessage(admin.telegram_id,
+                    `✅ <b>Telegram Linked</b>\n\n` +
+                    `<b>${staff.full_name}</b> just connected their Telegram account!\n\n` +
+                    `📱 Telegram ID: <code>${chatId}</code>`,
+                    { parse_mode: 'HTML' }
+                  );
+                } catch (err) {
+                  console.error('Failed to notify admin:', err);
+                }
+              }
+              
+              return; // Exit - successful link
+            }
+          }
+          
+          // Invalid or expired code
+          bot.sendMessage(chatId,
+            `❌ <b>Invalid Link</b>\n\n` +
+            `This link has expired or is invalid.\n\n` +
+            `Please ask your admin for a new link, or use /start to get your Telegram ID manually.`,
+            { parse_mode: 'HTML' }
+          );
+          return;
+        } catch (err) {
+          console.error('Error processing link code:', err);
+          // Fall through to manual ID display
+        }
+      }
+      
+      // No link code or error - show manual instructions
       bot.sendMessage(chatId, 
         `👋 Welcome to LilSongBirdHomes Scheduler, ${firstName}!\n\n` +
         `📱 Your Telegram ID: <code>${chatId}</code>\n` +
@@ -25,7 +96,8 @@ if (token && token !== 'your-telegram-bot-token-here') {
         `1. Copy your Telegram ID above\n` +
         `2. Ask your admin to link it to your staff account\n` +
         `3. You'll start receiving instant notifications!\n\n` +
-        `💡 Tip: Long-press the ID to copy it`,
+        `💡 Tip: Long-press the ID to copy it\n\n` +
+        `Or ask your admin for a magic link for instant setup!`,
         { parse_mode: 'HTML' }
       );
     });
@@ -239,10 +311,42 @@ const templates = {
     `🔗 <a href="${scheduleUrl}">${scheduleUrl}</a>`
 };
 
+// Webhook handler for receiving bot messages
+function handleWebhook(req, res) {
+  if (!isEnabled) {
+    return res.sendStatus(200);
+  }
+  
+  try {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+  } catch (error) {
+    console.error('❌ Telegram webhook error:', error);
+    res.sendStatus(500);
+  }
+}
+
+// Setup webhook
+async function setupWebhook(appUrl) {
+  if (!isEnabled || !appUrl) {
+    return;
+  }
+  
+  try {
+    const webhookUrl = `${appUrl}/api/telegram/webhook`;
+    await bot.setWebHook(webhookUrl);
+    console.log('✅ Telegram webhook set:', webhookUrl);
+  } catch (error) {
+    console.error('❌ Failed to set Telegram webhook:', error);
+  }
+}
+
 module.exports = {
   bot,
   isEnabled,
   sendNotification,
   sendBulkNotifications,
-  templates
+  templates,
+  handleWebhook,
+  setupWebhook
 }; // templates includes: tradeRequestSent, tradeRequestReceived, tradeRequestAdmin, shiftRequestAdmin
