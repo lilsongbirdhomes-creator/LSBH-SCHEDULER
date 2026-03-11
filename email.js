@@ -1,32 +1,28 @@
 // ═══════════════════════════════════════════════════════════
-// EMAIL SERVICE MODULE
+// EMAIL SERVICE MODULE - BREVO VERSION
 // ═══════════════════════════════════════════════════════════
-// Handles all email notifications using Gmail SMTP
+// Handles all email notifications using Brevo (Sendinblue) HTTPS API
+// (Compatible with Railway - no SMTP blocking)
+// FREE: 300 emails/day forever - https://brevo.com
 
-const nodemailer = require('nodemailer');
+const brevo = require('@getbrevo/brevo');
 
 // Email configuration from environment variables
-const GMAIL_USER = process.env.GMAIL_USER || 'noreply.lsbh.scheduler@gmail.com';
-const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || '';
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'lilsongbirdhomes@gmail.com';
+const FROM_NAME = process.env.FROM_NAME || 'LSBH Scheduler';
 const REPLY_TO_EMAIL = process.env.REPLY_TO_EMAIL || 'lilsongbirdhomes@gmail.com';
 const SCHEDULER_URL = process.env.SCHEDULER_URL || 'https://lsbh-scheduler-production.up.railway.app';
 const TELEGRAM_BOT = process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot';
 const ORG_NAME = process.env.ORG_NAME || 'LSBH';
 
-// Create reusable transporter
-let transporter = null;
-
-function getTransporter() {
-  if (!transporter && GMAIL_APP_PASSWORD) {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: GMAIL_USER,
-        pass: GMAIL_APP_PASSWORD
-      }
-    });
-  }
-  return transporter;
+// Initialize Brevo
+let apiInstance = null;
+if (BREVO_API_KEY) {
+  const defaultClient = brevo.ApiClient.instance;
+  const apiKey = defaultClient.authentications['api-key'];
+  apiKey.apiKey = BREVO_API_KEY;
+  apiInstance = new brevo.TransactionalEmailsApi();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -90,7 +86,6 @@ ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -127,7 +122,6 @@ ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -187,7 +181,6 @@ ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -232,7 +225,6 @@ Contact: ${REPLY_TO_EMAIL}
 
 ---
 This is an automated message from ${ORG_NAME} Scheduler.
-Please do not reply to ${GMAIL_USER}
 For assistance, contact ${REPLY_TO_EMAIL}
 
 ${ORG_NAME} Scheduler
@@ -246,9 +238,9 @@ function getTestEmailTemplate() {
 EMAIL CONFIGURATION TEST
 ═══════════════════════════════════════
 
-✓ SMTP Connection: Working
-✓ From Address: ${GMAIL_USER}
-✓ Reply-To Address: ${REPLY_TO_EMAIL}
+✓ Brevo API: Working
+✓ From: ${FROM_NAME} <${FROM_EMAIL}>
+✓ Reply-To: ${REPLY_TO_EMAIL}
 ✓ Scheduler URL: ${SCHEDULER_URL}
 ✓ Telegram Bot: ${TELEGRAM_BOT}
 
@@ -260,8 +252,10 @@ CONFIGURATION DETAILS
 ═══════════════════════════════════════
 
 Organization: ${ORG_NAME}
-From: ${ORG_NAME} Scheduler <${GMAIL_USER}>
+From: ${FROM_NAME} <${FROM_EMAIL}>
 Reply-To: ${REPLY_TO_EMAIL}
+Email Provider: Brevo (HTTPS API)
+Free Tier: 300 emails/day (9,000/month)
 
 When staff reply to emails, their responses will go to:
 ${REPLY_TO_EMAIL}
@@ -278,6 +272,7 @@ You can now:
 
 ---
 This is a test message from ${ORG_NAME} Scheduler.
+Powered by Brevo - https://brevo.com
 ${SCHEDULER_URL}`;
 }
 
@@ -286,26 +281,28 @@ ${SCHEDULER_URL}`;
 // ═══════════════════════════════════════════════════════════
 
 async function sendEmail(to, subject, text) {
-  const transport = getTransporter();
-  
-  if (!transport) {
-    throw new Error('Email not configured. Please set GMAIL_APP_PASSWORD environment variable.');
+  if (!apiInstance) {
+    throw new Error('Email not configured. Please set BREVO_API_KEY environment variable.');
   }
 
-  const mailOptions = {
-    from: `${ORG_NAME} Scheduler <${GMAIL_USER}>`,
-    to: to,
-    replyTo: REPLY_TO_EMAIL,
-    subject: subject,
-    text: text
+  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  
+  sendSmtpEmail.sender = {
+    name: FROM_NAME,
+    email: FROM_EMAIL
   };
+  
+  sendSmtpEmail.to = [{ email: to }];
+  sendSmtpEmail.replyTo = { email: REPLY_TO_EMAIL };
+  sendSmtpEmail.subject = subject;
+  sendSmtpEmail.textContent = text;
 
   try {
-    const info = await transport.sendMail(mailOptions);
-    console.log('✅ Email sent:', info.messageId, 'to', to);
-    return { success: true, messageId: info.messageId };
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log('✅ Email sent via Brevo:', data.messageId, 'to', to);
+    return { success: true, messageId: data.messageId };
   } catch (error) {
-    console.error('❌ Email error:', error);
+    console.error('❌ Brevo error:', error);
     throw error;
   }
 }
@@ -350,5 +347,5 @@ module.exports = {
   sendTelegramSetupEmail,
   sendGuestCredentialsEmail,
   sendTestEmail,
-  isConfigured: () => !!GMAIL_APP_PASSWORD
+  isConfigured: () => !!BREVO_API_KEY
 };
