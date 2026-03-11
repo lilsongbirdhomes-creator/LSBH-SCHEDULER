@@ -273,7 +273,7 @@ initializeDatabase().then(() => {
   }
 
   // Initialize Telegram bot
-  require('./server/telegram');
+  const telegram = require('./server/telegram');
 
   // Import routes
   const routes = require('./server/routes');
