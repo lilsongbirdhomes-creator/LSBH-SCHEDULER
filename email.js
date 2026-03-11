@@ -1,11 +1,12 @@
 // ═══════════════════════════════════════════════════════════
-// EMAIL SERVICE MODULE - BREVO VERSION
+// EMAIL SERVICE MODULE - BREVO VERSION (FIXED)
 // ═══════════════════════════════════════════════════════════
+// THIS FILE USES BREVO (@getbrevo/brevo) - CORRECT VERSION!
 // Handles all email notifications using Brevo (Sendinblue) HTTPS API
 // (Compatible with Railway - no SMTP blocking)
 // FREE: 300 emails/day forever - https://brevo.com
 
-const brevo = require('@getbrevo/brevo');
+const SibApiV3Sdk = require('@getbrevo/brevo');
 
 // Email configuration from environment variables
 const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
@@ -19,10 +20,10 @@ const ORG_NAME = process.env.ORG_NAME || 'LSBH';
 // Initialize Brevo
 let apiInstance = null;
 if (BREVO_API_KEY) {
-  const defaultClient = brevo.ApiClient.instance;
+  const defaultClient = SibApiV3Sdk.ApiClient.instance;
   const apiKey = defaultClient.authentications['api-key'];
   apiKey.apiKey = BREVO_API_KEY;
-  apiInstance = new brevo.TransactionalEmailsApi();
+  apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -285,7 +286,7 @@ async function sendEmail(to, subject, text) {
     throw new Error('Email not configured. Please set BREVO_API_KEY environment variable.');
   }
 
-  const sendSmtpEmail = new brevo.SendSmtpEmail();
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
   
   sendSmtpEmail.sender = {
     name: FROM_NAME,
