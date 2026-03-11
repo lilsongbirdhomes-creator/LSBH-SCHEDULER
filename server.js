@@ -117,8 +117,21 @@ async function initializeDatabase() {
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE telegram_link_codes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          code TEXT UNIQUE NOT NULL,
+          staff_id INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          used INTEGER DEFAULT 0,
+          used_at INTEGER,
+          FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE INDEX idx_shifts_date ON shifts(date);
         CREATE INDEX idx_shifts_assigned ON shifts(assigned_to);
+        CREATE INDEX idx_link_codes_code ON telegram_link_codes(code);
+        CREATE INDEX idx_link_codes_staff ON telegram_link_codes(staff_id);
       `);
       
       console.log('✅ Tables created');
@@ -326,7 +339,7 @@ initializeDatabase().then(() => {
   });
 
   // Start server
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log('');
     console.log('🎉 LilSongBirdHomes Scheduler is running!');
     console.log('');
@@ -339,6 +352,12 @@ initializeDatabase().then(() => {
       console.log('⚠️  Telegram notifications disabled');
       console.log('   Set TELEGRAM_BOT_TOKEN in .env to enable');
       console.log('');
+    } else {
+      // Setup Telegram webhook
+      const appUrl = process.env.APP_URL || process.env.SCHEDULER_URL;
+      if (appUrl) {
+        await telegram.setupWebhook(appUrl);
+      }
     }
   });
 
