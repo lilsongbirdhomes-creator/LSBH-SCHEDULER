@@ -2195,7 +2195,7 @@ router.post('/email/test', requireAdmin, async (req, res) => {
 
 // POST /api/email/telegram-instructions - Send Telegram setup instructions (admin only)
 router.post('/email/telegram-instructions', requireAdmin, async (req, res) => {
-  const { staffIds } = req.body; // Array of staff IDs or 'all'
+  const { staffIds, includeMagicLink, magicLink } = req.body; // Array of staff IDs or 'all'
   
   if (!email.isConfigured()) {
     return res.status(400).json({ error: 'Email not configured' });
@@ -2225,7 +2225,12 @@ router.post('/email/telegram-instructions', requireAdmin, async (req, res) => {
     
     for (const staff of staffList) {
       try {
-        await email.sendTelegramSetupEmail(staff.email, staff.full_name);
+        // If magic link is provided for a specific staff member, send custom email
+        if (includeMagicLink && magicLink && staffList.length === 1) {
+          await email.sendTelegramMagicLinkEmail(staff.email, staff.full_name, magicLink);
+        } else {
+          await email.sendTelegramSetupEmail(staff.email, staff.full_name);
+        }
         sent++;
       } catch (err) {
         console.error(`Failed to send to ${staff.email}:`, err);
@@ -2373,6 +2378,33 @@ router.get('/telegram/link-status/:staffId', requireAdmin, (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // TELEGRAM WEBHOOK
 // ═══════════════════════════════════════════════════════════
+
+// GET /api/telegram/setup-webhook - One-time webhook setup (admin only)
+router.get('/telegram/setup-webhook', requireAdmin, async (req, res) => {
+  try {
+    const appUrl = process.env.SCHEDULER_URL || process.env.APP_URL;
+    if (!appUrl) {
+      return res.status(400).json({ 
+        error: 'No SCHEDULER_URL configured',
+        hint: 'Add SCHEDULER_URL to Railway environment variables'
+      });
+    }
+    
+    await telegram.setupWebhook(appUrl);
+    
+    res.json({ 
+      success: true, 
+      message: 'Webhook configured successfully!',
+      webhookUrl: `${appUrl}/api/telegram/webhook`
+    });
+  } catch (err) {
+    console.error('Webhook setup error:', err);
+    res.status(500).json({ 
+      error: 'Failed to setup webhook',
+      details: err.message 
+    });
+  }
+});
 
 // POST /api/telegram/webhook - Receive Telegram bot updates
 router.post('/telegram/webhook', (req, res) => {
