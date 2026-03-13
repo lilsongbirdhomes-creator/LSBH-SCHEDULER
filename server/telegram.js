@@ -100,6 +100,29 @@ if (token && token !== 'your-telegram-bot-token-here') {
         `Or ask your admin for a magic link for instant setup!`,
         { parse_mode: 'HTML' }
       );
+      
+      // ALWAYS notify admin when someone uses /start (for testing & monitoring)
+      try {
+        const db = require('./database');
+        const admins = db.prepare('SELECT telegram_id, full_name FROM users WHERE role = ? AND telegram_id IS NOT NULL').all('admin');
+        for (const admin of admins) {
+          try {
+            bot.sendMessage(admin.telegram_id,
+              `🔔 <b>New /start Command</b>\n\n` +
+              `Someone just used /start on the bot:\n\n` +
+              `👤 Name: ${firstName}\n` +
+              `📱 Telegram ID: <code>${chatId}</code>\n` +
+              `🔗 Username: ${username ? '@' + username : 'Not set'}\n\n` +
+              `${linkCode ? '⚠️ Used an invalid/expired link code' : 'ℹ️ No link code (manual setup)'}`,
+              { parse_mode: 'HTML' }
+            );
+          } catch (err) {
+            console.error('Failed to notify admin:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Error notifying admins:', err);
+      }
     });
 
     // Handle /help command
@@ -119,6 +142,43 @@ if (token && token !== 'your-telegram-bot-token-here') {
         `/myid - Show your Telegram ID again`,
         { parse_mode: 'HTML' }
       );
+    });
+
+    // Handle /myid command - shows Telegram ID and notifies admin
+    bot.onText(/\/myid/, async (msg) => {
+      const chatId = msg.chat.id;
+      const username = msg.from.username;
+      const firstName = msg.from.first_name;
+      
+      bot.sendMessage(chatId,
+        `📱 <b>Your Telegram ID</b>\n\n` +
+        `ID: <code>${chatId}</code>\n` +
+        `Name: ${firstName}\n` +
+        `Username: ${username ? '@' + username : 'Not set'}\n\n` +
+        `💡 Long-press the ID above to copy it`,
+        { parse_mode: 'HTML' }
+      );
+      
+      // Notify admin
+      try {
+        const db = require('./database');
+        const admins = db.prepare('SELECT telegram_id, full_name FROM users WHERE role = ? AND telegram_id IS NOT NULL').all('admin');
+        for (const admin of admins) {
+          try {
+            bot.sendMessage(admin.telegram_id,
+              `🔔 <b>/myid Command Used</b>\n\n` +
+              `👤 Name: ${firstName}\n` +
+              `📱 Telegram ID: <code>${chatId}</code>\n` +
+              `🔗 Username: ${username ? '@' + username : 'Not set'}`,
+              { parse_mode: 'HTML' }
+            );
+          } catch (err) {
+            console.error('Failed to notify admin:', err);
+          }
+        }
+      } catch (err) {
+        console.error('Error notifying admins:', err);
+      }
     });
 
     // Handle /myid command
