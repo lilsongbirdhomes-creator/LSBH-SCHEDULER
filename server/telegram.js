@@ -405,7 +405,9 @@ async function setupWebhook(appUrl) {
   }
   
   try {
-    const webhookUrl = `${appUrl}/api/telegram/webhook`;
+    // Remove trailing slash if present
+    const cleanUrl = appUrl.replace(/\/$/, '');
+    const webhookUrl = `${cleanUrl}/api/telegram/webhook`;
     await bot.setWebHook(webhookUrl);
     console.log('✅ Telegram webhook set:', webhookUrl);
   } catch (error) {
