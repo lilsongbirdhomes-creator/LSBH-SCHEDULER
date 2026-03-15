@@ -383,8 +383,19 @@ initializeDatabase().then(() => {
     } else {
       // Setup Telegram webhook
       const appUrl = process.env.APP_URL || process.env.SCHEDULER_URL;
+      console.log('🔗 Checking webhook setup...');
+      console.log('   APP_URL:', process.env.APP_URL || 'not set');
+      console.log('   SCHEDULER_URL:', process.env.SCHEDULER_URL || 'not set');
       if (appUrl) {
-        await telegram.setupWebhook(appUrl);
+        console.log('📡 Setting up Telegram webhook...');
+        try {
+          await telegram.setupWebhook(appUrl);
+        } catch (err) {
+          console.error('❌ Failed to setup webhook:', err.message);
+        }
+      } else {
+        console.log('⚠️  No APP_URL or SCHEDULER_URL found - webhook not configured');
+        console.log('   Set SCHEDULER_URL in Railway environment variables');
       }
     }
   });
