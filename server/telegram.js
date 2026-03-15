@@ -26,7 +26,14 @@ if (token && token !== 'your-telegram-bot-token-here') {
       if (linkCode) {
         try {
           // Link codes are stored in database temporarily
-          const db = require('./database');
+          let db;
+          try {
+            db = require('./database');
+          } catch (dbErr) {
+            console.error('❌ Failed to load database module:', dbErr);
+            throw new Error('Database not available');
+          }
+          
           const linkRecord = db.prepare('SELECT staff_id FROM telegram_link_codes WHERE code = ? AND used = 0 AND expires_at > ?')
             .get(linkCode, Date.now());
           
@@ -372,18 +379,23 @@ const templates = {
 };
 
 // Webhook handler for receiving bot messages
+// Webhook handler for receiving bot messages
 function handleWebhook(req, res) {
   if (!isEnabled) {
     return res.sendStatus(200);
   }
   
-  try {
-    bot.processUpdate(req.body);
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('❌ Telegram webhook error:', error);
-    res.sendStatus(500);
-  }
+  // Respond immediately to Telegram
+  res.sendStatus(200);
+  
+  // Process update asynchronously (don't block response)
+  setImmediate(() => {
+    try {
+      bot.processUpdate(req.body);
+    } catch (error) {
+      console.error('❌ Telegram webhook error:', error);
+    }
+  });
 }
 
 // Setup webhook
