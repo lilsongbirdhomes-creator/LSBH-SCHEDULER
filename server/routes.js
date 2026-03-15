@@ -2223,14 +2223,25 @@ router.post('/email/telegram-instructions', requireAdmin, async (req, res) => {
     let sent = 0;
     let failed = 0;
     
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME || '@LilSongbirdbot';
+    
     for (const staff of staffList) {
       try {
-        // If magic link is provided for a specific staff member, send custom email
-        if (includeMagicLink && magicLink && staffList.length === 1) {
-          await email.sendTelegramMagicLinkEmail(staff.email, staff.full_name, magicLink);
-        } else {
-          await email.sendTelegramSetupEmail(staff.email, staff.full_name);
-        }
+        // Generate a magic link for this staff member
+        const code = `${staff.full_name.replace(/\s+/g, '').toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+        const expiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
+        
+        // Store the link code in database
+        req.db.prepare(`
+          INSERT INTO telegram_link_codes (staff_id, code, expires_at, used, created_at)
+          VALUES (?, ?, ?, 0, ?)
+        `).run(staff.id, code, expiresAt, Date.now());
+        
+        // Create magic link
+        const generatedMagicLink = `https://t.me/${botUsername.replace('@', '')}?start=${code}`;
+        
+        // Send email with magic link
+        await email.sendTelegramMagicLinkEmail(staff.email, staff.full_name, generatedMagicLink);
         sent++;
       } catch (err) {
         console.error(`Failed to send to ${staff.email}:`, err);
