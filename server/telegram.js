@@ -99,12 +99,14 @@ if (token && token !== 'your-telegram-bot-token-here') {
         `👋 Welcome to LilSongBirdHomes Scheduler, ${firstName}!\n\n` +
         `📱 Your Telegram ID: <code>${chatId}</code>\n` +
         `👤 Username: ${username ? '@' + username : 'Not set'}\n\n` +
-        `To receive shift notifications:\n` +
-        `1. Copy your Telegram ID above\n` +
-        `2. Ask your admin to link it to your staff account\n` +
-        `3. You'll start receiving instant notifications!\n\n` +
-        `💡 Tip: Long-press the ID to copy it\n\n` +
-        `Or ask your admin for a magic link for instant setup!`,
+        `To get connected:\n` +
+        `🔗 Ask your admin for a <b>magic link</b>\n` +
+        `✨ Click the link → Instant auto-linking!\n\n` +
+        `You'll receive notifications for:\n` +
+        `• New shift assignments\n` +
+        `• Schedule changes\n` +
+        `• Shift requests & trades\n` +
+        `• Emergency alerts`,
         { parse_mode: 'HTML' }
       );
       
@@ -158,11 +160,11 @@ if (token && token !== 'your-telegram-bot-token-here') {
       const firstName = msg.from.first_name;
       
       bot.sendMessage(chatId,
-        `📱 <b>Your Telegram ID</b>\n\n` +
+        `📱 <b>Your Telegram Information</b>\n\n` +
         `ID: <code>${chatId}</code>\n` +
         `Name: ${firstName}\n` +
         `Username: ${username ? '@' + username : 'Not set'}\n\n` +
-        `💡 Long-press the ID above to copy it`,
+        `💡 Your admin can see this info when you use bot commands`,
         { parse_mode: 'HTML' }
       );
       
