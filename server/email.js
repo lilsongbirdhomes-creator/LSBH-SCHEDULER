@@ -120,22 +120,19 @@ WHY USE TELEGRAM?
 ✓ Alerts when schedule changes
 ✓ Trade request updates
 ✓ Emergency notifications
+✓ 100% free - no subscription needed
 
 ═══════════════════════════════════════
 SETUP (3 MINUTES)
 ═══════════════════════════════════════
 
-STEP 1: Install Telegram
+STEP 1: Install Telegram (if you don't have it)
 
-iPhone/iPad:
-• Open App Store
-• Search "Telegram Messenger"
-• Install the app
+📱 iPhone/iPad:
+https://apps.apple.com/app/telegram-messenger/id686449807
 
-Android:
-• Open Play Store
-• Search "Telegram Messenger"
-• Install the app
+🤖 Android:
+https://play.google.com/store/apps/details?id=org.telegram.messenger
 
 STEP 2: Link Your Account
 
@@ -146,8 +143,7 @@ Or manually:
 • Open Telegram
 • Search for: ${TELEGRAM_BOT}
 • Tap "START"
-• Copy your Telegram ID
-• Send it to your admin to link
+• Ask your admin for a magic link for instant setup!
 
 ═══════════════════════════════════════
 NEED HELP?
@@ -200,8 +196,11 @@ DON'T HAVE TELEGRAM YET?
 
 No problem! Install it first (takes 2 minutes):
 
-iPhone/iPad: App Store → "Telegram Messenger"
-Android: Play Store → "Telegram Messenger"
+📱 iPhone/iPad:
+https://apps.apple.com/app/telegram-messenger/id686449807
+
+🤖 Android:
+https://play.google.com/store/apps/details?id=org.telegram.messenger
 
 Then click the magic link above!
 
