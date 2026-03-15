@@ -106,63 +106,6 @@ ${SCHEDULER_URL}`;
 }
 
 // Telegram setup email (generic)
-async function sendTelegramSetupEmail(staffEmail, staffName) {
-  const subject = `🚀 Set Up Telegram for ${ORG_NAME} Scheduler Notifications`;
-  const text = `Hello ${staffName},
-
-Get instant notifications about your schedule! ⚡
-
-═══════════════════════════════════════
-STEP 1: INSTALL TELEGRAM (IF NEEDED)
-═══════════════════════════════════════
-
-If you don't already have Telegram, install it first (takes 2 minutes):
-
-📱 iPhone/iPad - Click here:
-https://apps.apple.com/app/telegram-messenger/id686449807
-
-🤖 Android - Click here:
-https://play.google.com/store/apps/details?id=org.telegram.messenger
-
-Already have Telegram? Skip to Step 2!
-
-═══════════════════════════════════════
-STEP 2: CONNECT TO THE BOT
-═══════════════════════════════════════
-
-Click this link to open the scheduler bot:
-
-👉 https://t.me/${TELEGRAM_BOT.replace('@', '')}
-
-Then tap "START" in the bot chat.
-
-💡 TIP: Ask your admin for a magic link for instant auto-linking! Otherwise, they'll need to manually link your account.
-
-═══════════════════════════════════════
-WHAT YOU'LL GET
-═══════════════════════════════════════
-
-✓ Instant notifications for new shifts
-✓ Alerts when schedule changes
-✓ Trade request updates
-✓ Emergency notifications
-✓ 100% free - no subscription needed
-
-═══════════════════════════════════════
-NEED HELP?
-═══════════════════════════════════════
-
-Questions? Reply to this email or contact ${REPLY_TO_EMAIL}
-
----
-${ORG_NAME} Scheduler
-${SCHEDULER_URL}
-
-[v2.0 - Updated Template]`;
-  
-  return sendEmail(staffEmail, subject, text);
-}
-
 // Telegram magic link email (one-click setup!)
 async function sendTelegramMagicLinkEmail(staffEmail, staffName, magicLink) {
   const subject = `🚀 One-Click Telegram Setup for ${ORG_NAME} Scheduler`;
@@ -195,7 +138,7 @@ Click this magic link:
 That's it! The link will:
 1. Open Telegram on your phone
 2. Connect you to ${TELEGRAM_BOT}
-3. Auto-link your account
+3. Auto-link your account instantly
 
 No searching, no typing - just tap the link and you're done! ✨
 
@@ -221,7 +164,7 @@ Questions? Reply to this email or contact ${REPLY_TO_EMAIL}
 ${ORG_NAME} Scheduler
 ${SCHEDULER_URL}
 
-[v2.0 - Updated Template]`;
+[v2.1 - Magic Links]`;
   
   return sendEmail(staffEmail, subject, text);
 }
@@ -295,7 +238,7 @@ ${SCHEDULER_URL}`;
 module.exports = {
   sendWelcomeEmail,
   sendPasswordResetEmail,
-  sendTelegramSetupEmail,
+  sendTelegramSetupEmail: sendTelegramMagicLinkEmail, // Alias - both now send magic links
   sendTelegramMagicLinkEmail,
   sendGuestCredentialsEmail,
   sendTestEmail,
