@@ -107,13 +107,39 @@ ${SCHEDULER_URL}`;
 
 // Telegram setup email (generic)
 async function sendTelegramSetupEmail(staffEmail, staffName) {
-  const subject = `Set Up Telegram for ${ORG_NAME} Scheduler Notifications`;
+  const subject = `🚀 Set Up Telegram for ${ORG_NAME} Scheduler Notifications`;
   const text = `Hello ${staffName},
 
-Get notified instantly about schedule changes!
+Get instant notifications about your schedule! ⚡
 
 ═══════════════════════════════════════
-WHY USE TELEGRAM?
+STEP 1: INSTALL TELEGRAM (IF NEEDED)
+═══════════════════════════════════════
+
+If you don't already have Telegram, install it first (takes 2 minutes):
+
+📱 iPhone/iPad - Click here:
+https://apps.apple.com/app/telegram-messenger/id686449807
+
+🤖 Android - Click here:
+https://play.google.com/store/apps/details?id=org.telegram.messenger
+
+Already have Telegram? Skip to Step 2!
+
+═══════════════════════════════════════
+STEP 2: CONNECT TO THE BOT
+═══════════════════════════════════════
+
+Click this link to open the scheduler bot:
+
+👉 https://t.me/${TELEGRAM_BOT.replace('@', '')}
+
+Then tap "START" in the bot chat.
+
+💡 TIP: Ask your admin for a magic link for instant auto-linking! Otherwise, they'll need to manually link your account.
+
+═══════════════════════════════════════
+WHAT YOU'LL GET
 ═══════════════════════════════════════
 
 ✓ Instant notifications for new shifts
@@ -123,29 +149,6 @@ WHY USE TELEGRAM?
 ✓ 100% free - no subscription needed
 
 ═══════════════════════════════════════
-SETUP (3 MINUTES)
-═══════════════════════════════════════
-
-STEP 1: Install Telegram (if you don't have it)
-
-📱 iPhone/iPad:
-https://apps.apple.com/app/telegram-messenger/id686449807
-
-🤖 Android:
-https://play.google.com/store/apps/details?id=org.telegram.messenger
-
-STEP 2: Link Your Account
-
-Click this link to open the bot:
-👉 https://t.me/${TELEGRAM_BOT.replace('@', '')}
-
-Or manually:
-• Open Telegram
-• Search for: ${TELEGRAM_BOT}
-• Tap "START"
-• Ask your admin for a magic link for instant setup!
-
-═══════════════════════════════════════
 NEED HELP?
 ═══════════════════════════════════════
 
@@ -153,7 +156,9 @@ Questions? Reply to this email or contact ${REPLY_TO_EMAIL}
 
 ---
 ${ORG_NAME} Scheduler
-${SCHEDULER_URL}`;
+${SCHEDULER_URL}
+
+[v2.0 - Updated Template]`;
   
   return sendEmail(staffEmail, subject, text);
 }
@@ -166,10 +171,24 @@ async function sendTelegramMagicLinkEmail(staffEmail, staffName, magicLink) {
 You're one click away from instant shift notifications! ⚡
 
 ═══════════════════════════════════════
-✨ ONE-CLICK SETUP (30 SECONDS!)
+STEP 1: INSTALL TELEGRAM (IF NEEDED)
 ═══════════════════════════════════════
 
-Just click this magic link:
+If you don't already have Telegram, install it first (takes 2 minutes):
+
+📱 iPhone/iPad - Click here:
+https://apps.apple.com/app/telegram-messenger/id686449807
+
+🤖 Android - Click here:
+https://play.google.com/store/apps/details?id=org.telegram.messenger
+
+Already have Telegram? Skip to Step 2!
+
+═══════════════════════════════════════
+STEP 2: ONE-CLICK ACCOUNT LINKING
+═══════════════════════════════════════
+
+Click this magic link:
 
 👉 ${magicLink}
 
@@ -191,20 +210,6 @@ WHAT YOU'LL GET
 ✓ 100% free - no subscription needed
 
 ═══════════════════════════════════════
-DON'T HAVE TELEGRAM YET?
-═══════════════════════════════════════
-
-No problem! Install it first (takes 2 minutes):
-
-📱 iPhone/iPad:
-https://apps.apple.com/app/telegram-messenger/id686449807
-
-🤖 Android:
-https://play.google.com/store/apps/details?id=org.telegram.messenger
-
-Then click the magic link above!
-
-═══════════════════════════════════════
 NEED HELP?
 ═══════════════════════════════════════
 
@@ -214,7 +219,9 @@ Questions? Reply to this email or contact ${REPLY_TO_EMAIL}
 
 ---
 ${ORG_NAME} Scheduler
-${SCHEDULER_URL}`;
+${SCHEDULER_URL}
+
+[v2.0 - Updated Template]`;
   
   return sendEmail(staffEmail, subject, text);
 }
