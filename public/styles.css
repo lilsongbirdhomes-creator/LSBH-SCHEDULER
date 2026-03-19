@@ -1,15 +1,3 @@
-/* CSS VERSION 3.0 - TEST MARKER */
-body::before {
-  content: "CSS v3.0 LOADED";
-  position: fixed;
-  top: 0;
-  right: 0;
-  background: lime;
-  color: black;
-  padding: 4px 8px;
-  font-size: 10px;
-  z-index: 99999;
-}
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;padding:12px;}
 
@@ -645,3 +633,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .tic-note  { font-size: 12px; color: #495057; font-style: italic; background: #f0f4ff; padding: 7px 10px; border-radius: 6px; margin-bottom: 8px; }
 .tic-actions { display: flex; gap: 8px; }
 .inbox-empty { font-size: 13px; color: #aaa; padding: 12px 0; text-align: center; }
+/* Mobile calendar horizontal scroll fix */
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden; /* Prevent body scroll */
+  }
+  
+  .cal-scroll {
+    margin: 0 -12px;
+    padding: 0 12px 10px;
+    overflow-x: auto !important;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    /* Ensure scrolling works */
+    width: 100%;
+    max-width: 100vw;
+  }
+  
+  .week-grid {
+    min-width: 560px;
+    grid-template-columns: repeat(7, 80px);
+    /* Force the grid to be wider than viewport */
+  }
+}
