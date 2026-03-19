@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 let currentUser = null;
 let viewMode = 'week';
-let viewDate = new Date('2026-02-16'); // Sunday
+let viewDate = new Date(); // Start at current date
 let allStaff = [];
 let allShifts = [];
 let showOnlyMyShifts = false; // Staff can toggle this
