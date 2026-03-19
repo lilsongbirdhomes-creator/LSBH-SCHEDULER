@@ -1,5133 +1,658 @@
-// ═══════════════════════════════════════════════════════════
-// GLOBAL STATE
-// ═══════════════════════════════════════════════════════════
-let currentUser = null;
-let viewMode = 'week';
-
-// Initialize viewDate to current week's Sunday
-const today = new Date();
-const currentDayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
-const daysToSunday = currentDayOfWeek; // Days since last Sunday
-let viewDate = new Date(today);
-viewDate.setDate(today.getDate() - daysToSunday); // Go back to Sunday
-viewDate.setHours(0, 0, 0, 0); // Midnight
-
-console.log('📅 Initializing calendar:');
-console.log('Today:', today.toISOString().split('T')[0]);
-console.log('Day of week:', currentDayOfWeek, ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][currentDayOfWeek]);
-console.log('Week starts (viewDate):', viewDate.toISOString().split('T')[0]);
-
-let allStaff = [];
-let allShifts = [];
-let showOnlyMyShifts = false; // Staff can toggle this
-
-// Timezone management
-let systemTimezone = 'America/Chicago'; // Default
-
-// ═══════════════════════════════════════════════════════════
-// ADMIN PASSWORD CHANGE
-// ═══════════════════════════════════════════════════════════
-
-function showAdminPasswordChange() {
-  // Remove any existing modal first
-  const existingModal = document.getElementById('adminPasswordModal');
-  if (existingModal) existingModal.remove();
-  
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.id = 'adminPasswordModal';
-  
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
-  };
-  
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  content.innerHTML = `
-    <h3>🔐 Change Your Password</h3>
-    <p style="color:#666;font-size:13px;margin-bottom:12px;">As admin, you can change your password without entering the current one.</p>
-    <div style="margin-bottom:12px;">
-      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">New Password</label>
-      <input type="password" id="adminNewPassword" class="inp" placeholder="At least 8 characters" minlength="8">
-    </div>
-    <div style="margin-bottom:12px;">
-      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Confirm Password</label>
-      <input type="password" id="adminConfirmPassword" class="inp" placeholder="Re-enter password">
-    </div>
-    <div class="modal-actions">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-pri" onclick="saveAdminPassword(this)">Change Password</button>
-    </div>
-  `;
-  
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-  
-  setTimeout(() => document.getElementById('adminNewPassword').focus(), 100);
-}
-
-async function saveAdminPassword(btn) {
-  const newPassword = document.getElementById('adminNewPassword').value;
-  const confirmPassword = document.getElementById('adminConfirmPassword').value;
-  
-  if (newPassword.length < 8) {
-    alert('Password must be at least 8 characters');
-    return;
-  }
-  
-  if (newPassword !== confirmPassword) {
-    alert('Passwords do not match');
-    return;
-  }
-  
-  btn.disabled = true;
-  btn.textContent = 'Saving...';
-  
-  try {
-    await apiCall('/change-password', {
-      method: 'POST',
-      body: JSON.stringify({ newPassword })
-    });
-    
-    btn.closest('.modal-overlay').remove();
-    alert('✅ Password changed successfully!');
-  } catch (err) {
-    alert('Error: ' + err.message);
-    btn.disabled = false;
-    btn.textContent = 'Change Password';
-  }
-}
-
-async function loadTimezone() {
-  try {
-    const result = await apiCall('/settings/timezone');
-    if (result.timezone) {
-      systemTimezone = result.timezone;
-      
-      // Update dropdown if exists (admin only)
-      const select = document.getElementById('timezoneSelect');
-      if (select) {
-        select.value = systemTimezone;
-      }
-      
-      // Update display
-      const display = document.getElementById('currentTimezone');
-      if (display) {
-        const tzNames = {
-          'America/New_York': 'Eastern Time (ET)',
-          'America/Chicago': 'Central Time (CT)',
-          'America/Denver': 'Mountain Time (MT)',
-          'America/Los_Angeles': 'Pacific Time (PT)',
-          'America/Anchorage': 'Alaska Time (AKT)',
-          'Pacific/Honolulu': 'Hawaii Time (HST)'
-        };
-        display.textContent = `Current: ${tzNames[systemTimezone] || systemTimezone}`;
-      }
-      
-      console.log('✅ System timezone:', systemTimezone);
-    }
-  } catch (err) {
-    console.error('Failed to load timezone:', err);
-  }
-}
-
-async function saveTimezone() {
-  const select = document.getElementById('timezoneSelect');
-  const timezone = select.value;
-  
-  try {
-    showLoading();
-    await apiCall('/settings/timezone', {
-      method: 'POST',
-      body: JSON.stringify({ timezone })
-    });
-    
-    systemTimezone = timezone;
-    showSuccess('Timezone updated! Changes will apply to all date/time displays.');
-    loadTimezone();
-    
-    // Reload shifts to reflect new timezone
-    loadShifts();
-  } catch (err) {
-    alert('Error saving timezone: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// Format date in system timezone
-function formatDateInTimezone(dateStr) {
-  try {
-    const date = new Date(dateStr + 'T12:00:00Z'); // UTC noon
-    return date.toLocaleDateString('en-US', {
-      timeZone: systemTimezone,
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  } catch (err) {
-    // Fallback to simple format
-    return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric'
-    });
-  }
-}
-
-// Get current date in system timezone
-function getTodayInTimezone() {
-  const now = new Date();
-  const tzDate = new Date(now.toLocaleString('en-US', { timeZone: systemTimezone }));
-  tzDate.setHours(0, 0, 0, 0);
-  return tzDate;
-}
-const SHIFT_DEFS = {
-  morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
-  afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0, icon: '🌆' },
-  overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0, icon: '🌙' }
-};
-
-// ═══════════════════════════════════════════════════════════
-// API HELPERS
-// ═══════════════════════════════════════════════════════════
-async function apiCall(endpoint, options = {}) {
-  try {
-    const response = await fetch(`/api${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
-      credentials: 'include'
-    });
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Request failed');
-    }
-    
-    return await response.json();
-  } catch (err) {
-    console.error('API Error:', err);
-    throw err;
-  }
-}
-
-function showLoading() { document.getElementById('loading').classList.add('show'); }
-function hideLoading() { document.getElementById('loading').classList.remove('show'); }
-
-// ═══════════════════════════════════════════════════════════
-// AUTH
-// ═══════════════════════════════════════════════════════════
-async function handleLogin() {
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
-  const errorDiv = document.getElementById('loginError');
-  
-  if (!username || !password) {
-    errorDiv.textContent = 'Please enter username and password';
-    errorDiv.classList.add('show');
-    return;
-  }
-  
-  try {
-    showLoading();
-    const result = await apiCall('/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password })
-    });
-    
-    currentUser = result.user;
-    
-    if (currentUser.mustChangePassword) {
-      document.getElementById('loginScreen').classList.add('hidden');
-      document.getElementById('passwordModal').classList.add('show');
-      return;
-    }
-    
-    showApp();
-  } catch (err) {
-    errorDiv.textContent = err.message;
-    errorDiv.classList.add('show');
-  } finally {
-    hideLoading();
-  }
-}
-async function showApp() {
-  document.getElementById('loginScreen').classList.add('hidden');
-  document.getElementById('app').classList.remove('hidden');
-  document.getElementById('userName').textContent = currentUser.fullName;
-  document.getElementById('roleBadge').textContent = currentUser.role === 'admin' ? 'Admin' : 'Staff';
-  
-  // Set default view based on role
-  // Set default view mode based on role
-  if (currentUser.role === 'admin') {
-    viewMode = 'month';
-  } else if (currentUser.role === 'guest') {
-    viewMode = 'month'; // Guest gets month view only
-  } else {
-    viewMode = 'week';
-  }
-  
-  // Load shift templates from database
-  if (currentUser.role !== 'guest') {
-    loadTemplates();
-  }
-  
-  // Load staff data (needed for tile colors in staff view)
-  await loadStaff();
-  
-  if (currentUser.role === 'admin') {
-    document.getElementById('adminPanel').classList.remove('hidden');
-    loadPendingApprovals();
-    
-    // Load any pending schedule changes that haven't been sent
-    await loadScheduleChangesFromDB();
-  } else if (currentUser.role === 'guest') {
-    // Guest gets read-only calendar view only
-    document.getElementById('staffDashboard').classList.remove('hidden');
-    // Note: Don't call loadDashboard() as it loads personal stats
-    // Calendar will be loaded by loadShifts() call below
-    
-    // Add guest welcome banner
-    const staffDashboard = document.getElementById('staffDashboard');
-    const guestBanner = document.createElement('div');
-    guestBanner.style.cssText = 'background:#e3f2fd;border-left:4px solid #2196F3;padding:16px;margin-bottom:16px;border-radius:4px;';
-    guestBanner.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;">
-        <span style="font-size:24px;">👀</span>
-        <div>
-          <div style="font-weight:600;font-size:16px;margin-bottom:4px;">Guest View - Read Only</div>
-          <div style="font-size:13px;color:#555;">
-            You are viewing the schedule in guest mode. Staff names are hidden for privacy.
-            <span style="margin-left:8px;cursor:pointer;text-decoration:underline;" onclick="handleLogout()">Logout</span>
-          </div>
-        </div>
-      </div>
-    `;
-    staffDashboard.insertBefore(guestBanner, staffDashboard.firstChild);
-    
-    // Hide all dashboard cards (Your Dashboard, Trade Requests)
-    const dashboardCards = document.querySelectorAll('.dashboard-card');
-    dashboardCards.forEach(card => card.style.display = 'none');
-    
-    // Hide all action buttons (Request/Trade, Emergency, Contact, Settings, Logout)
-    const actionBar = document.querySelector('.staff-action-bar');
-    if (actionBar) actionBar.style.display = 'none';
-    
-    // Hide pay period summary
-    const payPeriod = document.getElementById('payPeriodSummary');
-    if (payPeriod) payPeriod.style.display = 'none';
-    
-    // Hide view mode buttons (Week/Month toggle) - guest only gets month view
-    const viewButtons = document.querySelectorAll('.cal-nav .v-btn');
-    viewButtons.forEach(btn => btn.style.display = 'none');
-  } else {
-    document.getElementById('staffDashboard').classList.remove('hidden');
-    loadDashboard();
-  }
-  
-  loadTimezone();
-  loadShifts();
-}
-
-async function handleLogout() {
-  try {
-    // Clear completed/denied trade notifications before ending the session
-    await apiCall('/trade-requests/completed', { method: 'DELETE' }).catch(() => {});
-    await apiCall('/logout', { method: 'POST' });
-  } catch (err) {
-    console.error('Logout error:', err);
-  } finally {
-    location.reload();
-  }
-}
-
-function closePasswordModal() {
-  if (currentUser?.mustChangePassword) {
-    handleLogout();
-  } else {
-    document.getElementById('passwordModal').classList.remove('show');
-  }
-}
-
-async function savePassword() {
-  const newPassword = document.getElementById('newPassword').value;
-  const confirmPassword = document.getElementById('confirmPassword').value;
-  const currentPassword = document.getElementById('currentPassword')?.value;
-  
-  const isAdmin = currentUser.username === 'admin';
-  
-  // Validation
-  if (newPassword.length < 8) {
-    alert('Password must be at least 8 characters');
-    return;
-  }
-  
-  if (newPassword !== confirmPassword) {
-    alert('Passwords do not match');
-    return;
-  }
-  
-  if (!isAdmin && currentPassword && newPassword === currentPassword) {
-    alert('New password must be different from current password');
-    return;
-  }
-  
-  try {
-    showLoading();
-    const payload = { newPassword };
-    if (!isAdmin && currentPassword) {
-      payload.currentPassword = currentPassword;
-    }
-    
-    await apiCall('/change-password', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-    
-    currentUser.mustChangePassword = false;
-    document.getElementById('passwordModal').classList.remove('show');
-    
-    // Only show Telegram setup for non-admin staff
-    if (currentUser.role !== 'admin' && currentUser.jobTitle !== 'Admin') {
-      showTelegramSetupModal();
-    } else {
-      showApp();
-    }
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// TEST TELEGRAM (ADMIN ONLY)
-// ═══════════════════════════════════════════════════════════
-
-async function testTelegram() {
-  if (currentUser.role !== 'admin') {
-    alert('Only admins can test Telegram notifications');
-    return;
-  }
-  
-  try {
-    showLoading();
-    await apiCall('/test-telegram', {
-      method: 'POST'
-    });
-    showSuccess('Test notification sent! Check your Telegram.');
-  } catch (err) {
-    alert(err.message || 'Failed to send test notification');
-  } finally {
-    hideLoading();
-  }
-}
-
-
-// ═══════════════════════════════════════════════════════════
-// TELEGRAM SETUP (FIRST LOGIN)
-// ═══════════════════════════════════════════════════════════
-
-function showTelegramSetupModal() {
-  console.log('🔍 showTelegramSetupModal called');
-  console.log('🔍 Current user:', currentUser);
-  
-  // Only show for staff, not admin
-  if (currentUser.role === 'admin' || currentUser.jobTitle === 'Admin') {
-    console.log('⏭️ User is admin, skipping Telegram setup');
-    showApp();
-    return;
-  }
-  
-  // Check if they already have a Telegram ID
-  if (currentUser.telegramId) {
-    console.log('⏭️ User already has Telegram ID:', currentUser.telegramId);
-    showApp();
-    return;
-  }
-  
-  console.log('✅ Showing Telegram setup modal');
-  
-  // Hide password modal and show telegram modal
-  document.getElementById('passwordModal').classList.remove('show');
-  const modal = document.getElementById('telegramSetupModal');
-  console.log('🔍 Telegram modal element:', modal);
-  modal.classList.add('show');
-}
-
-async function saveTelegramIdFirstLogin() {
-  const telegramId = document.getElementById('firstLoginTelegramId').value.trim();
-  console.log('🔍 Telegram ID entered:', telegramId);
-  
-  if (!telegramId) {
-    alert('Please enter your Telegram ID');
-    return;
-  }
-  
-  // Validate it's numbers only
-  if (!/^\d+$/.test(telegramId)) {
-    alert('Telegram ID should be numbers only');
-    return;
-  }
-  
-  console.log('✅ Validation passed');
-  
-  try {
-    showLoading();
-    console.log('📤 Calling API:', `/staff/${currentUser.id}`);
-    
-    const result = await apiCall(`/staff/${currentUser.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ telegramId })
-    });
-    
-    console.log('✅ API response:', result);
-    
-    currentUser.telegramId = telegramId;
-    
-    // Hide the modal
-    const modal = document.getElementById('telegramSetupModal');
-    console.log('🔍 Modal element:', modal);
-    modal.classList.remove('show');
-    console.log('✅ Removed show class');
-    
-    showSuccess('Telegram ID saved! You will receive notifications.');
-    showApp();
-  } catch (err) {
-    console.error('❌ Error:', err);
-    alert('Error saving Telegram ID: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-function skipTelegramSetup() {
-  console.log('⏭️ Skipping Telegram setup');
-  if (confirm('Skip Telegram setup? You can add it later in your settings.')) {
-    const modal = document.getElementById('telegramSetupModal');
-    modal.classList.remove('show');
-    showApp();
-  }
-}
-// ═══════════════════════════════════════════════════════════
-// TABS
-// ═══════════════════════════════════════════════════════════
-function switchTab(tab) {
-  document.querySelectorAll('.a-tab').forEach((t, i) => {
-    t.classList.toggle('active', 
-      (tab === 'schedule' && i === 0) || 
-      (tab === 'staff' && i === 1) || 
-      (tab === 'approvals' && i === 2)
-    );
-  });
-  
-  document.getElementById('scheduleTab').classList.toggle('active', tab === 'schedule');
-  document.getElementById('staffTab').classList.toggle('active', tab === 'staff');
-  document.getElementById('approvalsTab').classList.toggle('active', tab === 'approvals');
-  
-  if (tab === 'approvals') {
-    loadPendingApprovals();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// STAFF MANAGEMENT
-// ═══════════════════════════════════════════════════════════
-async function loadStaff() {
-  try {
-    const result = await apiCall('/staff');
-    allStaff = result.staff;
-    renderStaffList();
-    console.log("✅ Staff loaded:", allStaff.length, "members");
-  } catch (err) {
-    console.error('Load staff error:', err);
-  }
-}
-
-function renderStaffList() {
-  const list = document.getElementById("staffList");
-  if (!list) return; // Staff tab not visible for non-admin
-  list.innerHTML = "";
-  
-  // Sort: Admin first, then Guest, then everyone else
-  const sortedStaff = [...allStaff].sort((a, b) => {
-    if (a.username === 'admin') return -1;
-    if (b.username === 'admin') return 1;
-    if (a.username === 'guest') return -1;
-    if (b.username === 'guest') return 1;
-    return 0;
-  });
-  
-  sortedStaff.forEach(staff => {
-    const isOpen = staff.username === '_open';
-    const isAdmin = staff.username === 'admin';
-    const isGuest = staff.username === 'guest' || staff.role === 'guest';
-    const isActive = staff.is_active === 1 || staff.is_active === undefined;
-    const item = document.createElement('div');
-    item.className = 's-item' + (!isActive ? ' inactive' : '');
-    
-    // Special handling for Guest user
-    if (isGuest) {
-      item.innerHTML = `
-        <div class="col-dot" style="background:#e0e0e0;"></div>
-        <div class="s-det">
-          <div class="s-nm">${staff.full_name} <span style="background:#9e9e9e;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:4px;">GUEST</span></div>
-          <div class="s-me">@${staff.username} • Read-only view access</div>
-          <div id="guestInfo${staff.id}" style="margin-top:8px;font-size:12px;color:#666;">
-            <div style="margin-bottom:4px;">
-              <strong>Password:</strong> <span id="guestPwDisplay${staff.id}" style="font-family:monospace;color:#999;">Loading...</span>
-            </div>
-            <div>
-              <strong>Expires:</strong> <span id="guestExpDisplay${staff.id}" style="font-weight:600;">Loading...</span>
-            </div>
-          </div>
-        </div>
-        <div class="s-act">
-          <button class="bsm b-rpw" onclick="resetPasswordGuest(${staff.id})">Reset PW</button>
-        </div>
-      `;
-      list.appendChild(item);
-      
-      // Load guest info asynchronously
-      loadGuestInfo(staff.id);
-      return;
-    }
-    
-    // Special handling for Admin user (Edit button only)
-    if (isAdmin) {
-      item.innerHTML = `
-        <div class="col-dot" style="background:${staff.tile_color || '#f5f5f5'};"></div>
-        <div class="s-det">
-          <div class="s-nm">${staff.full_name} <span style="background:#2196F3;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:4px;">ADMIN</span></div>
-          <div class="s-me">@${staff.username} • System Administrator</div>
-        </div>
-        <div class="s-act">
-          <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
-        </div>
-      `;
-      list.appendChild(item);
-      return;
-    }
-    
-    // Regular staff and _open system user
-    item.innerHTML = `
-      <div class="col-dot" style="background:${staff.tile_color || '#f5f5f5'};${!isActive ? 'opacity:0.5;' : ''}"></div>
-      <div class="s-det">
-        <div class="s-nm">
-          ${staff.full_name}
-          ${!isActive ? '<span class="inactive-badge">Inactive</span>' : ''}
-          ${staff.telegram_id ? '<span style="background:#26a69a;color:white;padding:2px 6px;border-radius:3px;font-size:10px;margin-left:4px;">📱 Linked</span>' : ''}
-        </div>
-        <div class="s-me">${isOpen ? 'Placeholder for unassigned shifts' : `@${staff.username} • ${staff.job_title}`}</div>
-      </div>
-      <div class="s-act">
-        <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
-        ${!isOpen ? `
-          <button class="bsm b-rpw" onclick="resetPassword(${staff.id})">Reset PW</button>
-          ${!staff.telegram_id && staff.email ? `<button class="bsm" style="background:#26a69a;color:white;" onclick="generateTelegramLink(${staff.id})">📱 Link</button>` : ''}
-          <button class="bsm b-del" onclick="deleteStaff(${staff.id})">Delete</button>
-        ` : ''}
-      </div>
-    `;
-    list.appendChild(item);
-  });
-}
-
-// Load guest password expiration info
-async function loadGuestInfo(guestId) {
-  try {
-    const guestInfo = await apiCall(`/staff/${guestId}/guest-info`);
-    
-    // Display actual password if available
-    const pwDisplay = document.getElementById(`guestPwDisplay${guestId}`);
-    if (guestInfo.currentPassword) {
-      pwDisplay.textContent = guestInfo.currentPassword;
-      pwDisplay.style.color = '#2196F3';
-      pwDisplay.style.fontWeight = 'bold';
-      pwDisplay.style.fontFamily = 'monospace';
-    } else {
-      pwDisplay.textContent = '(Not set - click Reset PW)';
-      pwDisplay.style.color = '#ff9800';
-      pwDisplay.style.fontWeight = 'normal';
-    }
-    
-    // Display expiration
-    const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
-    if (guestInfo.passwordExpiresAt) {
-      const expiryDate = new Date(guestInfo.passwordExpiresAt);
-      const now = new Date();
-      const daysLeft = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
-      
-      if (daysLeft > 0) {
-        expDisplay.textContent = `${expiryDate.toLocaleDateString()} (${daysLeft} days left)`;
-        expDisplay.style.color = '#4CAF50';
-      } else {
-        expDisplay.textContent = 'EXPIRED - Reset required';
-        expDisplay.style.color = '#f44336';
-      }
-    } else {
-      expDisplay.textContent = 'Never set - Reset to activate';
-      expDisplay.style.color = '#ff9800';
-    }
-  } catch (err) {
-    console.error('Failed to load guest info:', err);
-    document.getElementById(`guestPwDisplay${guestId}`).textContent = '(Error loading)';
-    document.getElementById(`guestExpDisplay${guestId}`).textContent = '(Error loading)';
-  }
-}
-
-// Reset guest password from staff list
-async function resetPasswordGuest(guestId) {
-  if (!confirm('Generate a new 7-day password for the guest account?\n\nThe old password will stop working immediately.')) return;
-  
-  try {
-    showLoading();
-    const result = await apiCall(`/staff/${guestId}/reset-password`, {
-      method: 'POST'
-    });
-    
-    // Update inline display
-    const pwDisplay = document.getElementById(`guestPwDisplay${guestId}`);
-    const expDisplay = document.getElementById(`guestExpDisplay${guestId}`);
-    
-    pwDisplay.textContent = result.tempPassword;
-    pwDisplay.style.color = '#2196F3';
-    pwDisplay.style.fontWeight = 'bold';
-    
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 7);
-    expDisplay.textContent = `${expiryDate.toLocaleDateString()} (7 days)`;
-    expDisplay.style.color = '#4CAF50';
-    
-    // Copy to clipboard
-    navigator.clipboard.writeText(result.tempPassword).catch(() => {});
-    
-    alert(`✅ Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires: ${expiryDate.toLocaleDateString()}\n\n📋 Password copied to clipboard!\n\nShare with guest viewer.`);
-  } catch (err) {
-    alert('Error resetting guest password: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function addStaff() {
-  const username = document.getElementById('newUsername').value.trim();
-  const fullName = document.getElementById('newFullName').value.trim();
-  const role = "staff"; // All users are staff except admin
-  const jobTitle = document.getElementById('newJobTitle').value;
-  const phone = document.getElementById('newPhone').value.trim();
-  const email = document.getElementById('newEmail').value.trim();
-  const telegramId = document.getElementById('newTelegramId').value.trim();
-  const sendEmail = document.getElementById('sendWelcomeEmail').checked;
-  const includeTelegram = document.getElementById('includeTelegramInstructions').checked;
-  
-  if (!username || !fullName) {
-    alert('Please enter username and full name');
-    return;
-  }
-  
-  if (sendEmail && !email) {
-    alert('Please enter an email address to send welcome email');
-    return;
-  }
-  
-  try {
-    showLoading();
-    const result = await apiCall('/staff', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        username, 
-        fullName, 
-        role, 
-        jobTitle, 
-        phone: phone || null, 
-        email: email || null, 
-        telegramId: telegramId || null,
-        sendEmail,
-        includeTelegram
-      })
-    });
-    
-    let message = `Staff added!\nUsername: ${username}\nTemp Password: ${result.tempPassword}\n\nThey must change password on first login.`;
-    
-    if (result.emailSent) {
-      message += '\n\n✅ Welcome email sent!';
-    } else if (sendEmail) {
-      message += '\n\n⚠️ Email could not be sent.';
-    }
-    
-    alert(message);
-    
-    document.getElementById('newUsername').value = '';
-    document.getElementById('newFullName').value = '';
-    document.getElementById('newPhone').value = '';
-    document.getElementById('newEmail').value = '';
-    document.getElementById('newTelegramId').value = '';
-    document.getElementById('sendWelcomeEmail').checked = false;
-    
-    // Await loadStaff to ensure allStaff array is updated
-    await loadStaff();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-const PASTEL_SWATCHES = [
-  '#ffd6d6','#ffb3b3','#f9c4d2','#f7cac9',
-  '#ffe4c4','#ffd5a8','#ffd6a5','#ffe0b2',
-  '#fff9c4','#ffeaa7','#fde68a','#fef08a',
-  '#d4f1d4','#c8f7c5','#d1fae5','#a7f3d0',
-  '#d0eaff','#bde0fe','#dbeafe','#cfe2ff',
-  '#e8d5ff','#ddd6fe','#e9d5ff','#f3e8ff',
-  '#f5f5f5','#e9ecef','#f8f9fa','#e2e8f0',
-  '#4a5568','#2d3748','#1a202c','#374151',
-];
-
-const DARK_SWATCHES = ['#4a5568','#2d3748','#1a202c','#374151'];
-
-function buildSwatchGrid(currentColor) {
-  const grid = document.getElementById('swatchGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  PASTEL_SWATCHES.forEach(color => {
-    const swatch = document.createElement('button');
-    swatch.type = 'button';
-    swatch.className = 'swatch' + (color === currentColor ? ' swatch-selected' : '');
-    swatch.style.background = color;
-    swatch.title = color;
-    swatch.onclick = () => selectSwatch(color);
-    grid.appendChild(swatch);
-  });
-}
-
-function selectSwatch(color) {
-  document.getElementById('editTileColor').value = color;
-  document.querySelectorAll('#swatchGrid .swatch').forEach(s => {
-    s.classList.toggle('swatch-selected', s.title === color);
-  });
-  document.getElementById('editTextColor').value = DARK_SWATCHES.includes(color) ? 'white' : 'black';
-}
-
-function openEditStaff(staffId) {
-  const staff = allStaff.find(s => s.id === staffId);
-  if (!staff) return;
-
-  // Check if this is the guest user
-  if (staff.username === 'guest' || staff.role === 'guest') {
-    openEditGuestModal(staff);
-    return;
-  }
-
-  document.getElementById('editStaffId').value = staffId;
-  document.getElementById('editUsername').value = staff.username || '';
-  document.getElementById('editFullName').value = staff.full_name;
-  document.getElementById('editJobTitle').value = staff.job_title;
-  document.getElementById('editTileColor').value = staff.tile_color || '#f5f5f5';
-  document.getElementById('editTextColor').value = staff.text_color || 'black';
-  document.getElementById('editPhone').value = staff.phone || '';
-  document.getElementById('editEmail').value = staff.email || '';
-  document.getElementById('editTelegramId').value = staff.telegram_id || '';
-
-  buildSwatchGrid(staff.tile_color || '#f5f5f5');
-
-  document.getElementById('editStaffModal').classList.add('show');
-}
-
-async function openEditGuestModal(staff) {
-  // Fetch current guest info from server to get password expiration
-  try {
-    const guestInfo = await apiCall(`/staff/${staff.id}/guest-info`);
-    
-    // Display actual password if available
-    if (guestInfo.currentPassword) {
-      document.getElementById('guestCurrentPassword').value = guestInfo.currentPassword;
-      document.getElementById('guestCurrentPassword').style.color = '#2196F3';
-      document.getElementById('guestCurrentPassword').style.fontWeight = 'bold';
-    } else {
-      document.getElementById('guestCurrentPassword').value = '(Not set - click Reset Password)';
-      document.getElementById('guestCurrentPassword').style.color = '#ff9800';
-      document.getElementById('guestCurrentPassword').style.fontWeight = 'normal';
-    }
-    
-    // Display expiration date
-    if (guestInfo.passwordExpiresAt) {
-      const expiryDate = new Date(guestInfo.passwordExpiresAt);
-      const now = new Date();
-      const daysLeft = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
-      
-      if (daysLeft > 0) {
-        document.getElementById('guestPasswordExpiry').value = `${expiryDate.toLocaleDateString()} (${daysLeft} days left)`;
-        document.getElementById('guestPasswordExpiry').style.color = '#4CAF50';
-      } else {
-        document.getElementById('guestPasswordExpiry').value = `EXPIRED - Reset password to grant access`;
-        document.getElementById('guestPasswordExpiry').style.color = '#f44336';
-      }
-    } else {
-      document.getElementById('guestPasswordExpiry').value = 'Never set - Reset password to activate';
-      document.getElementById('guestPasswordExpiry').style.color = '#ff9800';
-    }
-    
-    // Store staff ID for reset function
-    window.currentGuestId = staff.id;
-    
-    document.getElementById('editGuestModal').classList.add('show');
-  } catch (err) {
-    alert('Error loading guest info: ' + err.message);
-  }
-}
-
-function closeEditGuestModal() {
-  document.getElementById('editGuestModal').classList.remove('show');
-}
-
-async function resetGuestPassword() {
-  if (!confirm('Generate a new 7-day password for the guest account?\n\nThe old password will stop working immediately.')) return;
-  
-  try {
-    showLoading();
-    const result = await apiCall(`/staff/${window.currentGuestId}/reset-password`, {
-      method: 'POST'
-    });
-    
-    // Update display with new password
-    document.getElementById('guestCurrentPassword').value = result.tempPassword;
-    document.getElementById('guestCurrentPassword').style.color = '#2196F3';
-    
-    const expiryDate = new Date();
-    expiryDate.setDate(expiryDate.getDate() + 7);
-    document.getElementById('guestPasswordExpiry').value = `${expiryDate.toLocaleDateString()} (7 days)`;
-    document.getElementById('guestPasswordExpiry').style.color = '#4CAF50';
-    
-    // Auto-copy to clipboard
-    navigator.clipboard.writeText(result.tempPassword).catch(() => {});
-    
-    alert(`✅ Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires: ${expiryDate.toLocaleDateString()}\n\n📋 Password copied to clipboard!\n\nShare this with the guest viewer.`);
-  } catch (err) {
-    alert('Error resetting guest password: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-function copyGuestPassword() {
-  const passwordField = document.getElementById('guestCurrentPassword');
-  const password = passwordField.value;
-  
-  if (password.includes('encrypted') || password.includes('reset')) {
-    alert('Please reset the password first to generate new credentials.');
-    return;
-  }
-  
-  navigator.clipboard.writeText(password).then(() => {
-    const btn = event.target;
-    const originalText = btn.textContent;
-    btn.textContent = '✅ Copied!';
-    btn.style.background = '#2e7d32';
-    
-    setTimeout(() => {
-      btn.textContent = originalText;
-      btn.style.background = '#4CAF50';
-    }, 2000);
-  }).catch(err => {
-    alert('Failed to copy: ' + err.message);
-  });
-}
-
-function closeEditStaffModal() {
-  document.getElementById('editStaffModal').classList.remove('show');
-}
-
-async function saveStaffEdit() {
-  const staffId = document.getElementById('editStaffId').value;
-  const username = document.getElementById('editUsername').value.trim().toLowerCase();
-  const fullName = document.getElementById('editFullName').value.trim();
-  const jobTitle = document.getElementById('editJobTitle').value;
-  const tileColor = document.getElementById('editTileColor').value;
-  const textColor = document.getElementById('editTextColor').value;
-  const phone = document.getElementById('editPhone').value.trim();
-  const email = document.getElementById('editEmail').value.trim();
-  const telegramId = document.getElementById('editTelegramId').value.trim();
-  
-  try {
-    showLoading();
-    await apiCall(`/staff/${staffId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ 
-        username: username || undefined,
-        fullName, 
-        jobTitle, 
-        tileColor, 
-        textColor,
-        phone: phone || null,
-        email: email || null,
-        telegramId: telegramId || null
-      })
-    });
-    
-    closeEditStaffModal();
-    await loadStaff();
-    loadShifts(); // Refresh calendar with new colors
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function resetPassword(staffId) {
-  const staff = allStaff.find(s => s.id === staffId);
-  const hasEmail = staff && staff.email;
-  
-  let sendEmail = false;
-  if (hasEmail) {
-    sendEmail = confirm(`Reset password for ${staff.full_name}?\n\n📧 Send new password via email to ${staff.email}?\n\nClick OK to send email, or Cancel to just reset without email.`);
-  } else {
-    if (!confirm(`Reset password for this staff member?`)) return;
-  }
-  
-  try {
-    showLoading();
-    const result = await apiCall(`/staff/${staffId}/reset-password`, {
-      method: 'POST',
-      body: JSON.stringify({ sendEmail })
-    });
-    
-    let message = '';
-    if (result.expiresInDays) {
-      message = `Guest password reset!\n\nNew password: ${result.tempPassword}\n\n⏰ Expires in ${result.expiresInDays} days\n\nShare this with the guest - they can log in immediately.`;
-    } else {
-      message = `Password reset!\n\nNew temp password: ${result.tempPassword}\n\nUser must change on next login.`;
-    }
-    
-    if (result.emailSent) {
-      message += '\n\n✅ Email sent with new password!';
-    } else if (sendEmail) {
-      message += '\n\n⚠️ Email could not be sent.';
-    }
-    
-    alert(message);
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function toggleStaffActive(staffId, makeActive) {
-  const action = makeActive ? 'activate' : 'deactivate';
-  const staff = allStaff.find(s => s.id === staffId);
-  
-  if (!confirm(`${makeActive ? 'Activate' : 'Deactivate'} ${staff.full_name}?\n\n${makeActive ? 'They will be able to login again.' : 'They will NOT be able to login.'}`)) return;
-  
-  try {
-    showLoading();
-    await apiCall(`/staff/${staffId}/toggle-active`, {
-      method: 'POST',
-      body: JSON.stringify({ isActive: makeActive })
-    });
-    
-    showSuccess(`Staff ${makeActive ? 'activated' : 'deactivated'} successfully!`);
-    await loadStaff();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function deleteStaff(staffId) {
-  if (!confirm('Delete this staff member? This cannot be undone.')) return;
-  
-  try {
-    showLoading();
-    await apiCall(`/staff/${staffId}`, { method: 'DELETE' });
-    await loadStaff();
-    loadShifts();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// CALENDAR
-// ═══════════════════════════════════════════════════════════
-function navPrev() {
-  if (viewMode === 'week') {
-    const newDate = new Date(viewDate);
-    newDate.setDate(newDate.getDate() - 7);
-    
-    // Staff can only view 4 weeks back
-    if (currentUser.role === 'staff') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const fourWeeksAgo = new Date(today);
-      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28); // 4 weeks = 28 days
-      
-      if (newDate < fourWeeksAgo) {
-        showWarning('You can only view shifts from the last 4 weeks.');
-        return;
-      }
-    }
-    
-    viewDate.setDate(viewDate.getDate() - 7);
-  } else {
-    viewDate.setMonth(viewDate.getMonth() - 1);
-  }
-  loadShifts();
-}
-
-function navNext() {
-  if (viewMode === 'week') {
-    viewDate.setDate(viewDate.getDate() + 7);
-  } else {
-    viewDate.setMonth(viewDate.getMonth() + 1);
-  }
-  loadShifts();
-}
-
-function setView(mode) {
-  viewMode = mode;
-  // Update whichever set of toggle buttons is in the DOM
-  const vw = document.getElementById('vWeek');
-  const vm = document.getElementById('vMonth');
-  const vws = document.getElementById('vWeekStaff');
-  const vms = document.getElementById('vMonthStaff');
-  if (vw) vw.classList.toggle('active', mode === 'week');
-  if (vm) vm.classList.toggle('active', mode === 'month');
-  if (vws) vws.classList.toggle('active', mode === 'week');
-  if (vms) vms.classList.toggle('active', mode === 'month');
-  loadShifts();
-}
-
-async function loadShifts() {
-  let startDate, endDate;
-  
-  if (viewMode === 'month') {
-    // Get first day of month
-    const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
-    // Get last day of month
-    const lastDay = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
-    
-    // Extend to full pay periods (complete weeks starting Sunday)
-    startDate = getWeekStart(firstDay); // Go back to Sunday if needed
-    endDate = new Date(lastDay);
-    // If last day isn't Saturday, extend to Saturday
-    if (endDate.getDay() !== 6) {
-      endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
-    }
-  } else {
-    // Week view
-    startDate = getWeekStart(viewDate);
-    endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 6);
-  }
-  
-  try {
-    showLoading();
-    const [result] = await Promise.all([
-      apiCall(`/shifts?startDate=${formatDate(startDate)}&endDate=${formatDate(endDate)}`),
-      loadPendingShiftIds()
-    ]);
-    allShifts = result.shifts;
-    renderCalendar();
-    
-    // Render pay period summary + trade inbox for staff
-    if (currentUser && currentUser.role === 'staff') {
-      renderPayPeriodSummary();
-      loadTradeInbox();
-    }
-  } catch (err) {
-    console.error('Load shifts error:', err);
-  } finally {
-    hideLoading();
-  }
-}
-
-function renderCalendar() {
-  if (viewMode === 'month') {
-    renderMonthView();
-  } else {
-    renderWeekView();
-  }
-}
-
-function renderWeekView() {
-  const isStaff = currentUser && (currentUser.role === 'staff' || currentUser.role === 'guest');
-  const rootId = isStaff ? 'calendarRootStaff' : 'calendarRoot';
-  const titleId = isStaff ? 'calTitleStaff' : 'calTitle';
-  const root = document.getElementById(rootId);
-  if (!root) return;
-  root.innerHTML = '';
-  
-  const startDate = getWeekStart(viewDate);
-  const endDate = new Date(startDate);
-  endDate.setDate(endDate.getDate() + 6);
-  
-  document.getElementById(titleId).textContent = 
-    `${formatDateLong(startDate)} – ${formatDateLong(endDate)}`;
-  
-  const grid = document.createElement('div');
-  grid.className = 'week-grid';
-  
-  // Day headers
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + i);
-    const isWknd = i === 0 || i === 6;
-    
-    const hdr = document.createElement('div');
-    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '');
-    hdr.innerHTML = `<span class="dn">${dayNames[i]}</span><span class="dt">${d.getDate()}</span>`;
-    grid.appendChild(hdr);
-  }
-  
-  // Day columns
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + i);
-    const dateStr = formatDate(d);
-    const isWknd = i === 0 || i === 6;
-    
-    const col = document.createElement('div');
-    col.className = 'day-col' + (isWknd ? ' wknd' : '');
-    
-    const dayShifts = allShifts
-      .filter(s => s.date === dateStr)
-      .sort((a, b) => {
-        const order = { morning: 1, afternoon: 2, overnight: 3 };
-        return order[a.shift_type] - order[b.shift_type];
-      });
-    
-    dayShifts.forEach(shift => {
-      if (currentUser.role === 'staff' && showOnlyMyShifts && shift.assigned_to !== currentUser.id && !shift.is_open) {
-        return; // Staff in "only my shifts" mode - hide others' shifts
-      }
-      
-      const tile = createShiftTile(shift, 'week');
-      col.appendChild(tile);
-    });
-    
-    grid.appendChild(col);
-  }
-  
-  root.appendChild(grid);
-}
-
-function computeMonthHours(shifts) {
-  const shiftOrder = { morning: 1, afternoon: 2, overnight: 3 };
-  const assigned = shifts
-    .filter(s => s.assigned_to && !s.is_open)
-    .sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      return shiftOrder[a.shift_type] - shiftOrder[b.shift_type];
-    });
-  const accumulators = {};
-  assigned.forEach(shift => {
-    const d = new Date(shift.date + 'T12:00:00');
-    const sunday = new Date(d);
-    sunday.setDate(d.getDate() - d.getDay());
-    const weekKey = `${shift.assigned_to}|${sunday.toISOString().split('T')[0]}`;
-    if (!accumulators[weekKey]) accumulators[weekKey] = 0;
-    let hours = SHIFT_DEFS[shift.shift_type]?.hours || 0;
-    if (d.getDay() === 6 && shift.shift_type === 'overnight') hours = 5.0;
-    accumulators[weekKey] += hours;
-    shift.running_hours = accumulators[weekKey];
-  });
-}
-
-function renderMonthView() {
-  computeMonthHours(allShifts);
-  const isStaff = currentUser && (currentUser.role === 'staff' || currentUser.role === 'guest');
-  const rootId = isStaff ? 'calendarRootStaff' : 'calendarRoot';
-  const titleId = isStaff ? 'calTitleStaff' : 'calTitle';
-  const root = document.getElementById(rootId);
-  if (!root) return;
-  root.innerHTML = '';
-  
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  
-  document.getElementById(titleId).textContent = monthName;
-  
-  const grid = document.createElement('div');
-  grid.className = 'month-grid';
-  
-  // Day headers
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  dayNames.forEach(day => {
-    const hdr = document.createElement('div');
-    hdr.className = 'month-day-hdr';
-    hdr.textContent = day;
-    grid.appendChild(hdr);
-  });
-  
-  // Get first day of month and its day of week
-  const firstDay = new Date(year, month, 1);
-  const startDay = firstDay.getDay();
-  
-  // Get last day of month
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  
-  // Calculate first date to show (Sunday of first week)
-  const firstDisplayDate = new Date(year, month, 1);
-  firstDisplayDate.setDate(firstDisplayDate.getDate() - startDay);
-  
-  // Calculate how many days to show (always complete weeks)
-  const lastDayDate = new Date(year, month, lastDay);
-  const endDay = lastDayDate.getDay();
-  const daysToShow = startDay + lastDay + (endDay === 6 ? 0 : 6 - endDay);
-  
-  // Render all days (including previous/next month)
-  for (let i = 0; i < daysToShow; i++) {
-    const d = new Date(firstDisplayDate);
-    d.setDate(d.getDate() + i);
-    const dateStr = formatDate(d);
-    const isToday = dateStr === formatDate(new Date());
-    const isWknd = d.getDay() === 0 || d.getDay() === 6;
-    const isCurrentMonth = d.getMonth() === month;
-    
-    const cell = document.createElement('div');
-    cell.className = 'month-day-cell' 
-      + (isWknd ? ' wknd' : '') 
-      + (isToday ? ' today' : '')
-      + (!isCurrentMonth ? ' other-month' : '');
-    
-    const dayNum = document.createElement('div');
-    dayNum.className = 'month-day-num';
-    dayNum.textContent = d.getDate();
-    cell.appendChild(dayNum);
-    
-    const shiftsContainer = document.createElement('div');
-    shiftsContainer.className = 'month-shifts';
-    
-    const dayShifts = allShifts
-      .filter(s => s.date === dateStr)
-      .sort((a, b) => {
-        const order = { morning: 1, afternoon: 2, overnight: 3 };
-        return order[a.shift_type] - order[b.shift_type];
-      });
-    
-    dayShifts.forEach(shift => {
-      if (currentUser.role === 'staff' && showOnlyMyShifts && shift.assigned_to !== currentUser.id && !shift.is_open) {
-        return; // Staff in "only my shifts" mode - hide others' shifts
-      }
-      
-      const tile = createShiftTile(shift, 'month');
-      shiftsContainer.appendChild(tile);
-    });
-    
-    cell.appendChild(shiftsContainer);
-    grid.appendChild(cell);
-  }
-  
-  root.appendChild(grid);
-}
-
-function getShiftDisplayTime(shift) {
-  const def = SHIFT_DEFS[shift.shift_type];
-  if (shift.start_time && shift.end_time) {
-    return shift.start_time + ' \u2013 ' + shift.end_time;
-  }
-  return def ? def.time : '';
-}
-
-function createShiftTile(shift, viewType = 'week') {
-  const def = SHIFT_DEFS[shift.shift_type];
-  const displayTime = getShiftDisplayTime(shift);
-  const tile = document.createElement('div');
-  tile.className = viewType === 'month' ? 'month-shift-tile' : 'shift-tile';
-
-  // Determine pending state
-  const hasPendingShiftReq = pendingShiftIds.has(shift.id);
-  const hasPendingTrade    = pendingTradeShiftIds.has(shift.id);
-  const isPending          = hasPendingShiftReq || hasPendingTrade;
-
-  if (isPending) {
-    tile.classList.add('tile-pending');
-  }
-  
-  // Highlight today's shifts
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const shiftDate = new Date(shift.date + 'T00:00:00');
-  
-  const isToday = (
-    shiftDate.getFullYear() === today.getFullYear() &&
-    shiftDate.getMonth() === today.getMonth() &&
-    shiftDate.getDate() === today.getDate()
-  );
-  
-  // Check if shift is in the past
-  const isPast = shiftDate < today;
-  
-  if (isToday) {
-    tile.style.border = '3px solid #ffc107';
-    tile.style.boxShadow = '0 0 12px rgba(255, 193, 7, 0.6)';
-  }
-  
-  // Grey out past shifts
-  if (isPast) {
-    tile.style.opacity = '0.5';
-    tile.style.filter = 'grayscale(80%)';
-    tile.style.cursor = 'default';
-  }
-  
-  // Trade mode filtering
-  let isTradeEligible = true;
-  if (requestMode === 'trade_step1') {
-    // Step 1: Only show user's own current/future shifts
-    const shiftDate = new Date(shift.date + 'T12:00:00');
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    isTradeEligible = (shift.assigned_to === currentUser.id && shiftDate >= now);
-  } else if (requestMode === 'trade_step2') {
-    // Step 2: Only show other staff's shifts (not user's own, not open)
-    isTradeEligible = (shift.assigned_to && shift.assigned_to !== currentUser.id && !shift.is_open);
-  }
-
-  if (shift.is_open) {
-    // Special case: House Manager sees open shifts as tentatively assigned to them
-    const isHouseManager = currentUser?.jobTitle === 'House Manager';
-    const isStaffView = currentUser?.role === 'staff';
-    
-    if (isHouseManager && isStaffView) {
-      // Render as if assigned to House Manager, but with special styling
-      const staff = allStaff.find(s => s.id === currentUser.id);
-      const hours = shift.running_hours || 0;
-      const hClass = hours >= 40 ? 'hrs-over' : hours >= 36 ? 'hrs-warn' : 'hrs-ok';
-      
-      if (!isPending) {
-        tile.style.background = staff?.tile_color || '#f5f5f5';
-        tile.style.color = staff?.text_color || 'black';
-        // Add dashed border to indicate tentative assignment
-        tile.style.border = '2px dashed #ff9800';
-        tile.style.boxShadow = '0 0 8px rgba(255, 152, 0, 0.3)';
-      }
-      
-      tile.style.cursor = 'pointer';
-      
-      tile.onclick = () => {
-        if (requestMode) { handleTilePick(shift); return; }
-        
-        // House Manager can still request to assign it to someone else or confirm self-assignment
-        confirmRequestShift(shift.id);
-      };
-      
-      const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
-      if (viewType === 'month') {
-        tile.innerHTML = `
-          ${pendingBadge}
-          <div class="month-shift-name">${currentUser.fullName}</div>
-          <div class="month-shift-time">${def.icon} ${displayTime}</div>
-          <div class="month-shift-hours ${hClass}" style="font-size:9px;font-style:italic;">(Tent-Open ${hours}h)</div>
-        `;
-      } else {
-        tile.innerHTML = `
-          ${pendingBadge}
-          <div>
-            <div class="t-name">${currentUser.fullName}</div>
-            <div class="t-time">${displayTime}</div>
-          </div>
-          <div class="t-foot ${hClass}" style="font-style:italic;">
-            Tent-Open ${hours > 0 ? hours + 'h' : ''}
-          </div>
-        `;
-      }
-    } else {
-      // Regular open shift view for everyone else (including admin)
-      if (!isPending) {
-        tile.style.background = '#f5f5f5';
-        tile.style.color = 'black';
-      }
-      
-      // Trade mode: grey out ineligible shifts
-      if (requestMode && !isTradeEligible) {
-        tile.style.opacity = '0.3';
-        tile.style.cursor = 'not-allowed';
-      } else {
-        tile.style.cursor = 'pointer';
-      }
-
-      tile.onclick = () => {
-        if (currentUser.role === 'guest') return; // Guest can't interact
-        if (requestMode) { handleTilePick(shift); return; }  // read live, not captured at render
-        if (currentUser.role === 'admin') {
-          if (isPending) showAdminPendingShiftModal(shift);
-          else showAssignOpenShiftModal(shift);
-        } else {
-          confirmRequestShift(shift.id);
-        }
-      };
-
-      const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
-      const isGuest = currentUser.role === 'guest';
-      
-      if (viewType === 'month') {
-        tile.innerHTML = `
-          ${pendingBadge}
-          <div class="month-shift-name">Open Shift</div>
-          <div class="month-shift-time">${def.icon} ${displayTime}</div>
-          ${isGuest ? '' : `<div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>`}
-        `;
-      } else {
-        tile.innerHTML = `
-          ${pendingBadge}
-          <div>
-            <div class="t-name">Open Shift</div>
-            <div class="t-time">${displayTime}</div>
-          </div>
-          ${isGuest ? '' : `<div class="t-foot" style="font-size:10px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>`}
-        `;
-      }
-    }
-  } else {
-    const staff = allStaff.find(s => s.id === shift.assigned_to);
-    const hours = shift.running_hours || 0;
-    const hClass = hours >= 40 ? 'hrs-over' : hours >= 36 ? 'hrs-warn' : 'hrs-ok';
-    
-    // Guest view: grey tiles, "Assigned" text
-    const isGuestView = currentUser.role === 'guest';
-    const displayName = isGuestView ? 'Assigned' : (shift.full_name || staff?.full_name || 'Unknown');
-
-    if (!isPending) {
-      if (isGuestView) {
-        tile.style.background = '#e0e0e0'; // Grey for guest
-        tile.style.color = '#666';
-      } else {
-        tile.style.background = staff?.tile_color || '#f5f5f5';
-        tile.style.color = staff?.text_color || 'black';
-      }
-    }
-    
-    // Emergency mode: grey out non-eligible shifts
-    if (emergencyAbsenceMode) {
-      const isEligible = emergencyEligibleShifts.find(s => s.id === shift.id);
-      if (!isEligible) {
-        tile.style.opacity = '0.3';
-        tile.style.cursor = 'not-allowed';
-      } else {
-        tile.style.border = '3px solid #dc3545';
-        tile.style.boxShadow = '0 0 10px rgba(220, 53, 69, 0.5)';
-      }
-    }
-    
-    // Trade mode: grey out ineligible shifts
-    if (requestMode && !isTradeEligible) {
-      tile.style.opacity = '0.3';
-      tile.style.cursor = 'not-allowed';
-    } else if (!emergencyAbsenceMode || emergencyEligibleShifts.find(s => s.id === shift.id)) {
-      tile.style.cursor = 'pointer';
-    }
-
-    tile.onclick = () => {
-      if (currentUser.role === 'guest') return; // Guest can't interact
-      if (requestMode) { handleTilePick(shift); return; }
-      
-      // Handle emergency absence mode
-      if (emergencyAbsenceMode) {
-        if (emergencyEligibleShifts.find(s => s.id === shift.id)) {
-          confirmEmergencyAbsence(shift);
-        }
-        return;
-      }
-      
-      if (currentUser.role === 'admin') {
-        if (isPending) showAdminPendingShiftModal(shift);
-        else showReassignModal(shift);
-      }
-    };
-
-    const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
-    if (viewType === 'month') {
-      tile.innerHTML = `
-        ${pendingBadge}
-        <div class="month-shift-name">${displayName}</div>
-        <div class="month-shift-time">${def.icon} ${displayTime}</div>
-        ${isGuestView ? '' : `<div class="month-shift-hours ${hClass}">${hours.toFixed(1)}/40</div>`}
-      `;
-    } else {
-      tile.innerHTML = `
-        ${pendingBadge}
-        <div>
-          <div class="t-name">${displayName}</div>
-          <div class="t-time">${displayTime}</div>
-        </div>
-        ${isGuestView ? '' : `<div class="t-foot">`}
-          <span class="t-hrs ${hClass}">${hours.toFixed(1)}/40.0</span>
-        </div>
-      `;
-    }
-  }
-
-  return tile;
-}
-
-// Admin assign open shift modal
-function showAssignOpenShiftModal(shift) {
-  console.log("🔍 Opening assign modal - allStaff:", allStaff.length, "members");
-  console.log("📋 All staff details:", allStaff.map(s => ({id: s.id, name: s.full_name, role: s.role, username: s.username})));
-  const filtered = allStaff.filter(s => s.username !== '_open' && s.username !== 'admin');
-  console.log("✅ Filtered staff for dropdown:", filtered.length, "members");
-  
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
-  };
-  
-  const def = SHIFT_DEFS[shift.shift_type];
-  
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  content.innerHTML = `
-    <h3>Assign Open Shift</h3>
-    <p><strong>Date:</strong> ${new Date(shift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
-    <p><strong>Type:</strong> ${def.icon} ${shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)} (${def.time})</p>
-    <hr>
-    <label>Assign to:</label>
-    <select id="assignStaffSelect" class="inp">
-      <option value="">-- Select Assignment --</option>
-      <option value="OPEN">📭 Make Open Shift</option>
-      ${allStaff.filter(s => s.username !== '_open' && s.username !== 'admin').map(s => 
-        `<option value="${s.id}">${s.full_name} (${s.job_title})</option>`
-      ).join('')}
-    </select>
-    <div id="assignHoursWarning" style="display:none;margin-top:8px;padding:8px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;"></div>
-    <div class="modal-actions">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-del-shift" onclick="deleteShift(${shift.id}, this)">🗑️ Delete</button>
-      <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
-      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', '${(shift.start_time || '').replace(/'/g, '')}', '${(shift.end_time || '').replace(/'/g, '')}')">➕ Add Shift</button>
-      <button class="b-pri" onclick="confirmAssignOpenShift(${shift.id})">Assign</button>
-    </div>
-  `;
-  
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-  
-  // Add change handler to check hours
-  document.getElementById('assignStaffSelect').onchange = async function() {
-    const value = this.value;
-    if (!value || value === 'OPEN') {
-      document.getElementById('assignHoursWarning').style.display = 'none';
-      return;
-    }
-    
-    const staffId = parseInt(value);
-    try {
-      const check = await apiCall(`/hours-check?staffId=${staffId}&date=${shift.date}&shiftType=${shift.shift_type}`);
-      const warning = document.getElementById('assignHoursWarning');
-      if (check.wouldExceed) {
-        warning.textContent = `⚠️ Warning: This would give them ${check.newTotal.toFixed(1)} hours for the week (exceeds 40-hour limit)`;
-        warning.style.display = 'block';
-        warning.style.background = '#f8d7da';
-        warning.style.color = '#721c24';
-      } else if (check.newTotal >= 36) {
-        warning.textContent = `⚠️ Notice: This would give them ${check.newTotal.toFixed(1)} hours for the week (approaching 40-hour limit)`;
-        warning.style.display = 'block';
-        warning.style.background = '#fff3cd';
-        warning.style.color = '#856404';
-      } else {
-        warning.style.display = 'none';
-      }
-    } catch (err) {
-      console.error('Hours check error:', err);
-    }
-  };
-}
-async function confirmAssignOpenShift(shiftId) {
-  const select = document.getElementById('assignStaffSelect');
-  const value = select.value;
-  
-  if (!value) {
-    alert('Please select an assignment');
-    return;
-  }
-  
-  const isOpen = (value === 'OPEN');
-  const staffId = isOpen ? null : parseInt(value);
-  
-  // Get old state before making the change
-  const shift = allShifts.find(s => s.id === shiftId);
-  const oldStaffId = shift ? shift.assigned_to : null;
-  
-  try {
-    showLoading();
-    await apiCall(`/shifts/${shiftId}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        assignedTo: staffId,
-        isOpen: isOpen
-      })
-    });
-    
-    // Track the change with old and new state
-    if (shift) {
-      trackChange('assign', shift, oldStaffId, staffId);
-    }
-    
-    const modal = document.querySelector('.modal-overlay');
-    if (modal) modal.remove();
-    
-    await loadShifts();
-    showSuccess(isOpen ? 'Shift marked as open!' : 'Shift assigned successfully!');
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-
-// Staff request open shift with confirmation
-async function confirmRequestShift(shiftId) {
-  const shift = allShifts.find(s => s.id === shiftId);
-  const def = SHIFT_DEFS[shift.shift_type];
-  const dateStr = new Date(shift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  
-  if (!confirm(`Request this open shift?\n\n${dateStr}\n${def.icon} ${def.label} (${def.time})\n${def.hours} hours\n\nRequires admin approval.`)) {
-    return;
-  }
-  
-  try {
-    showLoading();
-    await apiCall('/shift-requests', {
-      method: 'POST',
-      body: JSON.stringify({ shiftId })
-    });
-    
-    showSuccess('Shift requested! You will be notified when approved.');
-    loadShifts();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// Modal for admin reassignment
-function showReassignModal(shift) {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
-  };
-  
-  const def = SHIFT_DEFS[shift.shift_type];
-  const currentStaff = allStaff.find(s => s.id === shift.assigned_to);
-  
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  content.innerHTML = `
-    <h3>Reassign Shift</h3>
-    <p><strong>Date:</strong> ${new Date(shift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
-    <p><strong>Type:</strong> ${def.icon} ${shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)} (${def.time})</p>
-    <p><strong>Currently:</strong> ${currentStaff?.full_name || 'Unknown'}</p>
-    <hr>
-    <label>Reassign to:</label>
-    <select id="reassignSelect" class="inp">
-      <option value="">-- Select Staff --</option>
-      <option value="OPEN">Make Open Shift</option>
-      ${allStaff.filter(s => s.role === 'staff').map(s => 
-        `<option value="${s.id}" ${s.id === shift.assigned_to ? 'selected' : ''}>${s.full_name}</option>`
-      ).join('')}
-    </select>
-    <div class="modal-actions">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-del-shift" onclick="deleteShift(${shift.id}, this)">🗑️ Delete</button>
-      <button class="b-edit-shift" onclick="this.closest('.modal-overlay').remove(); openEditShiftDialog(${shift.id})">\u270f\ufe0f Edit Shift</button>
-      <button class="b-add-shift" onclick="this.closest('.modal-overlay').remove(); openAddShiftDialog('${shift.date}', '${shift.shift_type}', '${(shift.start_time || '').replace(/'/g, '')}', '${(shift.end_time || '').replace(/'/g, '')}')">➕ Add Shift</button>
-      <button class="b-pri" onclick="saveReassignment(${shift.id})">Save</button>
-    </div>
-  `;
-  
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-  
-  setTimeout(() => document.getElementById('reassignSelect').focus(), 100);
-}
-
-async function saveReassignment(shiftId) {
-  const select = document.getElementById('reassignSelect');
-  const newAssignee = select.value;
-  
-  if (!newAssignee) {
-    alert('Please select a staff member');
-    return;
-  }
-  
-  // Get old state BEFORE making changes
-  const shift = allShifts.find(s => s.id === shiftId);
-  const oldStaffId = shift ? shift.assigned_to : null;
-  
-  // Remember current view mode before reload
-  const savedViewMode = viewMode;
-  
-  try {
-    showLoading();
-    
-    const isOpen = (newAssignee === 'OPEN');
-    const newStaffId = isOpen ? null : parseInt(newAssignee);
-    
-    if (isOpen) {
-      // Make it an open shift
-      await apiCall(`/shifts/${shiftId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ 
-          assignedTo: null,
-          isOpen: true
-        })
-      });
-    } else {
-      // Assign to specific staff
-      await apiCall(`/shifts/${shiftId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ 
-          assignedTo: newStaffId,
-          isOpen: false
-        })
-      });
-    }
-    
-    // Track the change with old and new state
-    if (shift) {
-      trackChange('reassign', shift, oldStaffId, newStaffId);
-    }
-    
-    // Close modal
-    document.querySelector('.modal-overlay').remove();
-    
-    // Reload both staff (to get updated names) and shifts (to get updated assignments)
-    await loadStaff();
-    await loadShifts();
-    
-    // Restore view mode if it changed during reload
-    if (viewMode !== savedViewMode) {
-      setView(savedViewMode);
-    }
-    
-    // Show success message
-    showSuccess('Shift reassigned successfully!');
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// DELETE SHIFT
-// ═══════════════════════════════════════════════════════════
-
-function deleteShift(shiftId, btn) {
-  // First click: replace button text with a confirmation prompt
-  if (!btn.dataset.confirming) {
-    btn.dataset.confirming = '1';
-    btn.textContent = 'Confirm Delete?';
-    btn.classList.add('b-del-confirm');
-    // Auto-reset after 5 seconds if the admin doesn't follow through
-    btn._resetTimer = setTimeout(() => {
-      btn.textContent = '\ud83d\uddd1\ufe0f Delete';
-      btn.classList.remove('b-del-confirm');
-      delete btn.dataset.confirming;
-    }, 5000);
-    return;
-  }
-
-  // Second click: confirmed — proceed with deletion
-  clearTimeout(btn._resetTimer);
-  const modal = btn.closest('.modal-overlay');
-
-  (async () => {
-    try {
-      showLoading();
-      await apiCall(`/shifts/${shiftId}`, { method: 'DELETE' });
-      modal?.remove();
-      await loadShifts();
-      showSuccess('Shift deleted.');
-    } catch (err) {
-      alert('Error deleting shift: ' + err.message);
-      // Reset button so the admin can try again
-      btn.textContent = '\ud83d\uddd1\ufe0f Delete';
-      btn.classList.remove('b-del-confirm');
-      delete btn.dataset.confirming;
-    } finally {
-      hideLoading();
-    }
-  })();
-}
-
-// ═══════════════════════════════════════════════════════════
-// TIME PICKER HELPERS
-// ═══════════════════════════════════════════════════════════
-
-function parseTimeString(timeStr) {
-  // Parse strings like "7:00 AM", "3:30 PM", "12:00 PM"
-  if (!timeStr) return { hour: 12, minute: 0, ampm: 'AM' };
-  const m = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (!m) return { hour: 12, minute: 0, ampm: 'AM' };
-  return { hour: parseInt(m[1]), minute: parseInt(m[2]), ampm: m[3].toUpperCase() };
-}
-
-function buildTimePicker(prefix, defaultTime) {
-  const t = parseTimeString(defaultTime);
-  const hourOpts = Array.from({length:12}, (_,i) => {
-    const h = i + 1;
-    return `<option value="${h}" ${h === t.hour ? 'selected' : ''}>${h}</option>`;
-  }).join('');
-  return `
-    <div class="time-picker-row">
-      <select id="${prefix}Hour" class="inp time-sel">${hourOpts}</select>
-      <span class="time-colon">:</span>
-      <select id="${prefix}Min" class="inp time-sel">
-        <option value="00" ${t.minute === 0 ? 'selected' : ''}>00</option>
-        <option value="15" ${t.minute === 15 ? 'selected' : ''}>15</option>
-        <option value="30" ${t.minute === 30 ? 'selected' : ''}>30</option>
-        <option value="45" ${t.minute === 45 ? 'selected' : ''}>45</option>
-      </select>
-      <select id="${prefix}Ampm" class="inp time-sel">
-        <option value="AM" ${t.ampm === 'AM' ? 'selected' : ''}>AM</option>
-        <option value="PM" ${t.ampm === 'PM' ? 'selected' : ''}>PM</option>
-      </select>
-    </div>`;
-}
-
-function readTimePicker(prefix) {
-  const h = document.getElementById(prefix + 'Hour').value;
-  const m = document.getElementById(prefix + 'Min').value;
-  const ap = document.getElementById(prefix + 'Ampm').value;
-  return h + ':' + m + ' ' + ap;
-}
-
-// ═══════════════════════════════════════════════════════════
-// EDIT SHIFT DIALOG
-// ═══════════════════════════════════════════════════════════
-
-function openEditShiftDialog(shiftId) {
-  const shift = allShifts.find(s => s.id === shiftId);
-  if (!shift) return;
-  const def = SHIFT_DEFS[shift.shift_type];
-  const dateStr = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-
-  // Determine current start/end — use custom times if set, otherwise parse from template
-  const templateParts = def.time.split('\u2013').map(s => s.trim());  // e.g. ["7:00 AM", "3:00 PM"]
-  const currentStart = shift.start_time || templateParts[0] || '7:00 AM';
-  const currentEnd   = shift.end_time   || templateParts[1] || '3:00 PM';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  content.innerHTML = `
-    <h3>\u270f\ufe0f Edit Shift</h3>
-    <p><strong>Date:</strong> ${dateStr}</p>
-    <p><strong>Type:</strong> ${def.icon} ${shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)}</p>
-    <p><strong>Assigned:</strong> ${shift.is_open ? 'Open Shift' : (shift.full_name || allStaff.find(s => s.id === shift.assigned_to)?.full_name || 'Unknown')}</p>
-    <hr>
-    <label style="font-weight:600;margin-bottom:4px;display:block;">Start Time</label>
-    ${buildTimePicker('editShiftStart', currentStart)}
-    <label style="font-weight:600;margin:12px 0 4px;display:block;">End Time</label>
-    ${buildTimePicker('editShiftEnd', currentEnd)}
-    <div class="modal-actions">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-pri" onclick="saveEditShift(${shift.id})">Save Times</button>
-    </div>
-  `;
-
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-}
-
-async function saveEditShift(shiftId) {
-  const startTime = readTimePicker('editShiftStart');
-  const endTime   = readTimePicker('editShiftEnd');
-
-  try {
-    showLoading();
-    await apiCall(`/shifts/${shiftId}`, {
-      method: 'PUT',
-      body: JSON.stringify({ startTime, endTime })
-    });
-    document.querySelector('.modal-overlay')?.remove();
-    await loadShifts();
-    showSuccess('Shift times updated!');
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// ADD SHIFT DIALOG
-// ═══════════════════════════════════════════════════════════
-
-function openAddShiftDialog(date, sourceShiftType, sourceStart, sourceEnd) {
-  const def = SHIFT_DEFS[sourceShiftType];
-  const dateStr = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-
-  // Default times from the clicked tile (custom or template)
-  const templateParts = def.time.split('\u2013').map(s => s.trim());
-  const defaultStart = sourceStart || templateParts[0] || '7:00 AM';
-  const defaultEnd   = sourceEnd   || templateParts[1] || '3:00 PM';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  content.innerHTML = `
-    <h3>\u2795 Add Shift</h3>
-    <p><strong>Date:</strong> ${dateStr}</p>
-    <hr>
-    <label style="font-weight:600;margin-bottom:4px;display:block;">Shift Type</label>
-    <select id="addShiftType" class="inp" onchange="addShiftTypeChanged()">
-      ${Object.entries(SHIFT_DEFS).map(([key, d]) =>
-        `<option value="${key}" ${key === sourceShiftType ? 'selected' : ''}>${d.icon} ${d.label} (${d.time})</option>`
-      ).join('')}
-    </select>
-    <label style="font-weight:600;margin:12px 0 4px;display:block;">Start Time</label>
-    ${buildTimePicker('addShiftStart', defaultStart)}
-    <label style="font-weight:600;margin:12px 0 4px;display:block;">End Time</label>
-    ${buildTimePicker('addShiftEnd', defaultEnd)}
-    <label style="font-weight:600;margin:12px 0 4px;display:block;">Assign To</label>
-    <select id="addShiftAssign" class="inp">
-      <option value="OPEN" selected>\ud83d\udced Open Shift</option>
-      ${allStaff.filter(s => s.username !== '_open' && s.username !== 'admin').map(s =>
-        `<option value="${s.id}">${s.full_name} (${s.job_title})</option>`
-      ).join('')}
-    </select>
-    <div class="modal-actions">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-pri" onclick="saveAddShift('${date}')">Create Shift</button>
-    </div>
-  `;
-
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-}
-
-function addShiftTypeChanged() {
-  const sel = document.getElementById('addShiftType');
-  const def = SHIFT_DEFS[sel.value];
-  if (!def) return;
-  const parts = def.time.split('\u2013').map(s => s.trim());
-  if (parts.length === 2) {
-    const s = parseTimeString(parts[0]);
-    const e = parseTimeString(parts[1]);
-    document.getElementById('addShiftStartHour').value = s.hour;
-    document.getElementById('addShiftStartMin').value = String(s.minute).padStart(2, '0');
-    document.getElementById('addShiftStartAmpm').value = s.ampm;
-    document.getElementById('addShiftEndHour').value = e.hour;
-    document.getElementById('addShiftEndMin').value = String(e.minute).padStart(2, '0');
-    document.getElementById('addShiftEndAmpm').value = e.ampm;
-  }
-}
-
-async function saveAddShift(date) {
-  const shiftType = document.getElementById('addShiftType').value;
-  const startTime = readTimePicker('addShiftStart');
-  const endTime   = readTimePicker('addShiftEnd');
-  const assignVal = document.getElementById('addShiftAssign').value;
-  const isOpen    = (assignVal === 'OPEN');
-  const assignedTo = isOpen ? null : parseInt(assignVal);
-
-  try {
-    showLoading();
-    await apiCall('/shifts', {
-      method: 'POST',
-      body: JSON.stringify({
-        date,
-        shiftType,
-        assignedTo,
-        isOpen,
-        startTime,
-        endTime,
-        allowDuplicate: true
-      })
-    });
-    document.querySelector('.modal-overlay')?.remove();
-    await loadShifts();
-    showSuccess('New shift created!');
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-function showSuccess(msg) {
-  const toast = document.createElement('div');
-  toast.className = 'toast-success';
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
-
-async function requestShift(shiftId) {
-  if (!confirm('Request this open shift?')) return;
-  
-  try {
-    showLoading();
-    await apiCall('/shift-requests', {
-      method: 'POST',
-      body: JSON.stringify({ shiftId })
-    });
-    
-    alert('Shift requested! You will be notified when approved.');
-    loadShifts();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// APPROVALS (ADMIN ONLY)
-// ═══════════════════════════════════════════════════════════
-async function loadPendingApprovals() {
-  try {
-    const [shiftReqs, tradeReqs, timeOffReqs] = await Promise.all([
-      apiCall('/shift-requests').catch(() => ({ requests: [] })),
-      apiCall('/trade-requests').catch(() => ({ requests: [] })),
-      apiCall('/time-off-requests').catch(() => ({ requests: [] }))
-    ]);
-    
-    const pending = [
-      ...shiftReqs.requests.filter(r => r.status === 'pending'),
-      ...tradeReqs.requests.filter(r => r.status === 'pending' && r.requester_approved && r.target_approved),
-      ...timeOffReqs.requests.filter(r => r.status === 'pending')
-    ];
-    
-    // Update badge
-    const badge = document.getElementById('approvalBadge');
-    if (pending.length > 0) {
-      badge.textContent = pending.length;
-      badge.classList.remove('hidden');
-    } else {
-      badge.classList.add('hidden');
-    }
-    
-    renderApprovalsList(shiftReqs.requests, tradeReqs.requests, timeOffReqs.requests);
-  } catch (err) {
-    console.error('Load approvals error:', err);
-  }
-}
-
-function renderApprovalsList(shiftReqs, tradeReqs, timeOffReqs) {
-  const list = document.getElementById('approvalsList');
-  list.innerHTML = '';
-  
-  const pendingShift = shiftReqs.filter(r => r.status === 'pending');
-  const pendingTrade = tradeReqs.filter(r => r.status === 'pending' && r.requester_approved && r.target_approved);
-  const pendingTimeOff = timeOffReqs.filter(r => r.status === 'pending');
-  
-  const emptyMsg = document.getElementById("noApprovalsMsg");
-  if (pendingShift.length === 0 && pendingTrade.length === 0 && pendingTimeOff.length === 0) {
-    list.style.display = "none";
-    if (emptyMsg) emptyMsg.style.display = "block";
-    return;
-  }
-  list.style.display = "block";
-  if (emptyMsg) emptyMsg.style.display = "none";
-  
-  // Shift requests
-  pendingShift.forEach(req => {
-    const item = document.createElement('div');
-    item.className = 'approval-item';
-    item.innerHTML = `
-      <div class="approval-header">
-        <div>
-          <div class="approval-title">Shift Request</div>
-          <div class="approval-meta">${req.requester_name} → ${req.date} ${SHIFT_DEFS[req.shift_type].label}</div>
-        </div>
-      </div>
-      <div class="approval-actions">
-        <button class="btn-approve" onclick="approveShiftRequest(${req.id})">Approve</button>
-        <button class="btn-deny" onclick="denyShiftRequest(${req.id})">Deny</button>
-      </div>
-    `;
-    list.appendChild(item);
-  });
-  
-  // Trade requests
-  pendingTrade.forEach(req => {
-    const item = document.createElement('div');
-    item.className = 'approval-item';
-    item.innerHTML = `
-      <div class="approval-header">
-        <div>
-          <div class="approval-title">Trade Request (Both Approved)</div>
-          <div class="approval-meta">${req.requester_name} ↔ ${req.target_name}</div>
-          <div class="approval-meta">${req.req_date} ↔ ${req.tgt_date}</div>
-        </div>
-      </div>
-      <div class="approval-actions">
-        <button class="btn-approve" onclick="finalizeTrade(${req.id})">Finalize Trade</button>
-        <button class="btn-deny" onclick="denyTrade(${req.id})">Deny</button>
-      </div>
-    `;
-    list.appendChild(item);
-  });
-  
-  // Time off requests
-  pendingTimeOff.forEach(req => {
-    const item = document.createElement('div');
-    item.className = 'approval-item';
-    item.innerHTML = `
-      <div class="approval-header">
-        <div>
-          <div class="approval-title">Time Off Request</div>
-          <div class="approval-meta">${req.requester_name} → ${req.start_date || req.shift_date}</div>
-          ${req.reason ? `<div class="approval-meta">Reason: ${req.reason}</div>` : ''}
-        </div>
-      </div>
-      <div class="approval-actions">
-        <button class="btn-approve" onclick="approveTimeOff(${req.id})">Approve</button>
-        <button class="btn-deny" onclick="denyTimeOff(${req.id})">Deny</button>
-      </div>
-    `;
-    list.appendChild(item);
-  });
-}
-
-async function approveShiftRequest(requestId) {
-  const note = prompt('Optional note for staff member:');
-  try {
-    showLoading();
-    await apiCall(`/shift-requests/${requestId}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ note })
-    });
-    alert('Shift request approved! Staff member notified via Telegram.');
-    loadPendingApprovals();
-    loadShifts();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function denyShiftRequest(requestId) {
-  const note = prompt('Reason for denial (optional):');
-  try {
-    showLoading();
-    await apiCall(`/shift-requests/${requestId}/deny`, {
-      method: 'POST',
-      body: JSON.stringify({ note })
-    });
-    alert('Shift request denied.');
-    loadPendingApprovals();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function finalizeTrade(tradeId) {
-  const note = prompt('Optional note:');
-  try {
-    showLoading();
-    await apiCall(`/trade-requests/${tradeId}/finalize`, {
-      method: 'POST',
-      body: JSON.stringify({ note })
-    });
-    alert('Trade finalized! Both staff members notified.');
-    loadPendingApprovals();
-    loadShifts();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function denyTrade(tradeId) {
-  const note = prompt('Reason for denial:');
-  try {
-    showLoading();
-    await apiCall(`/trade-requests/${tradeId}/deny`, {
-      method: 'POST',
-      body: JSON.stringify({ note, status: 'denied' })
-    });
-    alert('Trade denied.');
-    loadPendingApprovals();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function approveTimeOff(requestId) {
-  const note = prompt('Optional note:');
-  try {
-    showLoading();
-    await apiCall(`/time-off-requests/${requestId}/approve`, {
-      method: 'POST',
-      body: JSON.stringify({ note })
-    });
-    alert('Time off approved!');
-    loadPendingApprovals();
-    loadShifts();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function denyTimeOff(requestId) {
-  const note = prompt('Reason for denial:');
-  try {
-    showLoading();
-    await apiCall(`/time-off-requests/${requestId}/deny`, {
-      method: 'POST',
-      body: JSON.stringify({ note })
-    });
-    alert('Time off denied.');
-    loadPendingApprovals();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// DASHBOARD (STAFF)
-// ═══════════════════════════════════════════════════════════
-async function loadDashboard() {
-  try {
-    const result = await apiCall('/dashboard');
-    renderDashboard(result);
-    loadTradeInbox(); // Load trade inbox alongside dashboard
-  } catch (err) {
-    console.error('Dashboard error:', err);
-  }
-}
-
-function renderDashboard(data) {
-  const content = document.getElementById('dashboardContent');
-  
-  const upcomingHtml = data.upcomingShifts.map(s => {
-    const def = SHIFT_DEFS[s.shift_type];
-    return `<div style="padding:8px;background:#f8f8f8;border-radius:6px;margin:4px 0;">
-      <strong>${s.date}</strong> - ${def.label} (${def.time})
-    </div>`;
-  }).join('');
-  
-  content.innerHTML = `
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-label">Hours This Week</div>
-        <div class="stat-value">${data.weeklyHours.toFixed(1)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Pending Requests</div>
-        <div class="stat-value">${data.pendingRequests}</div>
-      </div>
-    </div>
-    <div style="margin-top:16px;">
-      <strong>Upcoming Shifts:</strong>
-      ${upcomingHtml || '<p style="color:#888;margin-top:8px;">No upcoming shifts</p>'}
-    </div>
-  `;
-}
-
-// ═══════════════════════════════════════════════════════════
-// UTILITY FUNCTIONS
-// ═══════════════════════════════════════════════════════════
-function getWeekStart(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day;
-  return new Date(d.setDate(diff));
-}
-
-function formatDate(date) {
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function formatDateLong(date) {
-  return new Date(date).toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
-    year: 'numeric' 
-  });
-}
-
-// ═══════════════════════════════════════════════════════════
-// EVENT LISTENERS
-// ═══════════════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', () => {
-  // Enter key on login
-  document.getElementById('username').addEventListener('keypress', e => {
-    if (e.key === 'Enter') handleLogin();
-  });
-  document.getElementById('password').addEventListener('keypress', e => {
-    if (e.key === 'Enter') handleLogin();
-  });
-  
-  // Check if already logged in
-  apiCall('/me').then(result => {
-    currentUser = result.user;
-    showApp();
-  }).catch(() => {
-    // Not logged in, show login screen
-  });
-});
-
-
-// Toggle staff view filter
-function toggleMyShiftsOnly() {
-  showOnlyMyShifts = !showOnlyMyShifts;
-  const btn = document.getElementById('toggleMyShiftsBtn');
-  if (btn) {
-    btn.textContent = showOnlyMyShifts ? 'Show All Shifts' : 'Show Only My Shifts';
-    btn.style.background = showOnlyMyShifts ? '#667eea' : '#f8f9fa';
-    btn.style.color = showOnlyMyShifts ? 'white' : '#495057';
-  }
-  renderCalendar();
-}
-
-// Pay period summary
-function renderPayPeriodSummary() {
-  const container = document.getElementById('payPeriodSummary');
-  if (!container) return;
-  
-  const today = new Date();
-  const currentPeriodStart = getPayPeriodStart(today);
-  const currentPeriodEnd = new Date(currentPeriodStart);
-  currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 6);
-  
-  const nextPeriodStart = new Date(currentPeriodEnd);
-  nextPeriodStart.setDate(nextPeriodStart.getDate() + 1);
-  const nextPeriodEnd = new Date(nextPeriodStart);
-  nextPeriodEnd.setDate(nextPeriodEnd.getDate() + 6);
-  
-  // House Manager sees open shifts as tentatively assigned to them
-  const isHouseManager = currentUser?.jobTitle === 'House Manager';
-  
-  // Get shifts for current and next period
-  const currentShifts = allShifts.filter(s => {
-    const date = new Date(s.date);
-    const isInPeriod = date >= currentPeriodStart && date <= currentPeriodEnd;
-    // Include assigned shifts OR (if House Manager) open shifts
-    return isInPeriod && (s.assigned_to === currentUser.id || (isHouseManager && s.is_open));
-  });
-  
-  const nextShifts = allShifts.filter(s => {
-    const date = new Date(s.date);
-    const isInPeriod = date >= nextPeriodStart && date <= nextPeriodEnd;
-    // Include assigned shifts OR (if House Manager) open shifts
-    return isInPeriod && (s.assigned_to === currentUser.id || (isHouseManager && s.is_open));
-  });
-  
-  const currentHours = currentShifts.reduce((sum, s) => sum + (SHIFT_DEFS[s.shift_type]?.hours || 0), 0);
-  const nextHours = nextShifts.reduce((sum, s) => sum + (SHIFT_DEFS[s.shift_type]?.hours || 0), 0);
-  
-  const currentHoursClass = currentHours >= 40 ? 'hrs-over' : currentHours >= 36 ? 'hrs-warn' : 'hrs-ok';
-  const nextHoursClass = nextHours >= 40 ? 'hrs-over' : nextHours >= 36 ? 'hrs-warn' : 'hrs-ok';
-  
-  container.innerHTML = `
-    <div class="period-summary-card">
-      <h4>Current Pay Period</h4>
-      <div class="period-dates">${formatDateShort(currentPeriodStart)} – ${formatDateShort(currentPeriodEnd)}</div>
-      <div class="period-shifts">${currentShifts.length} shift${currentShifts.length !== 1 ? 's' : ''}</div>
-      <div class="period-hours ${currentHoursClass}">${currentHours.toFixed(1)} hours</div>
-      ${currentShifts.length > 0 ? `
-        <div class="period-list">
-          ${currentShifts.slice(0, 3).map(s => {
-            const def = SHIFT_DEFS[s.shift_type];
-            const isTentative = isHouseManager && s.is_open;
-            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}${isTentative ? ' <span style="font-style:italic;opacity:0.7;">(tentative)</span>' : ''}</div>`;
-          }).join('')}
-          ${currentShifts.length > 3 ? `<div class="period-more">+${currentShifts.length - 3} more</div>` : ''}
-        </div>
-      ` : '<div class="period-empty">No shifts scheduled</div>'}
-    </div>
-    <div class="period-summary-card">
-      <h4>Next Pay Period</h4>
-      <div class="period-dates">${formatDateShort(nextPeriodStart)} – ${formatDateShort(nextPeriodEnd)}</div>
-      <div class="period-shifts">${nextShifts.length} shift${nextShifts.length !== 1 ? 's' : ''}</div>
-      <div class="period-hours ${nextHoursClass}">${nextHours.toFixed(1)} hours</div>
-      ${nextShifts.length > 0 ? `
-        <div class="period-list">
-          ${nextShifts.slice(0, 3).map(s => {
-            const def = SHIFT_DEFS[s.shift_type];
-            const isTentative = isHouseManager && s.is_open;
-            return `<div class="period-shift-item">${formatDateShort(new Date(s.date))}: ${def.icon} ${def.label}${isTentative ? ' <span style="font-style:italic;opacity:0.7;">(tentative)</span>' : ''}</div>`;
-          }).join('')}
-          ${nextShifts.length > 3 ? `<div class="period-more">+${nextShifts.length - 3} more</div>` : ''}
-        </div>
-      ` : '<div class="period-empty">No shifts scheduled</div>'}
-    </div>
-  `;
-}
-
-function getPayPeriodStart(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = d.getDate() - day;
-  return new Date(d.setDate(diff));
-}
-
-function formatDateShort(date) {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-// ADD THIS TO app.js
-
-// ═══════════════════════════════════════════════════════════
-// SHIFT GENERATOR
-// ═══════════════════════════════════════════════════════════
-
-function openShiftGenerator() {
-  const modal = document.getElementById('shiftGeneratorModal');
-  if (!modal) {
-    console.error('Shift generator modal not found in DOM - may have been removed');
-    alert('Error: Shift generator unavailable. Please refresh the page.');
-    return;
-  }
-  
-  // Remove inline style and let CSS handle it
-  modal.style.display = '';
-  modal.classList.add('show-modal');
-  
-  // Load templates from localStorage
-  loadTemplates();
-  
-  // Populate staff dropdowns
-  populateStaffDropdowns();
-  
-  // Set default dates (today and 2 weeks ahead)
-  const today = new Date();
-  const twoWeeks = new Date(today);
-  twoWeeks.setDate(twoWeeks.getDate() + 14);
-  
-  const genStart = document.getElementById('genStartDate');
-  const genEnd = document.getElementById('genEndDate');
-  const copySource = document.getElementById('copySourceDate');
-  const copyTarget = document.getElementById('copyTargetDate');
-  
-  if (genStart) genStart.value = formatDate(today);
-  if (genEnd) genEnd.value = formatDate(twoWeeks);
-  if (copySource) copySource.value = formatDate(today);
-  if (copyTarget) copyTarget.value = formatDate(twoWeeks);
-  
-  // Default to create tab
-  switchGenTab('create');
-  updateGeneratorPreview();
-}
-
-function closeShiftGenerator() {
-  const modal = document.getElementById('shiftGeneratorModal');
-  if (modal) {
-    modal.classList.remove('show-modal');
-    // Set display none as fallback
-    modal.style.display = 'none';
-  }
-}
-
-function switchGenTab(tabName) {
-  // Update tab buttons
-  document.querySelectorAll('.gen-tab').forEach(btn => btn.classList.remove('active'));
-  // Find the matching tab button by its onclick attribute text rather than relying on
-  // the implicit global `event` object, which is undefined when called programmatically.
-  const matchingBtn = Array.from(document.querySelectorAll('.gen-tab'))
-    .find(btn => btn.getAttribute('onclick') && btn.getAttribute('onclick').includes("'" + tabName + "'"));
-  if (matchingBtn) matchingBtn.classList.add('active');
-  
-  // Update tab content
-  document.querySelectorAll('.gen-tab-content').forEach(content => content.classList.remove('active'));
-  document.getElementById('genTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1)).classList.add('active');
-}
-
-function populateStaffDropdowns() {
-  const activeStaff = allStaff.filter(s => s.role === 'staff' && s.username !== '_open');
-  
-  // Specific staff dropdown — only exists inside the Shift Generator modal
-  const specificSelect = document.getElementById('genSpecificStaff');
-  if (specificSelect) {
-    specificSelect.innerHTML = '<option value="">-- Select Staff --</option>';
-    activeStaff.forEach(s => {
-      specificSelect.innerHTML += `<option value="${s.id}">${s.full_name}</option>`;
-    });
-  }
-  
-  // Rotation list — only exists inside the Shift Generator modal
-  const rotationList = document.getElementById('rotationList');
-  if (!rotationList) return;
-  rotationList.innerHTML = '';
-  activeStaff.forEach(s => {
-    const item = document.createElement('div');
-    item.className = 'rotation-item';
-    item.draggable = true;
-    item.dataset.staffId = s.id;
-    item.innerHTML = `
-      <span class="drag-handle">⋮⋮</span>
-      <label>
-        <input type="checkbox" checked data-staff-id="${s.id}">
-        ${s.full_name}
-      </label>
-    `;
-    rotationList.appendChild(item);
-  });
-  
-  // Add drag and drop handlers
-  setupRotationDragDrop();
-}
-
-function setupRotationDragDrop() {
-  const items = document.querySelectorAll('.rotation-item');
-  let draggedItem = null;
-  
-  items.forEach(item => {
-    item.addEventListener('dragstart', function() {
-      draggedItem = this;
-      this.style.opacity = '0.5';
-    });
-    
-    item.addEventListener('dragend', function() {
-      this.style.opacity = '1';
-    });
-    
-    item.addEventListener('dragover', function(e) {
-      e.preventDefault();
-    });
-    
-    item.addEventListener('drop', function(e) {
-      e.preventDefault();
-      if (this !== draggedItem) {
-        const allItems = [...this.parentNode.children];
-        const draggedIndex = allItems.indexOf(draggedItem);
-        const targetIndex = allItems.indexOf(this);
-        
-        if (draggedIndex < targetIndex) {
-          this.parentNode.insertBefore(draggedItem, this.nextSibling);
-        } else {
-          this.parentNode.insertBefore(draggedItem, this);
-        }
-      }
-    });
-  });
-}
-
-function togglePatternOptions() {
-  const pattern = document.getElementById('genPattern').value;
-  
-  document.getElementById('specificStaffOption').style.display = pattern === 'specific' ? 'block' : 'none';
-  document.getElementById('rotateStaffOption').style.display = pattern === 'rotate' ? 'block' : 'none';
-  
-  updateGeneratorPreview();
-}
-
-function updateGeneratorPreview() {
-  const startDateStr = document.getElementById('genStartDate').value;
-  const endDateStr = document.getElementById('genEndDate').value;
-  
-  if (!startDateStr || !endDateStr) {
-    document.getElementById('genPreviewText').textContent = 'Select dates';
-    return;
-  }
-  
-  // Parse dates correctly (add noon to avoid timezone issues)
-  const startDate = new Date(startDateStr + 'T12:00:00');
-  const endDate = new Date(endDateStr + 'T12:00:00');
-  
-  // Count selected shift types
-  const shiftTypes = [];
-  if (document.getElementById('shiftMorning').checked) shiftTypes.push('Morning');
-  if (document.getElementById('shiftAfternoon').checked) shiftTypes.push('Afternoon');
-  if (document.getElementById('shiftOvernight').checked) shiftTypes.push('Overnight');
-  
-  // Calculate days in range
-  const dayCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-  const pattern = document.getElementById('genPattern').value;
-  
-  const estimatedShifts = dayCount * shiftTypes.length;
-  
-  let patternText = pattern === 'open' ? 'as open shifts' : 
-                   pattern === 'specific' ? 'assigned to selected staff' : 
-                   'rotating through staff';
-  
-  document.getElementById('genPreviewText').textContent = 
-    `Will create ${estimatedShifts} shifts (${dayCount} days × ${shiftTypes.length} shift types) ${patternText}`;
-}
-
-async function generateShifts() {
-  const startDate = document.getElementById('genStartDate').value;
-  const endDate = document.getElementById('genEndDate').value;
-  const pattern = document.getElementById('genPattern').value;
-  
-  // Get selected shift types
-  const shiftTypes = [];
-  if (document.getElementById('shiftMorning').checked) shiftTypes.push('morning');
-  if (document.getElementById('shiftAfternoon').checked) shiftTypes.push('afternoon');
-  if (document.getElementById('shiftOvernight').checked) shiftTypes.push('overnight');
-  
-  if (shiftTypes.length === 0) {
-    alert('Please select at least one shift type');
-    return;
-  }
-  
-  // Get assignment info
-  let assignedTo = null;
-  let rotationStaff = [];
-  
-  if (pattern === 'specific') {
-    assignedTo = parseInt(document.getElementById('genSpecificStaff').value);
-    if (!assignedTo) {
-      alert('Please select a staff member');
-      return;
-    }
-  } else if (pattern === 'rotate') {
-    const checkboxes = document.querySelectorAll('#rotationList input[type="checkbox"]:checked');
-    rotationStaff = [...checkboxes].map(cb => parseInt(cb.dataset.staffId));
-    if (rotationStaff.length === 0) {
-      alert('Please select at least one staff member for rotation');
-      return;
-    }
-  }
-  
-  // Format dates for display (parse as local date by adding noon time)
-  const startDisplay = new Date(startDate + 'T12:00:00').toLocaleDateString();
-  const endDisplay = new Date(endDate + 'T12:00:00').toLocaleDateString();
-  
-  if (!confirm(`This will create shifts from ${startDisplay} to ${endDisplay}. Continue?`)) {
-    return;
-  }
-  
-  try {
-    showLoading();
-    
-    const shifts = [];
-    let rotationIndex = 0;
-    
-    // Generate shifts for each day in range (using string dates to avoid timezone issues)
-    const start = new Date(startDate + 'T12:00:00');
-    const end = new Date(endDate + 'T12:00:00');
-    
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dateStr = formatDate(d);
-      
-      // Create each shift type for this day
-      for (const shiftType of shiftTypes) {
-        const shift = {
-          date: dateStr,
-          shiftType: shiftType,
-          isOpen: pattern === 'open',
-          assignedTo: null
-        };
-        
-        if (pattern === 'specific') {
-          shift.assignedTo = assignedTo;
-        } else if (pattern === 'rotate') {
-          shift.assignedTo = rotationStaff[rotationIndex % rotationStaff.length];
-          rotationIndex++;
-        }
-        
-        shifts.push(shift);
-      }
-    }
-    
-    // Send to API
-    const result = await apiCall('/shifts/bulk', {
-      method: 'POST',
-      body: JSON.stringify({ shifts })
-    });
-    
-    closeShiftGenerator();
-    showSuccess(`${result.created} shifts created successfully!`);
-    loadShifts();
-    
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function copyShifts() {
-  const copyFrom = document.querySelector('input[name="copyFrom"]:checked').value;
-  const sourceDate = document.getElementById('copySourceDate').value;
-  const targetDate = document.getElementById('copyTargetDate').value;
-  const keepAssignments = document.getElementById('copyKeepAssignments').checked;
-  const replaceExisting = document.getElementById('copyReplaceExisting').checked;
-  
-  if (!sourceDate || !targetDate) {
-    alert('Please select both source and target dates');
-    return;
-  }
-  
-  // Format dates for display (parse as local date by adding noon time)
-  const sourceDisplay = new Date(sourceDate + 'T12:00:00').toLocaleDateString();
-  const targetDisplay = new Date(targetDate + 'T12:00:00').toLocaleDateString();
-  
-  if (!confirm(`Copy shifts from ${sourceDisplay} to ${targetDisplay}?`)) {
-    return;
-  }
-  
-  try {
-    showLoading();
-    
-    const result = await apiCall('/shifts/copy', {
-      method: 'POST',
-      body: JSON.stringify({
-        sourceDate: sourceDate,  // Already in YYYY-MM-DD format from input
-        targetDate: targetDate,  // Already in YYYY-MM-DD format from input
-        copyType: copyFrom,
-        keepAssignments,
-        replaceExisting
-      })
-    });
-    
-    closeShiftGenerator();
-    showSuccess(`${result.copied} shifts copied successfully!`);
-    loadShifts();
-    
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// Template management
-async function loadTemplates() {
-  try {
-    const templates = await apiCall('/shift-templates');
-
-    // Always update SHIFT_DEFS (needed at startup for correct tile times)
-    if (templates.morning) {
-      SHIFT_DEFS.morning.label = templates.morning.label;
-      SHIFT_DEFS.morning.time  = templates.morning.time;
-      SHIFT_DEFS.morning.hours = templates.morning.hours;
-    }
-    if (templates.afternoon) {
-      SHIFT_DEFS.afternoon.label = templates.afternoon.label;
-      SHIFT_DEFS.afternoon.time  = templates.afternoon.time;
-      SHIFT_DEFS.afternoon.hours = templates.afternoon.hours;
-    }
-    if (templates.overnight) {
-      SHIFT_DEFS.overnight.label = templates.overnight.label;
-      SHIFT_DEFS.overnight.time  = templates.overnight.time;
-      SHIFT_DEFS.overnight.hours = templates.overnight.hours;
-    }
-
-    // Only write to the template form inputs when the Shift Generator modal is in the DOM.
-    // This function is also called at startup (before the modal is shown), so guard each
-    // getElementById call to avoid null-reference errors.
-    const tmplMorningLabel = document.getElementById('tmplMorningLabel');
-    if (tmplMorningLabel) {
-      tmplMorningLabel.value = templates.morning?.label || 'Morning';
-      document.getElementById('tmplMorningTime').value  = templates.morning?.time  || '7:00 AM \u2013 3:00 PM';
-      document.getElementById('tmplMorningHours').value = templates.morning?.hours || '8.0';
-
-      document.getElementById('tmplAfternoonLabel').value = templates.afternoon?.label || 'Afternoon';
-      document.getElementById('tmplAfternoonTime').value  = templates.afternoon?.time  || '3:00 PM \u2013 7:00 PM';
-      document.getElementById('tmplAfternoonHours').value = templates.afternoon?.hours || '4.0';
-
-      document.getElementById('tmplOvernightLabel').value = templates.overnight?.label || 'Overnight';
-      document.getElementById('tmplOvernightTime').value  = templates.overnight?.time  || '7:00 PM \u2013 7:00 AM';
-      document.getElementById('tmplOvernightHours').value = templates.overnight?.hours || '12.0';
-    }
-  } catch (err) {
-    console.error('Load templates error:', err);
-    // Use defaults if loading fails
-  }
-}
-
-async function saveTemplates() {
-  const templates = {
-    morning: {
-      label: document.getElementById('tmplMorningLabel').value,
-      time: document.getElementById('tmplMorningTime').value,
-      hours: parseFloat(document.getElementById('tmplMorningHours').value),
-      icon: '🌅'
-    },
-    afternoon: {
-      label: document.getElementById('tmplAfternoonLabel').value,
-      time: document.getElementById('tmplAfternoonTime').value,
-      hours: parseFloat(document.getElementById('tmplAfternoonHours').value),
-      icon: '🌆'
-    },
-    overnight: {
-      label: document.getElementById('tmplOvernightLabel').value,
-      time: document.getElementById('tmplOvernightTime').value,
-      hours: parseFloat(document.getElementById('tmplOvernightHours').value),
-      icon: '🌙'
-    }
-  };
-  
-  try {
-    showLoading();
-    await apiCall('/shift-templates', {
-      method: 'POST',
-      body: JSON.stringify(templates)
-    });
-    
-    // Update SHIFT_DEFS with new values
-    SHIFT_DEFS.morning = templates.morning;
-    SHIFT_DEFS.afternoon = templates.afternoon;
-    SHIFT_DEFS.overnight = templates.overnight;
-    
-    showSuccess('Templates saved for all admins! Refresh to see changes in calendar.');
-    closeShiftGenerator();
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// Add event listeners for preview updates
-document.addEventListener('DOMContentLoaded', function() {
-  const genInputs = ['genStartDate', 'genEndDate', 
-                     'shiftMorning', 'shiftAfternoon', 'shiftOvernight', 'genPattern'];
-  genInputs.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('change', updateGeneratorPreview);
-    }
-  });
-});
-// ADD THIS TO public/app.js (at the end, before closing)
-
-// ═══════════════════════════════════════════════════════════
-// DATA EXPORT/IMPORT
-// ═══════════════════════════════════════════════════════════
-
-async function exportData() {
-  if (!confirm('Export all staff and shifts to a backup file?\n\nThis creates a JSON file you can use to restore data after redeploys.')) {
-    return;
-  }
-  
-  try {
-    showLoading();
-    const data = await apiCall('/export-data');
-    
-    // Create downloadable JSON file
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `scheduler-backup-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    showSuccess(`Exported ${data.staff.length} staff and ${data.shifts.length} shifts!`);
-  } catch (err) {
-    alert('Export failed: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-function openImportDialog() {
-  document.getElementById('importDataModal').style.display = 'flex';
-}
-
-function closeImportDialog() {
-  document.getElementById('importDataModal').style.display = 'none';
-  document.getElementById('importFileInput').value = '';
-  document.getElementById('importPreview').innerHTML = '';
-}
-
-function handleImportFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const data = JSON.parse(e.target.result);
-      
-      // Validate data structure
-      if (!data.staff || !data.shifts) {
-        alert('Invalid backup file format!');
-        return;
-      }
-      
-      // Show preview
-      const preview = document.getElementById('importPreview');
-      preview.innerHTML = `
-        <div class="import-preview">
-          <h4>✅ Valid Backup File</h4>
-          <p><strong>Export Date:</strong> ${new Date(data.exportDate).toLocaleString()}</p>
-          <p><strong>Staff Members:</strong> ${data.staff.length}</p>
-          <p><strong>Shifts:</strong> ${data.shifts.length}</p>
-          ${data.templates ? '<p><strong>Templates:</strong> Included</p>' : ''}
-          <div class="import-warning">
-            ⚠️ This will add missing staff and shifts. Existing data will not be deleted.
-          </div>
-        </div>
-      `;
-      
-      // Store data for import
-      window.importData = data;
-      document.getElementById('importButton').disabled = false;
-    } catch (err) {
-      alert('Error reading file: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
-}
-
-async function confirmImport() {
-  if (!window.importData) {
-    alert('Please select a backup file first');
-    return;
-  }
-  
-  if (!confirm('Import data from backup file?\n\nThis will add any missing staff and shifts.')) {
-    return;
-  }
-  
-  try {
-    showLoading();
-    const result = await apiCall('/import-data', {
-      method: 'POST',
-      body: JSON.stringify(window.importData)
-    });
-    
-    closeImportDialog();
-    showSuccess(result.message);
-    
-    // Reload data
-    await loadStaff();
-    await loadShifts();
-  } catch (err) {
-    alert('Import failed: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-// ADD THIS TO app.js - Change Tracking System
-
-// Global change tracking
-// CHANGE TRACKING SYSTEM - With Debug Logging
-
-let scheduleChanges = {}; // Object for consolidation
-let changeTimer = null;
-
-function trackChange(changeType, shift, oldStaffId, newStaffId) {
-  console.log('🔵 trackChange called:', { changeType, shift, oldStaffId, newStaffId });
-  
-  const shiftKey = `${shift.date}_${shift.shift_type}`;
-  
-  // If this shift already has a tracked change, update it
-  if (scheduleChanges[shiftKey]) {
-    console.log('🟡 Updating existing change for:', shiftKey);
-    const existing = scheduleChanges[shiftKey];
-    
-    // Update to final state
-    existing.newStaffId = newStaffId;
-    existing.newStaffName = newStaffId ? (allStaff.find(s => s.id === newStaffId)?.full_name || 'Unknown') : null;
-    existing.isOpen = !newStaffId;
-    existing.timestamp = new Date().toISOString();
-    
-    // If final state equals original state, remove the change
-    if (existing.originalStaffId === existing.newStaffId) {
-      delete scheduleChanges[shiftKey];
-      console.log('✅ Change cancelled out:', shiftKey);
-    } else {
-      console.log('✅ Change updated:', existing);
-    }
-  } else {
-    console.log('🟢 Creating new change for:', shiftKey);
-    // New change
-    scheduleChanges[shiftKey] = {
-      shiftId: shift.id,
-      date: shift.date,
-      shiftType: shift.shift_type,
-      originalStaffId: oldStaffId,
-      originalStaffName: oldStaffId ? (allStaff.find(s => s.id === oldStaffId)?.full_name || 'Unknown') : null,
-      newStaffId: newStaffId,
-      newStaffName: newStaffId ? (allStaff.find(s => s.id === newStaffId)?.full_name || 'Unknown') : null,
-      isOpen: !newStaffId,
-      timestamp: new Date().toISOString()
-    };
-    console.log('✅ Change tracked:', scheduleChanges[shiftKey]);
-  }
-  
-  console.log('📊 Total changes:', Object.keys(scheduleChanges).length);
-  
-  // Save to database
-  saveScheduleChangesToDB();
-  
-  updateNotificationButton();
-  startReminderTimer();
-}
-
-function startReminderTimer() {
-  if (changeTimer) {
-    clearTimeout(changeTimer);
-  }
-  
-  const changeCount = Object.keys(scheduleChanges).length;
-  if (changeCount > 0) {
-    changeTimer = setTimeout(() => {
-      remindAdminToNotify();
-    }, 30 * 60 * 1000); // 30 minutes
-    console.log('⏰ Reminder timer set for 30 minutes');
-  }
-}
-
-// Save scheduleChanges to database
-async function saveScheduleChangesToDB() {
-  if (currentUser?.role !== 'admin') return; // Only admins track changes
-  
-  try {
-    await apiCall('/settings/schedule-changes', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        value: JSON.stringify(scheduleChanges)
-      })
-    });
-    console.log('💾 Saved schedule changes to database');
-  } catch (err) {
-    console.error('❌ Failed to save schedule changes:', err);
-  }
-}
-
-// Load scheduleChanges from database
-async function loadScheduleChangesFromDB() {
-  if (currentUser?.role !== 'admin') return; // Only admins track changes
-  
-  try {
-    const result = await apiCall('/settings/schedule-changes');
-    if (result?.value) {
-      scheduleChanges = JSON.parse(result.value);
-      console.log('📥 Loaded schedule changes from database:', Object.keys(scheduleChanges).length, 'changes');
-      updateNotificationButton();
-      startReminderTimer();
-    }
-  } catch (err) {
-    console.log('ℹ️ No saved schedule changes found (this is normal on first use)');
-  }
-}
-
-async function remindAdminToNotify() {
-  const changeCount = Object.keys(scheduleChanges).length;
-  if (changeCount === 0) return;
-  
-  try {
-    await apiCall('/remind-admin-notifications', {
-      method: 'POST',
-      body: JSON.stringify({ changeCount })
-    });
-    
-    showWarning(`⏰ Reminder: You have ${changeCount} unsent schedule change${changeCount > 1 ? 's' : ''}`);
-  } catch (err) {
-    console.error('Reminder error:', err);
-  }
-}
-
-function updateNotificationButton() {
-  const btn = document.getElementById('sendNotificationsBtn');
-  if (!btn) {
-    console.log('⚠️ Notification button not found');
-    return;
-  }
-  
-  const count = Object.keys(scheduleChanges).length;
-  console.log('🔔 Updating button, change count:', count);
-  
-  if (count === 0) {
-    btn.disabled = true;
-    btn.textContent = '📧 Send Notifications';
-    btn.style.opacity = '0.5';
-  } else {
-    btn.disabled = false;
-    btn.textContent = `📧 Send Notifications (${count} ${count === 1 ? 'change' : 'changes'})`;
-    btn.style.opacity = '1';
-  }
-}
-
-async function sendScheduleNotifications() {
-  const changes = Object.values(scheduleChanges);
-  console.log('📤 Sending notifications for changes:', changes);
-  
-  if (changes.length === 0) {
-    alert('No changes to notify about');
-    return;
-  }
-  
-  if (!confirm(`Send notifications for ${changes.length} schedule ${changes.length === 1 ? 'change' : 'changes'}?`)) {
-    return;
-  }
-  
-  try {
-    showLoading();
-    
-    const result = await apiCall('/send-schedule-notifications', {
-      method: 'POST',
-      body: JSON.stringify({ changes })
-    });
-    
-    console.log('✅ Notifications sent:', result);
-    showSuccess(`Notifications sent to ${result.notified} staff member(s)!`);
-    
-    // Clear changes and timer
-    scheduleChanges = {};
-    if (changeTimer) {
-      clearTimeout(changeTimer);
-      changeTimer = null;
-    }
-    
-    // Save empty state to database
-    await saveScheduleChangesToDB();
-    
-    updateNotificationButton();
-    
-  } catch (err) {
-    console.error('❌ Notification error:', err);
-    alert('Error sending notifications: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-function clearScheduleChanges() {
-  const count = Object.keys(scheduleChanges).length;
-  if (count === 0) return;
-  
-  if (confirm(`Clear ${count} tracked ${count === 1 ? 'change' : 'changes'} without sending notifications?`)) {
-    scheduleChanges = {};
-    if (changeTimer) {
-      clearTimeout(changeTimer);
-      changeTimer = null;
-    }
-    
-    // Save empty state to database
-    saveScheduleChangesToDB();
-    
-    updateNotificationButton();
-    showSuccess('Changes cleared');
-  }
-}
-
-function showWarning(message) {
-  const warning = document.createElement('div');
-  warning.className = 'warning-banner';
-  warning.textContent = message;
-  warning.style.cssText = 'position:fixed;top:20px;right:20px;background:#ffc107;color:#000;padding:16px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:9999;font-weight:600;';
-  document.body.appendChild(warning);
-  
-  setTimeout(() => {
-    warning.remove();
-  }, 10000);
-}
-
-// ═══════════════════════════════════════════════════════════
-// STAFF ACTION BUTTONS (Request Shift/Trade, Emergency, Contact, Settings)
-// ═══════════════════════════════════════════════════════════
-
-// ── REQUEST SHIFT / TRADE ──────────────────────────────────
-
-let requestMode = null; // 'shift' or 'trade'
-let selectedShiftForAction = null; // shift object user tapped in pick mode
-let tradeMyShift = null; // first leg of trade
-
-function openRequestDialog() {
-  document.getElementById('requestDialog').classList.add('show');
-}
-
-function closeRequestDialog() {
-  document.getElementById('requestDialog').classList.remove('show');
-  exitPickMode();
-}
-
-function startShiftRequest() {
-  closeRequestDialog();
-  requestMode = 'shift';
-  showPickDialog(
-    'Step 1 of 1',
-    'Select an open shift',
-    'Tap a grey "Open Shift" tile on the calendar to request it.',
-    'Pick an open shift →'
-  );
-}
-
-function startTradeRequest() {
-  closeRequestDialog();
-  requestMode = 'trade_step1';
-  tradeMyShift = null;
-  showPickDialog(
-    'Step 1 of 2',
-    'Select YOUR shift to give away',
-    'Tap one of your own coloured shift tiles on the calendar.',
-    'Pick my shift →'
-  );
-}
-
-// ── Pick Dialog helpers ────────────────────────────────────
-
-function showPickDialog(stepLabel, instruction, sub, btnLabel) {
-  document.getElementById('pickDialogStep').textContent        = stepLabel;
-  document.getElementById('pickDialogInstruction').textContent = instruction;
-  document.getElementById('pickDialogSub').textContent         = sub;
-  document.getElementById('pickDialogGoBtn').textContent       = btnLabel;
-  document.getElementById('pickModeDialog').classList.add('show');
-  // Always show ALL shifts during pick mode so staff can see other people's tiles
-  if (showOnlyMyShifts) {
-    showOnlyMyShifts = false;
-    renderCalendar(); // re-render so other staff tiles appear
-  }
-  // Apply dashed outline to calendar tiles
-  document.getElementById('calendarRoot')      && document.getElementById('calendarRoot').classList.add('pick-mode');
-  document.getElementById('calendarRootStaff') && document.getElementById('calendarRootStaff').classList.add('pick-mode');
-}
-
-// User clicks "Pick now →" — hide dialog so they can tap the calendar
-function pickDialogGo() {
-  document.getElementById('pickModeDialog').classList.remove('show');
-  // Dialog is hidden but requestMode is still active — tile clicks still register
-}
-
-function hidePickDialog() {
-  document.getElementById('pickModeDialog').classList.remove('show');
-}
-
-function exitPickMode() {
-  requestMode = null;
-  tradeMyShift = null;
-  hidePickDialog();
-  document.getElementById('calendarRoot')      && document.getElementById('calendarRoot').classList.remove('pick-mode');
-  document.getElementById('calendarRootStaff') && document.getElementById('calendarRootStaff').classList.remove('pick-mode');
-}
-
-// Called from createShiftTile when in pick mode
-function handleTilePick(shift) {
-  if (!requestMode) return;
-
-  if (requestMode === 'shift') {
-    if (!shift.is_open) {
-      // Wrong tile — re-show dialog with error hint
-      showPickDialog(
-        'Step 1 of 1',
-        'That\'s not an open shift',
-        '⚠️ Please tap a grey "Open Shift" tile. Your coloured tiles are already assigned.',
-        'Try again →'
-      );
-      return;
-    }
-    exitPickMode();
-    confirmRequestShiftFromPick(shift);
-
-  } else if (requestMode === 'trade_step1') {
-    if (shift.assigned_to !== currentUser.id) {
-      showPickDialog(
-        'Step 1 of 2',
-        'That\'s not your shift',
-        '⚠️ Please tap one of YOUR own coloured tiles — the shift you want to give away.',
-        'Try again →'
-      );
-      return;
-    }
-    // Step 1 done — store and move to step 2
-    tradeMyShift = shift;
-    requestMode = 'trade_step2';
-    const def = SHIFT_DEFS[shift.shift_type];
-    const dateLabel = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
-      { weekday: 'short', month: 'short', day: 'numeric' });
-    showPickDialog(
-      'Step 2 of 2',
-      'Now select the shift you WANT',
-      `You're giving: ${dateLabel} ${def.icon} ${def.label}\nNow tap the shift you want to receive from another staff member.`,
-      'Pick their shift →'
-    );
-
-  } else if (requestMode === 'trade_step2') {
-    // Coerce is_open to boolean (SQLite returns 0/1 integers)
-    const isOpen = !!shift.is_open;
-    const hasOwner = shift.assigned_to && shift.assigned_to > 0;
-    if (!hasOwner || isOpen) {
-      showPickDialog(
-        'Step 2 of 2',
-        'That\'s an open shift',
-        '⚠️ Please tap a shift that belongs to another staff member — not a grey open shift.',
-        'Try again →'
-      );
-      return;
-    }
-    if (shift.assigned_to === currentUser.id) {
-      showPickDialog(
-        'Step 2 of 2',
-        'That\'s your own shift',
-        '⚠️ You can\'t trade with yourself. Tap a shift belonging to someone else.',
-        'Try again →'
-      );
-      return;
-    }
-    // Valid — proceed to confirmation
-    const savedMyShift = tradeMyShift; // capture before exitPickMode clears it
-    exitPickMode();
-    confirmTradeFromPick(savedMyShift, shift);
-  }
-}
-
-function confirmRequestShiftFromPick(shift) {
-  const def = SHIFT_DEFS[shift.shift_type];
-  const dateStr = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
-    { weekday: 'short', month: 'short', day: 'numeric' });
-
-  const modal = buildSimpleModal(`
-    <h3>📋 Request Open Shift</h3>
-    <div class="pick-confirm-box">
-      <div class="pick-shift-preview">
-        <div class="psv-icon">${def.icon}</div>
-        <div>
-          <div class="psv-date">${dateStr}</div>
-          <div class="psv-type">${def.label} · ${def.time} · ${def.hours}h</div>
-        </div>
-      </div>
-      <p class="pick-note">This request goes to admin for approval. You'll get a Telegram notification when it's decided.</p>
-    </div>
-    <div class="modal-actions">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-pri" onclick="submitShiftRequest(${shift.id}, this)">Send Request</button>
-    </div>
-  `);
-  document.body.appendChild(modal);
-}
-
-async function submitShiftRequest(shiftId, btn) {
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-  try {
-    await apiCall('/shift-requests', {
-      method: 'POST',
-      body: JSON.stringify({ shiftId })
-    });
-    btn.closest('.modal-overlay').remove();
-    showSuccess('Shift request sent! Admin will be notified.');
-    loadShifts();
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = 'Send Request';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-function confirmTradeFromPick(myShift, theirShift) {
-  const myDef = SHIFT_DEFS[myShift.shift_type];
-  const theirDef = SHIFT_DEFS[theirShift.shift_type];
-  const theirStaff = allStaff.find(s => s.id === theirShift.assigned_to);
-  const myDate = new Date(myShift.date + 'T12:00:00').toLocaleDateString('en-US',
-    { weekday: 'short', month: 'short', day: 'numeric' });
-  const theirDate = new Date(theirShift.date + 'T12:00:00').toLocaleDateString('en-US',
-    { weekday: 'short', month: 'short', day: 'numeric' });
-
-  const modal = buildSimpleModal(`
-    <h3>🔄 Request Shift Trade</h3>
-    <div class="trade-preview-wrap">
-      <div class="trade-leg give">
-        <div class="tl-label">You GIVE</div>
-        <div class="tl-date">${myDate}</div>
-        <div class="tl-type">${myDef.icon} ${myDef.label}</div>
-        <div class="tl-time">${myDef.time}</div>
-      </div>
-      <div class="trade-arrow">⇌</div>
-      <div class="trade-leg get">
-        <div class="tl-label">You GET</div>
-        <div class="tl-date">${theirDate}</div>
-        <div class="tl-type">${theirDef.icon} ${theirDef.label}</div>
-        <div class="tl-time">${theirDef.time}</div>
-        <div class="tl-staff">from ${theirStaff?.full_name || 'Unknown'}</div>
-      </div>
-    </div>
-    <div class="pick-note" style="margin-top:12px;">
-      ${theirStaff?.full_name || 'That staff member'} must approve first, then admin gives final sign-off.
-    </div>
-    <div class="fg" style="margin-top:12px;">
-      <label style="font-size:13px;font-weight:600;color:#495057;">Optional note to ${theirStaff?.full_name || 'them'}:</label>
-      <input type="text" id="tradeNoteInput" class="inp" placeholder="e.g. Family event, can you swap?" style="margin-top:4px;">
-    </div>
-    <div class="modal-actions">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-pri" onclick="submitTradeRequest(${myShift.id}, ${theirShift.id}, this)">Send Trade Request</button>
-    </div>
-  `);
-  document.body.appendChild(modal);
-}
-
-async function submitTradeRequest(myShiftId, theirShiftId, btn) {
-  const note = document.getElementById('tradeNoteInput')?.value || '';
-  btn.disabled = true;
-  btn.textContent = 'Sending…';
-  try {
-    await apiCall('/trade-requests', {
-      method: 'POST',
-      body: JSON.stringify({ myShiftId, theirShiftId, note })
-    });
-    btn.closest('.modal-overlay').remove();
-    showSuccess('Trade request sent! The other staff member will be notified.');
-    loadShifts();
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = 'Send Trade Request';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-// ── PENDING TILE HIGHLIGHT ─────────────────────────────────
-
-let pendingShiftIds = new Set(); // shift IDs with pending requests
-let pendingTradeShiftIds = new Set(); // shift IDs involved in pending trades
-
-async function loadPendingShiftIds() {
-  try {
-    const [srData, trData] = await Promise.all([
-      apiCall('/shift-requests').catch(() => ({ requests: [] })),
-      apiCall('/trade-requests').catch(() => ({ requests: [] }))
-    ]);
-    pendingShiftIds = new Set(
-      srData.requests
-        .filter(r => r.status === 'pending')
-        .map(r => r.shift_id)
-    );
-    // Collect shift IDs involved in any non-finalized trade
-    pendingTradeShiftIds = new Set();
-    trData.requests
-      .filter(r => r.status === 'pending')
-      .forEach(r => {
-        if (r.requester_shift_id) pendingTradeShiftIds.add(r.requester_shift_id);
-        if (r.target_shift_id) pendingTradeShiftIds.add(r.target_shift_id);
-      });
-  } catch (e) {
-    // Non-critical — tiles just won't show pending state
-  }
-}
-
-// ── EMERGENCY ABSENCE / ISSUE ──────────────────────────────
-
-function openEmergencyDialog() {
-  document.getElementById('emergencyDialog').classList.add('show');
-}
-
-function closeEmergencyDialog() {
-  document.getElementById('emergencyDialog').classList.remove('show');
-}
-
-// Global variable to track emergency absence mode
-let emergencyAbsenceMode = false;
-let emergencyEligibleShifts = [];
-
-async function showAbsenceForm() {
-  // Close the emergency dialog
-  closeEmergencyDialog();
-  
-  try {
-    showLoading();
-    
-    // Load ALL shifts for the next 7 days (not just visible week)
-    const now = new Date();
-    const cutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    
-    const todayMidnight = new Date(now);
-    todayMidnight.setHours(0, 0, 0, 0);
-    
-    console.log('🔍 Emergency absence check:');
-    console.log('Now:', now);
-    console.log('Loading shifts from:', formatDate(todayMidnight), 'to:', formatDate(cutoff));
-    
-    // Fetch ALL shifts in the next 7 days
-    const result = await apiCall(`/shifts?startDate=${formatDate(todayMidnight)}&endDate=${formatDate(cutoff)}`);
-    const allFutureShifts = result.shifts;
-    
-    console.log('Total shifts in next 7 days:', allFutureShifts.length);
-    console.log('User shifts:', allFutureShifts.filter(s => s.assigned_to === currentUser.id).map(s => ({ date: s.date, shift_type: s.shift_type })));
-    
-    // Filter for user's shifts within 48 hours
-    const cutoff48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-    emergencyEligibleShifts = allFutureShifts.filter(s => {
-      if (s.assigned_to !== currentUser.id) return false;
-      
-      const shiftDate = new Date(s.date + 'T00:00:00');
-      const inRange = shiftDate >= todayMidnight && shiftDate <= cutoff48h;
-      
-      console.log('Checking shift:', s.date, s.shift_type, 'In 48h range?', inRange);
-      
-      return inRange;
-    });
-    
-    console.log('✅ Eligible shifts (48h):', emergencyEligibleShifts.length);
-    
-    hideLoading();
-    
-    if (emergencyEligibleShifts.length === 0) {
-      alert('You have no upcoming shifts in the next 48 hours to report an absence for.');
-      return;
-    }
-    
-    // Enable emergency mode
-    emergencyAbsenceMode = true;
-    
-    // Show message at top
-    showWarning('Emergency Absence: Click on your current or next shift to report you cannot make it.');
-    
-    // If the eligible shift is not in the current view, navigate to it
-    const firstEligibleShift = emergencyEligibleShifts[0];
-    const firstShiftDate = new Date(firstEligibleShift.date + 'T00:00:00');
-    
-    // Check if we need to change the view to show the shift
-    if (viewMode === 'week') {
-      const currentWeekStart = getWeekStart(viewDate);
-      const currentWeekEnd = new Date(currentWeekStart);
-      currentWeekEnd.setDate(currentWeekEnd.getDate() + 6);
-      
-      if (firstShiftDate < currentWeekStart || firstShiftDate > currentWeekEnd) {
-        // Shift is not in current week, navigate to it
-        viewDate = new Date(firstShiftDate);
-        console.log('📅 Navigating to week containing shift:', firstShiftDate.toISOString().split('T')[0]);
-      }
-    }
-    
-    // Re-render calendar with emergency mode
-    loadShifts();
-    
-  } catch (err) {
-    hideLoading();
-    console.error('Emergency check error:', err);
-    alert('Error checking shifts: ' + err.message);
-  }
-}
-
-function showIssueForm() {
-  document.getElementById('emergencyTypeSelect').classList.remove('show');
-  document.getElementById('issueForm').classList.add('show');
-}
-
-function backToEmergencyTypeSelect() {
-  document.getElementById('absenceForm').classList.remove('show');
-  document.getElementById('issueForm').classList.remove('show');
-  document.getElementById('emergencyTypeSelect').classList.add('show');
-}
-
-async function submitAbsence() {
-  const shiftId = document.getElementById('absenceShiftSelect').value;
-  const reason = document.getElementById('absenceReason').value.trim();
-  const reportedWhileOnDuty = document.getElementById('absenceOnDutyCheck').checked;
-
-  if (!shiftId) { showWarning('Please select which shift you cannot make.'); return; }
-  if (!reason) { showWarning('Please describe the reason.'); return; }
-
-  const btn = document.getElementById('submitAbsenceBtn');
-  btn.disabled = true; btn.textContent = 'Submitting…';
-  try {
-    await apiCall('/absences/enhanced', {
-      method: 'POST',
-      body: JSON.stringify({ shiftId, reason, reportedWhileOnDuty })
-    });
-    closeEmergencyDialog();
-    document.getElementById('absenceForm').classList.remove('show');
-    document.getElementById('emergencyTypeSelect').classList.add('show');
-    document.getElementById('absenceReason').value = '';
-    document.getElementById('absenceOnDutyCheck').checked = false;
-    showSuccess('Absence reported. House Manager and Admin have been notified.');
-  } catch (err) {
-    showWarning('Error: ' + err.message);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Submit Report';
-  }
-}
-
-async function submitIssue() {
-  const details = document.getElementById('issueDetails').value.trim();
-  const notifyAdmin = document.getElementById('issueNotifyAdmin').checked;
-
-  if (!details) { showWarning('Please describe the issue.'); return; }
-
-  const btn = document.getElementById('submitIssueBtn');
-  btn.disabled = true; btn.textContent = 'Submitting…';
-  try {
-    await apiCall('/report-issue', {
-      method: 'POST',
-      body: JSON.stringify({ details, notifyAdmin })
-    });
-    closeEmergencyDialog();
-    document.getElementById('issueForm').classList.remove('show');
-    document.getElementById('emergencyTypeSelect').classList.add('show');
-    document.getElementById('issueDetails').value = '';
-    document.getElementById('issueNotifyAdmin').checked = false;
-    showSuccess('Issue reported. House Manager has been notified.');
-  } catch (err) {
-    showWarning('Error: ' + err.message);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Submit Issue';
-  }
-}
-
-// ── CONTACT ───────────────────────────────────────────────
-
-async function openContactDialog() {
-  // Pre-load next shift info and house manager before showing
-  const dlg = document.getElementById('contactDialog');
-  dlg.classList.add('show');
-  await buildContactOptions();
-}
-
-function closeContactDialog() {
-  document.getElementById('contactDialog').classList.remove('show');
-}
-
-async function buildContactOptions() {
-  const container = document.getElementById('contactOptions');
-  container.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">Loading…</div>';
-
-  try {
-    const now = new Date();
-    const todayStr = formatDate(now);
-    // All contactable staff (exclude system _open account)
-    const allStaffData = allStaff.filter(s => s.username !== '_open');
-
-    // ── Determine current shift period ────────────────────────
-    const currentHour = now.getHours();
-    const currentShiftType = currentHour < 7 ? 'overnight' :
-                             currentHour < 15 ? 'morning' :
-                             currentHour < 19 ? 'afternoon' : 'overnight';
-    const typeOrder = { morning: 1, afternoon: 2, overnight: 3 };
-
-    // ── Find the next upcoming assigned shift ─────────────────
-    let nextShift = null;
-    const sortedShifts = [...allShifts]
-      .filter(s => s.assigned_to && !s.is_open)
-      .sort((a, b) => {
-        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-        return typeOrder[a.shift_type] - typeOrder[b.shift_type];
-      });
-    for (const s of sortedShifts) {
-      if (s.date > todayStr) { nextShift = s; break; }
-      if (s.date === todayStr && typeOrder[s.shift_type] > typeOrder[currentShiftType]) {
-        nextShift = s; break;
-      }
-    }
-
-    const nextStaff    = nextShift ? allStaff.find(s => s.id === nextShift.assigned_to) : null;
-    const houseManager = allStaff.find(s => s.job_title === 'House Manager');
-
-    // ── Helper: render a contact action row ───────────────────
-    function contactActions(s) {
-      const callBtn = s.phone
-        ? `<a class="contact-btn phone-btn" href="tel:${s.phone}">📞 Call ${s.phone}</a>`
-        : '<span class="contact-no-info">No phone on file</span>';
-      const emailBtn = s.email
-        ? `<a class="contact-btn email-btn" href="mailto:${s.email}">✉️ Email ${s.email}</a>`
-        : '<span class="contact-no-info">No email on file</span>';
-      const tgBtn = s.telegram_id
-        ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>`
-        : '<span class="contact-no-info">Not on Telegram</span>';
-      return `<div class="contact-actions">${callBtn}${emailBtn}${tgBtn}</div>`;
-    }
-
-    let html = '';
-
-    // ── Pinned card: Next Shift Staff ─────────────────────────
-    if (nextShift && nextStaff) {
-      const def = SHIFT_DEFS[nextShift.shift_type];
-      const dateLabel = new Date(nextShift.date + 'T12:00:00').toLocaleDateString('en-US',
-        { weekday: 'short', month: 'short', day: 'numeric' });
-      html += `
-        <div class="contact-card">
-          <div class="contact-label">📅 Next Shift Staff</div>
-          <div class="contact-name">${nextStaff.full_name}</div>
-          <div class="contact-meta">${def.icon} ${def.label} · ${dateLabel}</div>
-          ${contactActions(nextStaff)}
-        </div>`;
-    } else {
-      html += `<div class="contact-card"><div class="contact-meta" style="color:#aaa;">No upcoming shifts found on calendar</div></div>`;
-    }
-
-    // ── Pinned card: House Manager ────────────────────────────
-    if (houseManager) {
-      html += `
-        <div class="contact-card">
-          <div class="contact-label">🏠 House Manager</div>
-          <div class="contact-name">${houseManager.full_name}</div>
-          ${contactActions(houseManager)}
-        </div>`;
-    }
-
-    // ── Staff Directory — dropdown picker ─────────────────────
-    // Sort alphabetically by full name
-    const dirStaff = [...allStaffData].sort((a, b) =>
-      (a.full_name || '').localeCompare(b.full_name || ''));
-
-    const options = dirStaff.map(s =>
-      `<option value="${s.id}">${s.full_name}${s.job_title ? ' — ' + s.job_title : ''}</option>`
-    ).join('');
-
-    html += `
-      <div class="contact-card">
-        <div class="contact-label">📋 Staff Directory</div>
-        <select id="contactDirSelect" class="contact-dir-select" onchange="showContactDirCard()">
-          <option value="">— Select a staff member —</option>
-          ${options}
-        </select>
-        <div id="contactDirCard"></div>
-      </div>`;
-
-    container.innerHTML = html;
-  } catch (err) {
-    container.innerHTML = `<div class="contact-meta" style="color:#dc3545;">Error loading contacts: ${err.message}</div>`;
-  }
-}
-
-// Renders the contact card for whichever staff member is selected in the directory dropdown.
-function showContactDirCard() {
-  const select = document.getElementById('contactDirSelect');
-  const cardEl = document.getElementById('contactDirCard');
-  if (!select || !cardEl) return;
-
-  const staffId = parseInt(select.value, 10);
-  if (!staffId) { cardEl.innerHTML = ''; return; }
-
-  const s = allStaff.find(m => m.id === staffId);
-  if (!s) { cardEl.innerHTML = ''; return; }
-
-  const callBtn = s.phone
-    ? `<a class="contact-btn phone-btn" href="tel:${s.phone}">📞 Call ${s.phone}</a>`
-    : '<span class="contact-no-info">No phone on file</span>';
-  const emailBtn = s.email
-    ? `<a class="contact-btn email-btn" href="mailto:${s.email}">✉️ Email ${s.email}</a>`
-    : '<span class="contact-no-info">No email on file</span>';
-  const tgBtn = s.telegram_id
-    ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>`
-    : '<span class="contact-no-info">Not on Telegram</span>';
-
-  cardEl.innerHTML = `
-    <div class="contact-dir-result">
-      <div class="contact-dir-result-dot" style="background:${s.tile_color||'#eee'}"></div>
-      <div>
-        <div class="contact-name" style="margin-bottom:2px;">${s.full_name}</div>
-        <div class="contact-meta">${s.job_title || ''}</div>
-        <div class="contact-actions" style="margin-top:8px;">${callBtn}${emailBtn}${tgBtn}</div>
-      </div>
-    </div>`;
-}
-
-async function sendTelegramContact(staffId, staffName) {
-  const msgInput = prompt(`Message to send to ${staffName} via Telegram:`);
-  if (!msgInput || !msgInput.trim()) return;
-  try {
-    await apiCall('/contact-telegram', {
-      method: 'POST',
-      body: JSON.stringify({ targetStaffId: staffId, message: msgInput.trim() })
-    });
-    showSuccess(`Message sent to ${staffName} via Telegram!`);
-  } catch (err) {
-    showWarning('Failed to send: ' + err.message);
-  }
-}
-
-// ── SETTINGS ──────────────────────────────────────────────
-
-function openSettingsDialog() {
-  document.getElementById('settingsDialog').classList.add('show');
-  // Pre-fill current user info
-  document.getElementById('settingsFullName').value = currentUser.fullName || '';
-  document.getElementById('settingsPhone').value = currentUser.phone || '';
-  document.getElementById('settingsTelegramId').value = currentUser.telegramId || '';
-  document.getElementById('settingsNewPassword').value = '';
-  document.getElementById('settingsConfirmPassword').value = '';
-}
-
-function closeSettingsDialog() {
-  document.getElementById('settingsDialog').classList.remove('show');
-}
-
-async function saveSettings() {
-  const fullName = document.getElementById('settingsFullName').value.trim();
-  const phone = document.getElementById('settingsPhone').value.trim();
-  const telegramId = document.getElementById('settingsTelegramId').value.trim();
-  const newPw = document.getElementById('settingsNewPassword').value;
-  const confirmPw = document.getElementById('settingsConfirmPassword').value;
-
-  if (newPw && newPw.length < 6) {
-    showWarning('New password must be at least 6 characters.'); return;
-  }
-  if (newPw && newPw !== confirmPw) {
-    showWarning('Passwords do not match.'); return;
-  }
-
-  const btn = document.getElementById('saveSettingsBtn');
-  btn.disabled = true; btn.textContent = 'Saving…';
-  try {
-    await apiCall(`/staff/${currentUser.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ fullName, phone, email: currentUser.email })
-    });
-
-    if (newPw) {
-      await apiCall('/change-password', {
-        method: 'POST',
-        body: JSON.stringify({ newPassword: newPw })
-      });
-    }
-
-    // Refresh current user
-    const me = await apiCall('/me');
-    currentUser = me.user;
-    document.getElementById('userName').textContent = currentUser.fullName;
-
-    closeSettingsDialog();
-    showSuccess('Settings saved!');
-  } catch (err) {
-    showWarning('Error: ' + err.message);
-  } finally {
-    btn.disabled = false; btn.textContent = 'Save Changes';
-  }
-}
-
-// ── HELPER: build a modal dynamically ─────────────────────
-function buildSimpleModal(innerHtml) {
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.onclick = e => { if (e.target === overlay) overlay.remove(); };
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  content.innerHTML = innerHtml;
-  overlay.appendChild(content);
-  return overlay;
-}
-
-
-// ═══════════════════════════════════════════════════════════
-// FIX 1 — ADMIN: clicking a pending tile shows approve/deny
-// ═══════════════════════════════════════════════════════════
-
-async function showAdminPendingShiftModal(shift) {
-  // Load the actual pending request(s) for this shift
-  showLoading();
-  try {
-    const [srData, trData] = await Promise.all([
-      apiCall('/shift-requests'),
-      apiCall('/trade-requests')
-    ]);
-
-    // Find pending shift requests for this shift
-    const shiftReqs = srData.requests.filter(
-      r => r.shift_id === shift.id && r.status === 'pending'
-    );
-
-    // Find pending trade requests involving this shift
-    const tradeReqs = trData.requests.filter(
-      r => r.status === 'pending' &&
-           (r.requester_shift_id === shift.id || r.target_shift_id === shift.id)
-    );
-
-    const def = SHIFT_DEFS[shift.shift_type];
-    const dateLabel = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
-      { weekday: 'long', month: 'short', day: 'numeric' });
-
-    let html = `<h3>⏳ Pending Requests</h3>
-      <p style="color:#666;font-size:13px;margin-bottom:16px;">
-        ${def.icon} ${dateLabel} · ${def.label} (${def.time})
-      </p>`;
-
-    if (shiftReqs.length === 0 && tradeReqs.length === 0) {
-      html += `<p style="color:#888;font-size:13px;">No pending requests found for this shift.</p>`;
-    }
-
-    // Shift requests (open shift requests)
-    shiftReqs.forEach(req => {
-      html += `
-        <div class="pending-review-card">
-          <div class="prc-type">📋 Shift Request</div>
-          <div class="prc-who"><strong>${req.requester_name}</strong> wants this shift</div>
-          <div class="prc-meta">Requested: ${new Date(req.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })}</div>
-          <div class="prc-actions">
-            <button class="btn-approve" onclick="adminApproveShiftReq(${req.id}, this)">✅ Approve</button>
-            <button class="btn-deny"    onclick="adminDenyShiftReq(${req.id}, this)">❌ Deny</button>
-          </div>
-        </div>`;
-    });
-
-    // Trade requests
-    tradeReqs.forEach(req => {
-      const isRequesterSide = req.requester_shift_id === shift.id;
-      const tradingWith = isRequesterSide ? req.target_name : req.requester_name;
-      const theirDate   = isRequesterSide ? req.tgt_date : req.req_date;
-      const theirShift  = isRequesterSide ? req.tgt_shift : req.req_shift;
-      const theirDef    = SHIFT_DEFS[theirShift] || {};
-      const bothApproved = req.requester_approved && req.target_approved;
-
-      html += `
-        <div class="pending-review-card">
-          <div class="prc-type">🔄 Trade Request ${bothApproved ? '<span style="color:#28a745;font-size:11px;">(Both staff approved — awaiting you)</span>' : '<span style="color:#888;font-size:11px;">(Awaiting staff approval)</span>'}</div>
-          <div class="prc-who">
-            <strong>${req.requester_name}</strong> ⇌ <strong>${req.target_name}</strong>
-          </div>
-          <div class="prc-meta">
-            Trade: ${new Date(req.req_date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ${SHIFT_DEFS[req.req_shift]?.icon || ''} ⇌ 
-            ${new Date(req.tgt_date + 'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'})} ${theirDef.icon || ''}
-          </div>
-          ${req.requester_note ? `<div class="prc-note">Note: "${req.requester_note}"</div>` : ''}
-          ${bothApproved ? `
-          <div class="prc-actions">
-            <button class="btn-approve" onclick="adminFinalizeTradeModal(${req.id}, this)">✅ Finalize Trade</button>
-            <button class="btn-deny"    onclick="adminDenyTradeModal(${req.id}, this)">❌ Deny</button>
-          </div>` : `<div style="font-size:12px;color:#888;margin-top:8px;">Waiting for both staff to approve before admin action is needed.</div>`}
-        </div>`;
-    });
-
-    html += `<div class="modal-actions" style="margin-top:16px;">
-      <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Close</button>
-    </div>`;
-
-    const modal = buildSimpleModal(html);
-    document.body.appendChild(modal);
-  } catch (err) {
-    showWarning('Error loading pending requests: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function adminApproveShiftReq(reqId, btn) {
-  btn.disabled = true; btn.textContent = 'Approving…';
-  try {
-    await apiCall(`/shift-requests/${reqId}/approve`, {
-      method: 'POST', body: JSON.stringify({ note: '' })
-    });
-    btn.closest('.modal-overlay').remove();
-    showSuccess('Shift request approved!');
-    loadShifts();
-    if (currentUser.role === 'admin') loadPendingApprovals();
-  } catch (err) {
-    btn.disabled = false; btn.textContent = '✅ Approve';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-async function adminDenyShiftReq(reqId, btn) {
-  const note = prompt('Reason for denial (optional):') ?? '';
-  btn.disabled = true; btn.textContent = 'Denying…';
-  try {
-    await apiCall(`/shift-requests/${reqId}/deny`, {
-      method: 'POST', body: JSON.stringify({ note })
-    });
-    btn.closest('.modal-overlay').remove();
-    showSuccess('Shift request denied.');
-    loadShifts();
-    if (currentUser.role === 'admin') loadPendingApprovals();
-  } catch (err) {
-    btn.disabled = false; btn.textContent = '❌ Deny';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-async function adminFinalizeTradeModal(tradeId, btn) {
-  btn.disabled = true; btn.textContent = 'Finalizing…';
-  try {
-    await apiCall(`/trade-requests/${tradeId}/finalize`, {
-      method: 'POST', body: JSON.stringify({ note: '' })
-    });
-    btn.closest('.modal-overlay').remove();
-    showSuccess('Trade finalized! Both staff notified.');
-    loadShifts();
-    if (currentUser.role === 'admin') loadPendingApprovals();
-  } catch (err) {
-    btn.disabled = false; btn.textContent = '✅ Finalize Trade';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-async function adminDenyTradeModal(tradeId, btn) {
-  const note = prompt('Reason for denial (optional):') ?? '';
-  btn.disabled = true; btn.textContent = 'Denying…';
-  try {
-    await apiCall(`/trade-requests/${tradeId}/deny`, {
-      method: 'POST', body: JSON.stringify({ note, status: 'denied' })
-    });
-    btn.closest('.modal-overlay').remove();
-    showSuccess('Trade denied.');
-    loadShifts();
-    if (currentUser.role === 'admin') loadPendingApprovals();
-  } catch (err) {
-    btn.disabled = false; btn.textContent = '❌ Deny';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// FIX 2 — STAFF TRADE INBOX
-// Shows in dashboard: incoming trade requests to approve/deny,
-// outgoing requests with their status.
-// ═══════════════════════════════════════════════════════════
-
-async function loadTradeInbox() {
-  const container = document.getElementById('tradeInboxContent');
-  if (!container) return;
-
-  try {
-    const data = await apiCall('/trade-requests');
-    const allReqs = data.requests || [];
-
-    const incoming = allReqs.filter(
-      r => r.target_id === currentUser.id && r.status === 'pending' && !r.target_approved
-    );
-    const outgoing = allReqs.filter(
-      r => r.requester_id === currentUser.id
-    );
-
-    const badge = document.getElementById('tradeInboxBadge');
-    if (badge) {
-      badge.textContent = incoming.length;
-      badge.style.display = incoming.length > 0 ? 'inline-flex' : 'none';
-    }
-
-    let html = '';
-
-    // ── Incoming ──────────────────────────────────────────
-    if (incoming.length > 0) {
-      html += `<div class="inbox-section-title">📥 Someone wants to trade with you</div>`;
-      incoming.forEach(req => {
-        const myShiftDef   = SHIFT_DEFS[req.tgt_shift]  || {};
-        const theirShiftDef = SHIFT_DEFS[req.req_shift] || {};
-        const myDate    = new Date(req.tgt_date  + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
-        const theirDate = new Date(req.req_date  + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
-
-        html += `
-          <div class="trade-inbox-card incoming" id="tradeCard_${req.id}">
-            <div class="tic-header">
-              <span class="tic-from">From: <strong>${req.requester_name}</strong></span>
-              <span class="trade-status pending">Awaiting your reply</span>
-            </div>
-            <div class="tic-shifts">
-              <div class="tic-shift give">
-                <div class="tic-label">You GIVE UP</div>
-                <div class="tic-date">${myDate}</div>
-                <div class="tic-type">${myShiftDef.icon || ''} ${myShiftDef.label || req.tgt_shift}</div>
-                <div class="tic-time">${myShiftDef.time || ''}</div>
-              </div>
-              <div class="tic-arrow">⇌</div>
-              <div class="tic-shift get">
-                <div class="tic-label">You GET</div>
-                <div class="tic-date">${theirDate}</div>
-                <div class="tic-type">${theirShiftDef.icon || ''} ${theirShiftDef.label || req.req_shift}</div>
-                <div class="tic-time">${theirShiftDef.time || ''}</div>
-              </div>
-            </div>
-            ${req.requester_note ? `<div class="tic-note">💬 "${req.requester_note}"</div>` : ''}
-            <div class="tic-actions">
-              <button class="btn-approve" onclick="staffApproveTrade(${req.id}, this)">✅ Accept Trade</button>
-              <button class="btn-deny"    onclick="staffDenyTrade(${req.id}, this)">❌ Decline</button>
-            </div>
-          </div>`;
-      });
-    }
-
-    // ── Outgoing ─────────────────────────────────────────
-    if (outgoing.length > 0) {
-      html += `<div class="inbox-section-title" style="margin-top:${incoming.length > 0 ? '18px' : '0'};">📤 Your trade requests</div>`;
-      outgoing.forEach(req => {
-        const myShiftDef    = SHIFT_DEFS[req.req_shift] || {};
-        const theirShiftDef = SHIFT_DEFS[req.tgt_shift] || {};
-        const myDate    = new Date(req.req_date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
-        const theirDate = new Date(req.tgt_date + 'T12:00:00').toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'});
-
-        let statusLabel = '';
-        let statusClass = '';
-        const isResolved = req.status === 'approved' || req.status === 'denied';
-        if (req.status === 'approved') { statusLabel = '✅ Completed'; statusClass = 'approved'; }
-        else if (req.status === 'denied') { statusLabel = '❌ Denied'; statusClass = 'denied'; }
-        else if (req.target_approved) { statusLabel = '⏳ Awaiting admin'; statusClass = 'pending'; }
-        else { statusLabel = '⏳ Awaiting ' + req.target_name; statusClass = 'pending'; }
-
-        html += `
-          <div class="trade-inbox-card outgoing" id="tradeCard_${req.id}">
-            <div class="tic-header">
-              <span class="tic-from">To: <strong>${req.target_name}</strong></span>
-              <span class="trade-status ${statusClass}">${statusLabel}</span>
-              ${isResolved ? `<button class="tic-dismiss-btn" onclick="dismissTrade(${req.id})" title="Dismiss">✕</button>` : ''}
-            </div>
-            <div class="tic-shifts">
-              <div class="tic-shift give">
-                <div class="tic-label">You GIVE</div>
-                <div class="tic-date">${myDate}</div>
-                <div class="tic-type">${myShiftDef.icon || ''} ${myShiftDef.label || req.req_shift}</div>
-              </div>
-              <div class="tic-arrow">⇌</div>
-              <div class="tic-shift get">
-                <div class="tic-label">You GET</div>
-                <div class="tic-date">${theirDate}</div>
-                <div class="tic-type">${theirShiftDef.icon || ''} ${theirShiftDef.label || req.tgt_shift}</div>
-              </div>
-            </div>
-          </div>`;
-      });
-    }
-
-    if (incoming.length === 0 && outgoing.length === 0) {
-      html = `<div class="inbox-empty">No trade requests yet.</div>`;
-    }
-
-    container.innerHTML = html;
-
-  } catch (err) {
-    console.error('loadTradeInbox error:', err);
-  }
-}
-
-async function staffApproveTrade(tradeId, btn) {
-  btn.disabled = true; btn.textContent = 'Accepting…';
-  try {
-    await apiCall(`/trade-requests/${tradeId}/approve`, {
-      method: 'POST', body: JSON.stringify({ note: '' })
-    });
-    showSuccess('Trade accepted! Now awaiting admin approval.');
-    loadTradeInbox();
-    loadShifts();
-  } catch (err) {
-    btn.disabled = false; btn.textContent = '✅ Accept Trade';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-async function staffDenyTrade(tradeId, btn) {
-  const note = prompt('Reason for declining (optional):') ?? '';
-  btn.disabled = true; btn.textContent = 'Declining…';
-  try {
-    await apiCall(`/trade-requests/${tradeId}/deny`, {
-      method: 'POST', body: JSON.stringify({ note })
-    });
-    showSuccess('Trade declined.');
-    loadTradeInbox();
-    loadShifts();
-  } catch (err) {
-    btn.disabled = false; btn.textContent = '❌ Decline';
-    showWarning('Error: ' + err.message);
-  }
-}
-
-
-async function dismissTrade(tradeId) {
-  const card = document.getElementById('tradeCard_' + tradeId);
-  if (card) {
-    card.style.transition = 'opacity 0.2s';
-    card.style.opacity = '0';
-  }
-  try {
-    await apiCall(`/trade-requests/${tradeId}`, { method: 'DELETE' });
-    loadTradeInbox();
-  } catch (err) {
-    if (card) card.style.opacity = '1';
-    showWarning('Could not dismiss: ' + err.message);
-  }
-}
-
-// Confirm emergency absence for selected shift
-async function confirmEmergencyAbsence(shift) {
-  const def = SHIFT_DEFS[shift.shift_type];
-  const shiftDate = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US',
-    { weekday: 'long', month: 'long', day: 'numeric' });
-  
-  const reason = prompt(`Emergency Absence Report\n\nShift: ${shiftDate} - ${def.label}\n\nPlease briefly describe the reason you cannot make this shift:`);
-  
-  if (!reason || !reason.trim()) {
-    return; // User cancelled or didn't provide reason
-  }
-  
-  try {
-    showLoading();
-    await apiCall('/absences/enhanced', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        shiftId: shift.id, 
-        reason: reason.trim(),
-        reportedWhileOnDuty: false 
-      })
-    });
-    
-    // Exit emergency mode
-    emergencyAbsenceMode = false;
-    emergencyEligibleShifts = [];
-    
-    showSuccess('Emergency absence reported. House Manager and Admin have been notified.');
-    loadShifts();
-  } catch (err) {
-    alert('Error reporting absence: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// PRINT FUNCTIONALITY
-// ═══════════════════════════════════════════════════════════
-
-// Helper function to convert color to grayscale
-function colorToGrayscale(hexColor) {
-  if (!hexColor || hexColor === 'white' || hexColor === 'black') return hexColor;
-  
-  // Remove # if present
-  const hex = hexColor.replace('#', '');
-  
-  // Handle short hex codes
-  if (hex.length === 3) {
-    const r = parseInt(hex[0] + hex[0], 16);
-    const g = parseInt(hex[1] + hex[1], 16);
-    const b = parseInt(hex[2] + hex[2], 16);
-    const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    const grayHex = gray.toString(16).padStart(2, '0');
-    return `#${grayHex}${grayHex}${grayHex}`;
-  }
-  
-  // Convert to RGB
-  const r = parseInt(hex.substr(0, 2), 16);
-  const g = parseInt(hex.substr(2, 2), 16);
-  const b = parseInt(hex.substr(4, 2), 16);
-  
-  // Calculate grayscale using luminance formula
-  const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-  
-  // Ensure background is light enough for black text
-  // If too dark (< 180), lighten it to ensure readability
-  const adjustedGray = gray < 180 ? Math.max(180, gray + 60) : gray;
-  
-  // Convert back to hex
-  const grayHex = adjustedGray.toString(16).padStart(2, '0');
-  return `#${grayHex}${grayHex}${grayHex}`;
-}
-
-function openPrintDialog() {
-  // Update dialog text based on current view mode
-  const isWeekView = viewMode === 'week';
-  
-  document.getElementById('printDialogTitle').textContent = 
-    isWeekView ? '🖨️ Print Week' : '🖨️ Print Month';
-  
-  document.getElementById('printOptionAll').textContent = 
-    isWeekView ? 'Full week (all shifts)' : 'Full month (all shifts)';
-  
-  document.getElementById('printOptionMy').textContent = 
-    isWeekView ? 'Full week (only my shifts)' : 'Full month (only my shifts)';
-  
-  // Show House Manager option only for admins
-  const houseManagerSection = document.getElementById('printAsHouseManagerSection');
-  if (houseManagerSection) {
-    houseManagerSection.style.display = currentUser?.role === 'admin' ? 'block' : 'none';
-  }
-  
-  document.getElementById('printDialog').style.display = 'flex';
-}
-
-function closePrintDialog() {
-  document.getElementById('printDialog').style.display = 'none';
-}
-
-function executePrint() {
-  const printType = document.querySelector('input[name="printType"]:checked').value;
-  const printInColor = document.getElementById('printInColor').checked;
-  const blackWhite = !printInColor; // Reverse: unchecked = B&W (default)
-  
-  // Check if admin wants to print as House Manager view
-  const printAsHouseManagerEl = document.getElementById('printAsHouseManager');
-  const printAsHouseManager = printAsHouseManagerEl ? printAsHouseManagerEl.checked : false;
-  
-  closePrintDialog();
-  
-  // Small delay to let modal close
-  setTimeout(() => {
-    if (printType === 'list') {
-      printListView(blackWhite, printAsHouseManager);
-    } else {
-      // Check if we're in week or month view
-      if (viewMode === 'week') {
-        printWeekView(printType === 'myshifts', blackWhite, printAsHouseManager);
-      } else {
-        printCalendarView(printType === 'myshifts', blackWhite, printAsHouseManager);
-      }
-    }
-  }, 100);
-}
-
-function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager = false) {
-  // Debug logging
-  console.log('📊 Print Calendar View:', {
-    myShiftsOnly,
-    blackWhite,
-    printAsHouseManager,
-    allShiftsCount: allShifts.length,
-    allStaffCount: allStaff.length,
-    currentUser: currentUser?.full_name,
-    'currentUser.role': currentUser?.role,
-    'currentUser.jobTitle': currentUser?.jobTitle,
-    'currentUser.id': currentUser?.id,
-    viewDate: formatDate(viewDate)
-  });
-  
-  // Count open shifts for debugging
-  const openShiftsCount = allShifts.filter(s => s.is_open).length;
-  console.log('🔓 Open shifts in data:', openShiftsCount);
-  
-  // Determine who we're printing for
-  let targetUserId;
-  if (printAsHouseManager) {
-    // Admin printing as House Manager - find the actual HM
-    const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
-    if (!houseManagerStaff) {
-      alert('House Manager not found in staff list');
-      return;
-    }
-    targetUserId = houseManagerStaff.id;
-  } else {
-    // Regular user printing their own shifts
-    targetUserId = currentUser.id;
-  }
-  
-  // Get current month info
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  
-  // Calculate first date to show (Sunday of first week)
-  const firstDay = new Date(year, month, 1);
-  const startDay = firstDay.getDay();
-  const firstDisplayDate = new Date(year, month, 1);
-  firstDisplayDate.setDate(firstDisplayDate.getDate() - startDay);
-  
-  // Calculate last date (Saturday of last week)
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  const lastDayDate = new Date(year, month, lastDay);
-  const endDay = lastDayDate.getDay();
-  const daysToShow = startDay + lastDay + (endDay === 6 ? 0 : 6 - endDay);
-  
-  console.log('📅 Date range:', {
-    firstDisplayDate: formatDate(firstDisplayDate),
-    daysToShow,
-    month: monthName
-  });
-  
-  // Build print HTML (without outer wrapper - added by createElement below)
-  let html = `
-    <div class="print-header">
-      <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>${monthName}</h2>
-      ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
-    </div>
-    <div class="print-calendar">
-      <div class="print-month-grid">
-  `;
-  
-  // Day headers
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  dayNames.forEach(day => {
-    html += `<div class="print-day-header">${day}</div>`;
-  });
-  
-  let totalShiftsRendered = 0;
-  
-  // Days with shifts
-  for (let i = 0; i < daysToShow; i++) {
-    const d = new Date(firstDisplayDate);
-    d.setDate(d.getDate() + i);
-    const dateStr = formatDate(d);
-    const isWknd = d.getDay() === 0 || d.getDay() === 6;
-    const isCurrentMonth = d.getMonth() === month;
-    
-    html += `<div class="print-day-cell${isWknd ? ' wknd' : ''}${!isCurrentMonth ? ' other-month' : ''}">`;
-    html += `<div class="print-day-num">${d.getDate()}</div>`;
-    
-    // Get shifts for this day
-    const dayShifts = allShifts
-      .filter(s => s.date === dateStr)
-      .sort((a, b) => {
-        const order = { morning: 1, afternoon: 2, overnight: 3 };
-        return order[a.shift_type] - order[b.shift_type];
-      });
-    
-    dayShifts.forEach(shift => {
-      // Filter for myShiftsOnly
-      if (myShiftsOnly) {
-        const isHouseManager = currentUser?.jobTitle === 'House Manager';
-        const isStaffView = currentUser?.role === 'staff';
-        const isMine = shift.assigned_to === targetUserId;  // Use target user, not current
-        const isOpenForHM = shift.is_open && ((isHouseManager && isStaffView) || printAsHouseManager);
-        
-        // Keep shift if: assigned to me OR (open and I'm House Manager)
-        if (!isMine && !isOpenForHM) {
-          return; // Skip this shift
-        }
-      }
-      
-      totalShiftsRendered++;
-      
-      
-      const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
-      const isOpen = shift.is_open || !shift.assigned_to;
-      
-      // Check if this is House Manager viewing their own print
-      const isHouseManager = currentUser?.jobTitle === 'House Manager';
-      const isStaffView = currentUser?.role === 'staff';
-      const showAsTentative = isOpen && ((isHouseManager && isStaffView) || printAsHouseManager);
-      
-      // Get staff info for colors
-      let staff, staffName, tileColor, textColor;
-      
-      if (showAsTentative) {
-        // House Manager: show open shifts as tentatively assigned to them
-        // If admin printing as HM, find the House Manager; otherwise use current user
-        if (printAsHouseManager) {
-          staff = allStaff.find(s => s.job_title === 'House Manager');
-          staffName = staff?.full_name || 'House Manager';
-        } else {
-          staff = allStaff.find(s => s.id === currentUser.id);
-          staffName = currentUser?.fullName || 'House Manager';
-        }
-        tileColor = staff?.tile_color || '#f5f5f5';
-        textColor = staff?.text_color || 'black';
-      } else {
-        // Normal rendering
-        staff = allStaff.find(s => s.id === shift.assigned_to);
-        staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
-        tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-        textColor = isOpen ? 'black' : (staff?.text_color || 'black');
-      }
-      
-      let borderColor = isOpen ? "black" : tileColor;
-      
-      // Apply grayscale if black & white mode
-      if (blackWhite) {
-        tileColor = colorToGrayscale(tileColor);
-        textColor = "black";
-        borderColor = "black";
-      }
-      
-      // Use dashed border for tentative assignments
-      const borderStyle = showAsTentative ? 'dashed' : 'solid';
-
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px ${borderStyle} ${borderColor};">`;
-      html += `<strong>${staffName}</strong>`;
-      if (showAsTentative) {
-        html += ` <em style="font-size:8px;opacity:0.8;">(tentative)</em>`;
-      }
-      html += `<br>${shiftDef.label || shift.shift_type}<br>`;
-      html += `${shift.start_time || shiftDef.time || ''}`;
-      html += `</div>`;
-    });
-    
-    html += `</div>`;
-  }
-  
-  html += `</div></div>`;
-  
-  console.log('📄 Total shifts rendered:', totalShiftsRendered);
-  
-  if (totalShiftsRendered === 0) {
-    alert('No shifts to print for the selected period and filter.');
-    return;
-  }
-  
-  // Create temporary container with correct ID
-  const printDiv = document.createElement('div');
-  printDiv.id = 'printContainer';
-  printDiv.innerHTML = html;
-  document.body.appendChild(printDiv);
-  
-  // Wait for DOM to update before printing
-  setTimeout(() => {
-    window.print();
-    
-    // Clean up after print dialog closes
-    setTimeout(() => {
-      document.body.removeChild(printDiv);
-    }, 500);
-  }, 250);
-}
-
-function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = false) {
-  // Debug logging
-  console.log('📊 Print Week View:', {
-    myShiftsOnly,
-    blackWhite,
-    printAsHouseManager,
-    allShiftsCount: allShifts.length,
-    viewDate: formatDate(viewDate)
-  });
-  
-  // Determine who we're printing for
-  let targetUserId;
-  if (printAsHouseManager) {
-    // Admin printing as House Manager - find the actual HM
-    const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
-    if (!houseManagerStaff) {
-      alert('House Manager not found in staff list');
-      return;
-    }
-    targetUserId = houseManagerStaff.id;
-  } else {
-    // Regular user printing their own shifts
-    targetUserId = currentUser.id;
-  }
-  
-  // Get week start (Sunday)
-  const weekStart = getWeekStart(viewDate);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  
-  const weekLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-  
-  // Build print HTML (without outer wrapper - added by createElement below)
-  let html = `
-    <div class="print-header">
-      <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>Week of ${weekLabel}</h2>
-      ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
-    </div>
-    <div class="print-calendar">
-      <div class="print-week-grid">
-  `;
-  
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  let totalShiftsRendered = 0;
-  
-  // Generate each day column
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + i);
-    const dateStr = formatDate(d);
-    const isWknd = i === 0 || i === 6;
-    
-    html += `<div class="print-week-day${isWknd ? ' wknd' : ''}">`;
-    html += `<div class="print-week-header">${dayNames[i]}<br>${d.getDate()}</div>`;
-    
-    // Get shifts for this day
-    const dayShifts = allShifts
-      .filter(s => s.date === dateStr)
-      .sort((a, b) => {
-        const order = { morning: 1, afternoon: 2, overnight: 3 };
-        return order[a.shift_type] - order[b.shift_type];
-      });
-    
-    dayShifts.forEach(shift => {
-      // Filter for myShiftsOnly
-      if (myShiftsOnly) {
-        const isHouseManager = currentUser?.jobTitle === 'House Manager';
-        const isStaffView = currentUser?.role === 'staff';
-        const isMine = shift.assigned_to === targetUserId;  // Use target user, not current
-        const isOpenForHM = shift.is_open && ((isHouseManager && isStaffView) || printAsHouseManager);
-        
-        // Keep shift if: assigned to me OR (open and I'm House Manager)
-        if (!isMine && !isOpenForHM) {
-          return; // Skip this shift
-        }
-      }
-      
-      totalShiftsRendered++;
-      
-      
-      const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
-      const isOpen = shift.is_open || !shift.assigned_to;
-      
-      // Check if this is House Manager viewing their own print
-      const isHouseManager = currentUser?.jobTitle === 'House Manager';
-      const isStaffView = currentUser?.role === 'staff';
-      const showAsTentative = isOpen && ((isHouseManager && isStaffView) || printAsHouseManager);
-      
-      // Get staff info for colors
-      let staff, staffName, tileColor, textColor;
-      
-      if (showAsTentative) {
-        // House Manager: show open shifts as tentatively assigned to them
-        // If admin printing as HM, find the House Manager; otherwise use current user
-        if (printAsHouseManager) {
-          staff = allStaff.find(s => s.job_title === 'House Manager');
-          staffName = staff?.full_name || 'House Manager';
-        } else {
-          staff = allStaff.find(s => s.id === currentUser.id);
-          staffName = currentUser?.fullName || 'House Manager';
-        }
-        tileColor = staff?.tile_color || '#f5f5f5';
-        textColor = staff?.text_color || 'black';
-      } else {
-        // Normal rendering
-        staff = allStaff.find(s => s.id === shift.assigned_to);
-        staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
-        tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
-        textColor = isOpen ? 'black' : (staff?.text_color || 'black');
-      }
-      
-      let borderColor = isOpen ? "black" : tileColor;
-      
-      // Apply grayscale if black & white mode
-      if (blackWhite) {
-        tileColor = colorToGrayscale(tileColor);
-        borderColor = "black";
-        textColor = "black";
-      }
-      
-      // Use dashed border for tentative assignments
-      const borderStyle = showAsTentative ? 'dashed' : 'solid';
-
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px ${borderStyle} ${borderColor};">`;
-      html += `<strong>${staffName}</strong>`;
-      if (showAsTentative) {
-        html += ` <em style="font-size:8px;opacity:0.8;">(tentative)</em>`;
-      }
-      html += `<br>${shiftDef.label || shift.shift_type}<br>`;
-      html += `${shift.start_time || shiftDef.time || ''}`;
-      html += `</div>`;
-    });
-    
-    html += `</div>`;
-  }
-  
-  html += `</div></div>`;
-  
-  console.log('📄 Total shifts rendered:', totalShiftsRendered);
-  
-  if (totalShiftsRendered === 0) {
-    alert('No shifts to print for the selected period and filter.');
-    return;
-  }
-  
-  // Create temporary container with correct ID
-  const printDiv = document.createElement('div');
-  printDiv.id = 'printContainer';
-  printDiv.innerHTML = html;
-  document.body.appendChild(printDiv);
-  
-  // Wait for DOM to update before printing
-  setTimeout(() => {
-    window.print();
-    
-    // Clean up after print dialog closes
-    setTimeout(() => {
-      document.body.removeChild(printDiv);
-    }, 500);
-  }, 250);
-}
-
-function printListView(blackWhite = false, printAsHouseManager = false) {
-  // Get current month info
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  
-  // Determine who we're printing for
-  let targetUser, targetIsHM;
-  
-  if (printAsHouseManager) {
-    // Admin printing as House Manager - find the actual HM
-    const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
-    targetUser = houseManagerStaff ? {
-      id: houseManagerStaff.id,
-      fullName: houseManagerStaff.full_name,
-      jobTitle: 'House Manager'
-    } : null;
-    targetIsHM = true;
-  } else {
-    // Regular user printing their own shifts
-    targetUser = currentUser;
-    targetIsHM = currentUser?.jobTitle === 'House Manager' && currentUser?.role === 'staff';
-  }
-  
-  if (!targetUser) {
-    alert('House Manager not found in staff list');
-    return;
-  }
-  
-  // Get shifts for target user
-  // House Manager includes open shifts as tentative
-  const myShifts = allShifts
-    .filter(s => {
-      if (s.assigned_to === targetUser.id) return true;
-      if (targetIsHM && s.is_open) return true;  // Include open for HM
-      return false;
-    })
-    .sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      const order = { morning: 1, afternoon: 2, overnight: 3 };
-      return order[a.shift_type] - order[b.shift_type];
-    });
-  
-  console.log('📋 Print List View:', {
-    totalShifts: allShifts.length,
-    myShifts: myShifts.length,
-    targetUser: targetUser?.fullName,
-    printAsHouseManager
-  });
-  
-  // Build HTML (without outer wrapper - added by createElement below)
-  let html = `
-    <div class="print-header">
-      <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>${monthName} - ${targetUser?.fullName || 'Staff Member'}</h2>
-    </div>
-    <div class="print-list">
-      <table class="print-list-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Day</th>
-            <th>Shift Type</th>
-            <th>Time</th>
-            <th>Hours</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-  `;
-  
-  let totalHours = 0;
-  
-  if (myShifts.length === 0) {
-    html += `
-      <tr>
-        <td colspan="5" style="text-align:center;padding:20px;">No shifts assigned for this period</td>
-      </tr>
-    `;
-  } else {
-    myShifts.forEach(shift => {
-      const d = new Date(shift.date + 'T12:00:00');
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
-      const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
-      const hours = shiftDef.hours || 0;
-      totalHours += hours;
-      
-      // Check if this is a tentative assignment (open shift for House Manager)
-      const isTentative = shift.is_open && targetIsHM;
-      const statusText = isTentative ? '<em style="font-style:italic;">Tentative</em>' : 'Assigned';
-      
-      html += `
-        <tr>
-          <td>${dateFormatted}</td>
-          <td>${dayName}</td>
-          <td>${shiftDef.label || shift.shift_type}</td>
-          <td>${shift.start_time || shiftDef.time || ''}</td>
-          <td>${hours}</td>
-          <td>${statusText}</td>
-        </tr>
-      `;
-    });
-  }
-  
-  html += `
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="4" style="text-align:right;font-weight:bold;">Total Hours:</td>
-              <td style="font-weight:bold;">${totalHours}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-  `;
-  
-  // Create temporary container with correct ID
-  const printDiv = document.createElement('div');
-  printDiv.id = 'printContainer';
-  printDiv.innerHTML = html;
-  document.body.appendChild(printDiv);
-  
-  // Wait for DOM to update before printing
-  setTimeout(() => {
-    window.print();
-    
-    // Clean up after print dialog closes
-    setTimeout(() => {
-      document.body.removeChild(printDiv);
-    }, 500);
-  }, 250);
-}
-
-// ═══════════════════════════════════════════════════════════
-// EMAIL TOOLS
-// ═══════════════════════════════════════════════════════════
-
-async function sendTelegramInstructions() {
-  const staffWithEmail = allStaff.filter(s => s.email && s.role !== 'guest' && s.is_active);
-  
-  if (staffWithEmail.length === 0) {
-    alert('No active staff members have email addresses configured.');
-    return;
-  }
-  
-  // Create modal for staff selection
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
-  };
-  
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  content.style.maxWidth = '500px';
-  
-  content.innerHTML = `
-    <h3>📱 Send Telegram Instructions</h3>
-    <p style="color:#666;font-size:13px;margin-bottom:16px;">
-      Select staff members to receive Telegram setup instructions via email.
-    </p>
-    
-    <div style="margin-bottom:16px;">
-      <label style="display:flex;align-items:center;gap:8px;padding:8px;background:#f0f9ff;border-radius:4px;cursor:pointer;margin-bottom:8px;">
-        <input type="checkbox" id="selectAllStaff" onchange="toggleAllStaffSelection()" style="cursor:pointer;">
-        <strong>Select All (${staffWithEmail.length} staff)</strong>
-      </label>
-    </div>
-    
-    <div style="max-height:300px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:4px;padding:8px;margin-bottom:16px;">
-      ${staffWithEmail.map(s => `
-        <label style="display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border-radius:4px;" 
-               onmouseover="this.style.background='#f9fafb'" 
-               onmouseout="this.style.background='transparent'">
-          <input type="checkbox" class="staff-checkbox" value="${s.id}" style="cursor:pointer;">
-          <div style="flex:1;">
-            <div style="font-weight:500;">${s.full_name}</div>
-            <div style="font-size:12px;color:#666;">${s.email}</div>
-          </div>
-        </label>
-      `).join('')}
-    </div>
-    
-    <div style="display:flex;gap:8px;justify-content:flex-end;">
-      <button class="b-sec" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-pri" onclick="confirmSendTelegramInstructions()">Send Instructions</button>
-    </div>
-  `;
-  
-  modal.appendChild(content);
-  document.body.appendChild(modal);
-}
-
-function toggleAllStaffSelection() {
-  const selectAll = document.getElementById('selectAllStaff');
-  const checkboxes = document.querySelectorAll('.staff-checkbox');
-  checkboxes.forEach(cb => cb.checked = selectAll.checked);
-}
-
-async function confirmSendTelegramInstructions() {
-  const selectedIds = Array.from(document.querySelectorAll('.staff-checkbox:checked'))
-    .map(cb => parseInt(cb.value));
-  
-  if (selectedIds.length === 0) {
-    alert('Please select at least one staff member.');
-    return;
-  }
-  
-  const selectedStaff = allStaff.filter(s => selectedIds.includes(s.id));
-  
-  if (!confirm(`Send Telegram instructions to ${selectedStaff.length} staff member(s)?\n\n${selectedStaff.map(s => `• ${s.full_name}`).join('\n')}`)) {
-    return;
-  }
-  
-  // Close modal
-  document.querySelector('.modal-overlay').remove();
-  
-  try {
-    showLoading();
-    const result = await apiCall('/email/telegram-instructions', {
-      method: 'POST',
-      body: JSON.stringify({ staffIds: selectedIds })
-    });
-    
-    alert(`✅ Telegram instructions sent to ${result.sent} staff member(s)!`);
-  } catch (err) {
-    alert('Error sending emails: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function sendGuestCredentialsEmail() {
-  const email = prompt('Enter email address to send guest credentials:');
-  if (!email) return;
-  
-  const name = prompt('Recipient name (optional):') || '';
-  
-  try {
-    showLoading();
-    await apiCall('/email/guest-credentials', {
-      method: 'POST',
-      body: JSON.stringify({ recipientEmail: email, recipientName: name })
-    });
-    
-    alert(`✅ Guest credentials sent to ${email}!`);
-  } catch (err) {
-    alert('Error sending email: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function sendTestEmail() {
-  const email = prompt('Enter email address for test:', currentUser.email || '');
-  if (!email) return;
-  
-  try {
-    showLoading();
-    await apiCall('/email/test', {
-      method: 'POST',
-      body: JSON.stringify({ recipientEmail: email })
-    });
-    
-    alert(`✅ Test email sent to ${email}!\n\nCheck your inbox (and spam folder).`);
-  } catch (err) {
-    alert('Error sending test email: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// TELEGRAM MAGIC LINK
-// ═══════════════════════════════════════════════════════════
-
-async function generateTelegramLink(staffId) {
-  const staff = allStaff.find(s => s.id === staffId);
-  if (!staff) return;
-  
-  try {
-    showLoading();
-    const result = await apiCall('/telegram/generate-link', {
-      method: 'POST',
-      body: JSON.stringify({ staffId })
-    });
-    
-    // Create modal to show the link
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.onclick = (e) => {
-      if (e.target === modal) modal.remove();
-    };
-    
-    const content = document.createElement('div');
-    content.className = 'modal-content';
-    content.style.maxWidth = '600px';
-    
-    content.innerHTML = `
-      <h3>📱 Telegram Magic Link</h3>
-      <p style="color:#666;font-size:13px;margin-bottom:16px;">
-        Send this link to <strong>${staff.full_name}</strong> to instantly connect their Telegram account.
-      </p>
-      
-      <div style="background:#f0f9ff;padding:12px;border-radius:6px;margin-bottom:16px;border:1px solid #bfdbfe;">
-        <div style="font-size:12px;color:#666;margin-bottom:4px;">Magic Link (expires in ${result.expiresInDays} days):</div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <input 
-            type="text" 
-            id="magicLinkInput" 
-            value="${result.magicLink}" 
-            readonly 
-            style="flex:1;font-family:monospace;font-size:12px;padding:8px;border:1px solid #cbd5e1;border-radius:4px;"
-            onclick="this.select()"
-          >
-          <button 
-            class="b-pri" 
-            onclick="copyToClipboard('magicLinkInput')"
-            style="white-space:nowrap;padding:8px 16px;"
-          >
-            📋 Copy
-          </button>
-        </div>
-      </div>
-      
-      <div style="background:#fff9e6;padding:12px;border-radius:6px;margin-bottom:16px;border:1px solid #ffd966;">
-        <div style="font-weight:600;margin-bottom:8px;">📲 How it works:</div>
-        <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.6;">
-          <li>Copy the link above</li>
-          <li>Send it to ${staff.full_name} via email or text</li>
-          <li>They click the link → Opens Telegram</li>
-          <li>They tap "START" → Automatically linked! ✨</li>
-        </ol>
-      </div>
-      
-      ${staff.email ? `
-        <div style="margin-bottom:16px;">
-          <button class="b-sec" onclick="emailTelegramLink(${staffId}, '${result.magicLink}')" style="width:100%;">
-            📧 Email Link to ${staff.full_name}
-          </button>
-        </div>
-      ` : ''}
-      
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button class="b-sec" onclick="this.closest('.modal-overlay').remove()">Close</button>
-      </div>
-    `;
-    
-    modal.appendChild(content);
-    document.body.appendChild(modal);
-    
-  } catch (err) {
-    alert('Error generating link: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
-
-function copyToClipboard(inputId) {
-  const input = document.getElementById(inputId);
-  input.select();
-  document.execCommand('copy');
-  
-  // Visual feedback
-  const btn = event.target;
-  const originalText = btn.textContent;
-  btn.textContent = '✅ Copied!';
-  btn.style.background = '#26a69a';
-  setTimeout(() => {
-    btn.textContent = originalText;
-    btn.style.background = '';
-  }, 2000);
-}
-
-async function emailTelegramLink(staffId, magicLink) {
-  const staff = allStaff.find(s => s.id === staffId);
-  if (!staff || !staff.email) return;
-  
-  if (!confirm(`Send Telegram setup link to ${staff.full_name} at ${staff.email}?`)) {
-    return;
-  }
-  
-  try {
-    showLoading();
-    
-    // Send email with the magic link
-    await apiCall('/email/telegram-instructions', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        staffIds: [staffId],
-        includeMagicLink: true,
-        magicLink: magicLink
-      })
-    });
-    
-    alert(`✅ Telegram setup link sent to ${staff.email}!`);
-    
-    // Close modal
-    document.querySelector('.modal-overlay').remove();
-    
-  } catch (err) {
-    alert('Error sending email: ' + err.message);
-  } finally {
-    hideLoading();
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;padding:12px;}
+
+/* LOGIN */
+.login-wrap{max-width:420px;margin:80px auto;background:white;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;}
+.login-head{background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:36px 28px;text-align:center;}
+.login-head h1{font-size:22px;margin-bottom:6px;}
+.login-head p{font-size:13px;opacity:.85;}
+.login-body{padding:32px 28px;}
+.fg{margin-bottom:16px;}
+.fg label{display:block;margin-bottom:7px;color:#495057;font-weight:500;font-size:13px;}
+.fg input:not([type="hidden"]),.fg select{width:100%;padding:11px 14px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;transition:border-color .25s;}
+.fg input:not([type="hidden"]):focus,.fg select:focus{outline:none;border-color:#667eea;}
+.login-btn{width:100%;padding:13px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;}
+.err-msg{background:#fff0f0;border-left:4px solid #dc3545;padding:11px;border-radius:6px;color:#dc3545;font-size:13px;margin-bottom:16px;display:none;}
+.err-msg.show{display:block;}
+
+/* APP */
+.app{max-width:1400px;margin:0 auto;background:white;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:visible;}
+.app-hdr{background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
+.app-hdr h1{font-size:19px;font-weight:700;}
+.app-hdr .sub{font-size:12px;opacity:.8;margin-top:2px;}
+.hdr-right{display:flex;gap:8px;align-items:center;}
+.badge{background:rgba(255,255,255,.2);padding:4px 11px;border-radius:16px;font-size:11px;}
+.lo-btn{background:rgba(255,255,255,.2);color:white;border:none;padding:6px 13px;border-radius:7px;font-size:12px;cursor:pointer;}
+.content{padding:18px 20px;}
+.hidden{display:none;}
+
+/* TABS */
+.admin-tabs{display:flex;border-bottom:2px solid #e9ecef;margin-bottom:18px;gap:4px;flex-wrap:wrap;}
+.a-tab{padding:10px 20px;background:none;border:none;font-size:13px;font-weight:500;color:#888;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;position:relative;}
+.a-tab.active{color:#667eea;border-bottom-color:#667eea;}
+.approval-badge{background:#dc3545;color:white;border-radius:10px;padding:2px 6px;font-size:10px;font-weight:700;margin-left:4px;}
+.tab-pane{display:none;}
+.tab-pane.active{display:block;}
+
+/* STAFF MANAGEMENT */
+.staff-mgmt{background:#f8f9fa;border-radius:12px;padding:18px;margin-bottom:24px;}
+.staff-mgmt h3{font-size:16px;margin-bottom:13px;color:#495057;}
+.add-form{background:white;padding:16px;border-radius:8px;margin-bottom:18px;}
+.frow{display:flex;flex-wrap:wrap;gap:8px;}
+.frow input,.frow select{padding:8px 12px;border:2px solid #dee2e6;border-radius:6px;font-size:13px;flex:1;min-width:110px;}
+.add-s-btn{padding:8px 16px;background:#28a745;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;}
+.s-list{background:white;border-radius:8px;overflow:hidden;border:1px solid #eee;}
+.s-item{padding:12px 14px;border-bottom:1px solid #f2f2f2;display:flex;align-items:center;gap:10px;}
+.s-item:last-child{border-bottom:none;}
+.col-dot{width:36px;height:36px;border-radius:8px;flex-shrink:0;border:1px solid rgba(0,0,0,.12);}
+.s-det{flex:1;min-width:0;}
+.s-nm{font-weight:600;font-size:13px;color:#212529;}
+.s-me{font-size:11px;color:#888;margin-top:1px;}
+.s-act{display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;}
+.bsm{padding:4px 9px;font-size:11px;border:none;border-radius:4px;cursor:pointer;font-weight:600;}
+.b-edit{background:#667eea;color:white;}
+.b-rpw{background:#ffc107;color:#000;}
+.b-del{background:#dc3545;color:white;}
+
+/* APPROVALS */
+.approvals-section{background:#f8f9fa;border-radius:12px;padding:18px;}
+.approval-item{background:white;border-radius:8px;padding:14px;margin-bottom:10px;border-left:4px solid #667eea;}
+.approval-header{display:flex;justify-content:space-between;align-items:start;margin-bottom:8px;}
+.approval-title{font-weight:600;font-size:14px;color:#212529;}
+.approval-meta{font-size:12px;color:#888;}
+.approval-actions{display:flex;gap:6px;margin-top:10px;}
+.btn-approve{background:#28a745;color:white;border:none;padding:6px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;}
+.btn-deny{background:#dc3545;color:white;border:none;padding:6px 12px;border-radius:4px;font-size:12px;font-weight:600;cursor:pointer;}
+
+/* CALENDAR */
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;flex-wrap:wrap;}
+.cal-nav-left{display:flex;align-items:center;gap:8px;}
+.nav-arrow{width:34px;height:34px;border:2px solid #dee2e6;background:white;border-radius:8px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#495057;}
+.nav-arrow:hover{background:#667eea;color:white;border-color:#667eea;}
+.cal-title{font-size:15px;font-weight:700;color:#212529;}
+.view-toggle{display:flex;background:#f0f0f0;border-radius:9px;padding:3px;gap:2px;}
+.v-btn{padding:6px 14px;border:none;background:transparent;border-radius:7px;font-size:12px;font-weight:600;color:#888;cursor:pointer;}
+.v-btn.active{background:white;color:#667eea;box-shadow:0 1px 4px rgba(0,0,0,.12);}
+
+/* CALENDAR GRID */
+.cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -20px;padding:0 20px 10px;position:relative;}
+.week-grid{display:grid;gap:8px;grid-template-columns:repeat(7,1fr);min-width:700px;}
+.day-hdr{text-align:center;font-weight:600;font-size:12px;color:#555;padding:8px 4px;background:#f0f0f0;border-radius:7px;}
+.day-hdr.wknd{background:#e8e0f8;}
+.day-hdr .dn{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
+.day-hdr .dt{display:block;font-size:18px;font-weight:700;color:#212529;margin-top:1px;}
+.day-col{background:#ebebeb;border-radius:9px;padding:7px;min-height:120px;}
+.day-col.wknd{background:#e0d8f8;}
+
+/* SHIFTS */
+.shift-tile{border-radius:7px;padding:8px 9px;margin-bottom:5px;box-shadow:0 1px 4px rgba(0,0,0,.13);min-height:68px;display:flex;flex-direction:column;justify-content:space-between;cursor:pointer;transition:transform .1s;}
+.shift-tile:hover{transform:translateY(-2px);}
+.t-name{font-weight:700;font-size:12px;line-height:1.3;margin-bottom:2px;}
+.t-time{font-size:10px;opacity:.88;margin-bottom:4px;}
+.t-foot{display:flex;justify-content:flex-end;align-items:center;}
+.t-hrs{font-size:10px;font-weight:700;padding:2px 5px;border-radius:4px;}
+.hrs-ok{background:rgba(40,167,69,.28);}
+.hrs-warn{background:rgba(255,193,7,.4);}
+.hrs-over{background:rgba(220,53,69,.28);}
+
+/* MODALS */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:999;padding:14px;}
+.ov.show{display:flex;}
+.modal{background:white;border-radius:14px;padding:24px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;}
+.modal h3{margin-bottom:15px;color:#212529;font-size:16px;}
+.mbtn-row{display:flex;gap:8px;margin-top:16px;}
+.mbtn-row button:not(.swatch){flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;}
+.mc{background:#e9ecef;color:#495057;}
+.mok{background:#667eea;color:white;}
+
+/* DASHBOARD */
+.dashboard-card{background:#f8f9fa;border-radius:12px;padding:18px;margin-bottom:20px;}
+.dashboard-card h3{font-size:16px;margin-bottom:14px;color:#495057;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:12px;}
+.stat-card{background:white;padding:14px;border-radius:8px;border-left:4px solid #667eea;}
+.stat-label{font-size:12px;color:#888;margin-bottom:4px;}
+.stat-value{font-size:24px;font-weight:700;color:#212529;}
+
+/* LOADING */
+.loading-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);display:none;align-items:center;justify-content:center;z-index:9999;}
+.loading-overlay.show{display:flex;}
+.spinner{width:40px;height:40px;border:4px solid #f3f3f3;border-top:4px solid #667eea;border-radius:50%;animation:spin 1s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* MOBILE */
+@media(max-width:600px){
+  body{padding:8px;}
+  .content{padding:14px 12px;}
+  .app-hdr{padding:14px 15px;}
+  .cal-scroll{margin:0 -12px;padding:0 12px 10px;}
+  .week-grid{min-width:560px;grid-template-columns:repeat(7,80px);}
+  .frow{flex-direction:column;}
+}
+
+/* MONTH VIEW */
+.month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#ddd;border:1px solid #ddd;border-radius:8px;overflow:hidden;}
+.month-day-hdr{background:#f8f9fa;padding:8px;text-align:center;font-weight:600;font-size:12px;color:#495057;}
+.month-day-cell{background:white;min-height:140px;padding:6px;position:relative;}
+.month-day-cell.wknd{background:#fafbfc;}
+.month-day-cell.empty{background:#f8f9fa;}
+.month-day-cell.today{background:#fff9e6;border:2px solid #ffc107;}
+.month-day-num{font-size:14px;font-weight:700;color:#495057;margin-bottom:6px;padding:2px 4px;}
+.month-shifts{display:flex;flex-direction:column;gap:3px;}
+.month-shift-tile{padding:6px 8px;border-radius:6px;font-size:11px;border:1px solid rgba(0,0,0,.1);cursor:pointer;transition:transform .15s,box-shadow .15s;}
+.month-shift-tile:hover{transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.15);}
+.month-shift-name{font-weight:700;margin-bottom:2px;line-height:1.2;}
+.month-shift-time{font-size:10px;opacity:.9;margin-bottom:2px;line-height:1.2;}
+.month-shift-hours{font-size:9px;font-weight:600;margin-top:1px;line-height:1.2;}
+
+/* REASSIGN MODAL */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
+.modal-content{background:white;border-radius:12px;padding:24px;max-width:450px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+.modal-content h3{margin-bottom:16px;color:#495057;font-size:18px;}
+.modal-content p{margin-bottom:8px;font-size:14px;color:#666;}
+.modal-content hr{margin:16px 0;border:none;border-top:1px solid #eee;}
+.modal-content label{display:block;margin-bottom:8px;color:#495057;font-weight:600;font-size:13px;}
+.modal-content .inp{width:100%;padding:10px 12px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;margin-bottom:16px;}
+.modal-content .inp:focus{outline:none;border-color:#667eea;}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;}
+.b-can{padding:8px 16px;background:#f8f9fa;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;color:#495057;}
+.b-pri{padding:8px 16px;background:#667eea;color:white;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;}
+.b-can:hover{background:#e9ecef;}
+.b-pri:hover{background:#5568d3;}
+
+/* SUCCESS TOAST */
+.toast-success{position:fixed;top:20px;right:20px;background:#28a745;color:white;padding:14px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.3);z-index:2000;font-weight:600;animation:slideIn .3s ease;}
+@keyframes slideIn{from{transform:translateX(400px);opacity:0;}to{transform:translateX(0);opacity:1;}}
+
+/* STAFF MANAGEMENT ENHANCEMENTS */
+.s-item.inactive{opacity:0.7;background:#f8f8f8;}
+.inactive-badge{background:#dc3545;color:white;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;margin-left:8px;}
+.b-deact{background:#dc3545;color:white;}
+.b-deact:hover{background:#c82333;}
+.b-act{background:#28a745;color:white;}
+.b-act:hover{background:#218838;}
+.b-rpw{background:#ffc107;color:#212529;}
+.b-rpw:hover{background:#e0a800;}
+
+/* SHIFT SWAP UI */
+.swap-btn{position:absolute;bottom:4px;right:4px;background:rgba(102,126,234,0.9);color:white;border:none;padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-weight:600;}
+.swap-btn:hover{background:#667eea;}
+.shift-tile{position:relative;}
+.month-shift-tile{position:relative;}
+
+/* SWAP REQUEST MODAL */
+.swap-modal .modal-content{max-width:550px;}
+.swap-shift-preview{display:flex;gap:12px;margin:16px 0;}
+.swap-shift-box{flex:1;border:2px solid #dee2e6;border-radius:8px;padding:12px;background:#f8f9fa;}
+.swap-shift-box h4{margin:0 0 8px 0;font-size:14px;color:#495057;}
+.swap-shift-info{font-size:13px;color:#666;margin-bottom:4px;}
+.swap-arrow{align-self:center;font-size:24px;color:#667eea;}
+.swap-warning{background:#fff3cd;border-left:4px solid #ffc107;padding:12px;border-radius:6px;margin:12px 0;font-size:13px;color:#856404;}
+.swap-error{background:#f8d7da;border-left:4px solid #dc3545;padding:12px;border-radius:6px;margin:12px 0;font-size:13px;color:#721c24;}
+
+/* TRADE REQUESTS LIST */
+.trade-list{background:white;border-radius:8px;overflow:hidden;border:1px solid #eee;margin-top:16px;}
+.trade-item{padding:14px 16px;border-bottom:1px solid #f2f2f2;display:flex;gap:12px;align-items:start;}
+.trade-item:last-child{border-bottom:none;}
+.trade-details{flex:1;}
+.trade-header{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+.trade-status{padding:3px 8px;border-radius:10px;font-size:11px;font-weight:700;}
+.trade-status.pending{background:#fff3cd;color:#856404;}
+.trade-status.approved{background:#d4edda;color:#155724;}
+.trade-status.denied{background:#f8d7da;color:#721c24;}
+.trade-info{font-size:13px;color:#666;margin-bottom:4px;}
+.trade-shifts{display:flex;gap:8px;margin:8px 0;}
+.trade-shift{background:#f8f9fa;padding:8px;border-radius:6px;flex:1;font-size:12px;}
+.trade-shift strong{display:block;margin-bottom:4px;color:#495057;}
+.trade-actions{display:flex;gap:6px;margin-top:8px;}
+.trade-actions button{padding:6px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;}
+
+/* STAFF VIEW TOGGLE */
+.view-controls{display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+#toggleMyShiftsBtn{padding:6px 14px;border:2px solid #dee2e6;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;background:#f8f9fa;color:#495057;transition:all .2s;}
+#toggleMyShiftsBtn:hover{border-color:#667eea;}
+
+/* PAY PERIOD SUMMARY */
+.pay-period-summary{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.period-summary-card{flex:1;min-width:280px;background:white;border:2px solid #e9ecef;border-radius:12px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.05);}
+.period-summary-card h4{margin:0 0 8px 0;font-size:15px;color:#495057;}
+.period-dates{font-size:13px;color:#888;margin-bottom:8px;}
+.period-shifts{font-size:12px;color:#666;margin-bottom:4px;}
+.period-hours{font-size:24px;font-weight:700;margin:8px 0;}
+.period-hours.hrs-ok{color:#28a745;}
+.period-hours.hrs-warn{color:#ffc107;}
+.period-hours.hrs-over{color:#dc3545;}
+.period-list{margin-top:12px;padding-top:12px;border-top:1px solid #eee;}
+.period-shift-item{font-size:12px;color:#666;padding:4px 0;}
+.period-more{font-size:11px;color:#888;font-style:italic;padding:4px 0;}
+.period-empty{font-size:13px;color:#aaa;font-style:italic;padding:8px 0;}
+/* ADD THIS TO styles.css */
+
+/* SHIFT GENERATOR MODAL */
+.shift-gen-modal{max-width:700px;max-height:90vh;overflow-y:auto;}
+.gen-tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:2px solid #e9ecef;}
+.gen-tab{padding:10px 20px;background:none;border:none;font-size:14px;font-weight:600;color:#888;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;}
+.gen-tab.active{color:#667eea;border-bottom-color:#667eea;}
+.gen-tab:hover{color:#667eea;}
+
+.gen-tab-content{display:none;}
+.gen-tab-content.active{display:block;}
+.gen-tab-content h4{margin:0 0 16px 0;font-size:16px;color:#495057;}
+
+.gen-section{margin-bottom:20px;}
+.gen-section label{display:block;font-weight:600;margin-bottom:8px;color:#495057;font-size:13px;}
+.gen-section small{display:block;margin-top:4px;font-size:12px;color:#888;}
+
+.date-range{display:flex;gap:12px;align-items:center;}
+.date-range input{flex:1;}
+.date-range span{color:#888;}
+
+.day-checkboxes,.shift-checkboxes,.copy-from-options{display:flex;flex-wrap:wrap;gap:12px;}
+.day-checkboxes label,.shift-checkboxes label,.copy-from-options label{display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:normal;}
+.day-checkboxes input,.shift-checkboxes input,.copy-from-options input{margin:0;}
+
+.pattern-option{margin-top:12px;padding:12px;background:#f8f9fa;border-radius:8px;}
+
+.rotation-list{max-height:200px;overflow-y:auto;border:1px solid #dee2e6;border-radius:6px;background:white;}
+.rotation-item{padding:10px 12px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;cursor:move;}
+.rotation-item:last-child{border-bottom:none;}
+.rotation-item:hover{background:#f8f9fa;}
+.drag-handle{color:#888;cursor:move;user-select:none;}
+.rotation-item label{margin:0;flex:1;cursor:pointer;display:flex;align-items:center;gap:8px;}
+.rotation-item input{margin:0;}
+
+.gen-preview{margin:20px 0;padding:12px;background:#e3f2fd;border-left:4px solid#2196f3;border-radius:6px;font-size:13px;}
+.gen-preview strong{color:#1976d2;}
+
+.template-editor{display:grid;gap:16px;margin-bottom:20px;}
+.template-item{padding:16px;background:#f8f9fa;border-radius:8px;}
+.template-item h5{margin:0 0 12px 0;font-size:14px;color:#495057;}
+.template-item label{display:block;font-weight:600;margin:8px 0 4px;color:#495057;font-size:12px;}
+.template-item input{width:100%;}
+.template-note{margin-top:16px;padding:10px;background:#fff3cd;border-left:4px solid #ffc107;border-radius:6px;font-size:12px;color:#856404;}
+
+/* Button to open generator in admin panel */
+.gen-trigger-btn{padding:10px 20px;background:#667eea;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:16px;}
+.gen-trigger-btn:hover{background:#5568d3;}
+/* ADD THIS TO styles.css */
+
+/* EXPORT/IMPORT BUTTONS */
+.data-backup-section{margin:20px 0;padding:16px;background:#f8f9fa;border-radius:8px;border-left:4px solid #667eea;}
+.data-backup-section h4{margin:0 0 12px 0;font-size:14px;color:#495057;}
+.data-backup-section p{margin:0 0 12px 0;font-size:13px;color:#666;}
+.data-backup-buttons{display:flex;gap:8px;}
+.btn-export,.btn-import{padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.btn-export{background:#28a745;color:white;}
+.btn-export:hover{background:#218838;}
+.btn-import{background:#667eea;color:white;}
+.btn-import:hover{background:#5568d3;}
+
+/* IMPORT MODAL */
+.import-instructions{background:#e3f2fd;padding:12px;border-radius:6px;margin-bottom:16px;}
+.import-instructions ul{margin:8px 0 0 20px;font-size:13px;}
+.import-instructions li{margin:4px 0;}
+#importFileInput{width:100%;padding:10px;border:2px dashed #dee2e6;border-radius:6px;margin:12px 0;cursor:pointer;}
+#importFileInput:hover{border-color:#667eea;background:#f8f9fa;}
+.import-preview{background:#d4edda;border:1px solid #c3e6cb;border-radius:6px;padding:12px;margin:12px 0;}
+.import-preview h4{margin:0 0 8px 0;color:#155724;}
+.import-preview p{margin:4px 0;font-size:13px;color:#155724;}
+.import-warning{background:#fff3cd;border:1px solid #ffc107;padding:8px;border-radius:4px;margin-top:8px;font-size:12px;color:#856404;}
+
+/* EMPTY STATE */
+.empty-state{padding:40px 20px;text-align:center;color:#888;font-size:15px;background:#f8f9fa;border-radius:8px;margin-top:20px;}
+
+/* NOTIFICATION SECTION */
+.notification-section{display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;}
+.btn-notify{padding:10px 20px;background:#28a745;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .3s;}
+.btn-notify:hover:not(:disabled){background:#218838;transform:translateY(-1px);}
+.btn-notify:disabled{cursor:not-allowed;background:#6c757d;}
+.btn-clear-changes{padding:10px 20px;background:#dc3545;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+.btn-clear-changes:hover{background:#c82333;}
+
+/* Pastel color swatches */
+.swatch-grid{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px;}
+.swatch{width:30px;height:30px;border-radius:6px;border:2px solid rgba(0,0,0,.1);cursor:pointer;padding:0;transition:transform .12s,border-color .12s;flex-shrink:0;}
+.swatch:hover{transform:scale(1.15);border-color:rgba(0,0,0,.3);}
+.swatch-selected{border:3px solid #333 !important;transform:scale(1.15);box-shadow:0 0 0 2px white,0 0 0 4px #333;}
+
+/* ══════════════════════════════════════════════════════
+   STAFF ACTION BAR
+══════════════════════════════════════════════════════ */
+.staff-action-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.staff-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 8px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 11px;
+  color: white;
+  transition: transform .15s, box-shadow .15s;
+  box-shadow: 0 3px 8px rgba(0,0,0,.15);
+}
+.staff-action-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.2); }
+.staff-action-btn:active { transform: translateY(0); }
+.sab-icon { font-size: 22px; }
+.sab-label { text-align: center; line-height: 1.2; }
+.btn-request  { background: linear-gradient(135deg, #667eea, #764ba2); }
+.btn-emergency{ background: linear-gradient(135deg, #dc3545, #c0392b); }
+.btn-contact  { background: linear-gradient(135deg, #28a745, #1e7e34); }
+.btn-settings { background: linear-gradient(135deg, #495057, #343a40); }
+
+@media(max-width:480px) {
+  .staff-action-bar { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ══════════════════════════════════════════════════════
+   PICK MODE — FLOATING DIALOG
+══════════════════════════════════════════════════════ */
+.pick-dialog-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  /* semi-transparent backdrop only behind the dialog area,
+     pointer-events none so calendar taps fall through when dialog is hidden */
+  pointer-events: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 24px;
+}
+.pick-dialog-overlay.show {
+  display: flex;
+  pointer-events: none; /* backdrop itself never blocks — only the card does */
+}
+.pick-dialog {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.28);
+  padding: 20px 22px 16px;
+  max-width: 360px;
+  width: calc(100% - 32px);
+  pointer-events: all; /* card itself IS clickable */
+  border-top: 4px solid #667eea;
+  animation: slideUp .25s ease;
+}
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.pick-dialog-step {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #667eea;
+  margin-bottom: 6px;
+}
+.pick-dialog-instruction {
+  font-size: 16px;
+  font-weight: 700;
+  color: #212529;
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+.pick-dialog-sub {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  white-space: pre-line; /* honour 
+ in the sub text */
+}
+.pick-dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+.pick-dialog-go {
+  flex: 1;
+  padding: 11px 16px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform .1s, box-shadow .1s;
+}
+.pick-dialog-go:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102,126,234,.4);
+}
+.pick-dialog-go:active { transform: translateY(0); }
+.pick-dialog-cancel {
+  padding: 11px 14px;
+  background: #f8f9fa;
+  color: #495057;
+  border: 1px solid #dee2e6;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pick-dialog-cancel:hover { background: #e9ecef; }
+
+/* Calendar tile outlines when in pick mode */
+#calendarRoot.pick-mode .shift-tile,
+#calendarRoot.pick-mode .month-shift-tile,
+#calendarRootStaff.pick-mode .shift-tile,
+#calendarRootStaff.pick-mode .month-shift-tile {
+  outline: 2px dashed #667eea;
+  opacity: .9;
+  transition: outline-color .15s, transform .1s;
+}
+#calendarRoot.pick-mode .shift-tile:hover,
+#calendarRoot.pick-mode .month-shift-tile:hover,
+#calendarRootStaff.pick-mode .shift-tile:hover,
+#calendarRootStaff.pick-mode .month-shift-tile:hover {
+  outline-color: #764ba2;
+  transform: translateY(-3px);
+}
+
+/* ══════════════════════════════════════════════════════
+   PENDING TILE
+══════════════════════════════════════════════════════ */
+.tile-pending {
+  background: #fff0f0 !important;
+  color: #721c24 !important;
+  border: 2px solid #dc3545 !important;
+}
+.pending-badge {
+  font-size: 9px;
+  font-weight: 700;
+  background: #dc3545;
+  color: white;
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-bottom: 3px;
+  display: inline-block;
+}
+
+/* ══════════════════════════════════════════════════════
+   REQUEST OPTIONS BUTTONS
+══════════════════════════════════════════════════════ */
+.request-options { display: flex; flex-direction: column; gap: 10px; }
+.request-option-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border: 2px solid #dee2e6;
+  border-radius: 10px;
+  background: white;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.request-option-btn:hover { border-color: #667eea; background: #f8f0ff; }
+.emerg-btn:hover { border-color: #dc3545; background: #fff5f5; }
+.rob-icon { font-size: 24px; margin-bottom: 4px; }
+.rob-title { font-weight: 700; font-size: 14px; color: #212529; margin-bottom: 2px; }
+.rob-desc  { font-size: 12px; color: #888; line-height: 1.4; }
+
+/* ══════════════════════════════════════════════════════
+   TRADE PREVIEW
+══════════════════════════════════════════════════════ */
+.trade-preview-wrap { display: flex; gap: 10px; align-items: stretch; margin: 16px 0; }
+.trade-leg { flex: 1; border: 2px solid #dee2e6; border-radius: 10px; padding: 12px; background: #f8f9fa; }
+.trade-leg.give { border-color: #dc3545; }
+.trade-leg.get  { border-color: #28a745; }
+.tl-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+.trade-leg.give .tl-label { color: #dc3545; }
+.trade-leg.get  .tl-label { color: #28a745; }
+.tl-date  { font-weight: 700; font-size: 13px; color: #212529; margin-bottom: 2px; }
+.tl-type  { font-size: 13px; color: #495057; margin-bottom: 2px; }
+.tl-time  { font-size: 11px; color: #888; margin-bottom: 2px; }
+.tl-staff { font-size: 11px; color: #667eea; font-weight: 600; }
+.trade-arrow { display: flex; align-items: center; font-size: 22px; color: #667eea; flex-shrink: 0; }
+
+/* ══════════════════════════════════════════════════════
+   PICK CONFIRM BOX
+══════════════════════════════════════════════════════ */
+.pick-confirm-box { margin: 12px 0; }
+.pick-shift-preview {
+  display: flex; gap: 12px; align-items: center;
+  padding: 14px; background: #f8f9fa; border-radius: 10px;
+  border: 2px solid #dee2e6; margin-bottom: 10px;
+}
+.psv-icon { font-size: 28px; flex-shrink: 0; }
+.psv-date { font-weight: 700; font-size: 14px; color: #212529; }
+.psv-type { font-size: 12px; color: #888; margin-top: 2px; }
+.pick-note { font-size: 12px; color: #666; line-height: 1.5; padding: 8px 10px; background: #e3f2fd; border-radius: 6px; }
+
+/* ══════════════════════════════════════════════════════
+   EMERGENCY FORM HELPERS
+══════════════════════════════════════════════════════ */
+.inp-full { width: 100%; padding: 10px 12px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; }
+.inp-full:focus { outline: none; border-color: #667eea; }
+#emergencyTypeSelect, #absenceForm, #issueForm { display: none; }
+#emergencyTypeSelect.show, #absenceForm.show, #issueForm.show { display: block; }
+
+/* ══════════════════════════════════════════════════════
+   CONTACT DIALOG
+══════════════════════════════════════════════════════ */
+.contact-modal { max-width: 520px; max-height: 80vh; overflow-y: auto; }
+.contact-card {
+  border: 1px solid #e9ecef; border-radius: 10px;
+  padding: 14px; margin-bottom: 12px; background: #fafafa;
+}
+.contact-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #888; margin-bottom: 6px; }
+.contact-name { font-size: 16px; font-weight: 700; color: #212529; margin-bottom: 2px; }
+.contact-meta { font-size: 12px; color: #888; margin-bottom: 8px; }
+.contact-no-info { font-size: 11px; color: #aaa; }
+.contact-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.contact-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 14px; border: none; border-radius: 7px;
+  font-size: 12px; font-weight: 600; cursor: pointer; text-decoration: none;
+  transition: transform .1s;
+}
+.contact-btn:hover { transform: translateY(-1px); }
+.phone-btn { background: #28a745; color: white; }
+.tg-btn    { background: #2196F3; color: white; }
+.contact-dir-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 260px; overflow-y: auto; }
+.contact-dir-item { display: flex; align-items: center; gap: 10px; padding: 8px; background: white; border-radius: 7px; border: 1px solid #eee; }
+.contact-dir-dot { width: 28px; height: 28px; border-radius: 6px; flex-shrink: 0; border: 1px solid rgba(0,0,0,.1); }
+.contact-dir-info { flex: 1; min-width: 0; }
+.contact-dir-name { font-weight: 600; font-size: 13px; color: #212529; }
+.contact-dir-role { font-size: 11px; color: #888; }
+.contact-dir-btns { display: flex; gap: 5px; flex-shrink: 0; }
+.contact-btn-sm {
+  padding: 5px 8px; border: none; border-radius: 5px;
+  font-size: 12px; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center;
+}
+
+/* ══════════════════════════════════════════════════════
+   SCHEDULE TOOLBAR
+══════════════════════════════════════════════════════ */
+.schedule-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+
+/* ══════════════════════════════════════════════════════
+   ADMIN PENDING REVIEW MODAL
+══════════════════════════════════════════════════════ */
+.pending-review-card {
+  border: 1px solid #dee2e6;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+.pending-review-card + .pending-review-card { margin-top: 8px; }
+.prc-type  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #667eea; margin-bottom: 6px; }
+.prc-who   { font-size: 14px; color: #212529; margin-bottom: 3px; }
+.prc-meta  { font-size: 12px; color: #888; margin-bottom: 6px; }
+.prc-note  { font-size: 12px; color: #495057; background: #f8f9fa; padding: 6px 8px; border-radius: 5px; margin-bottom: 8px; font-style: italic; }
+.prc-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* ══════════════════════════════════════════════════════
+   STAFF TRADE INBOX
+══════════════════════════════════════════════════════ */
+.inbox-section-title {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .7px; color: #667eea; margin-bottom: 10px;
+}
+.trade-inbox-card {
+  border: 2px solid #dee2e6;
+  border-radius: 10px;
+  padding: 13px 14px;
+  margin-bottom: 10px;
+  background: #fff;
+}
+.trade-inbox-card.incoming { border-color: #667eea; }
+.trade-inbox-card.outgoing { border-color: #e9ecef; }
+.tic-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 10px; flex-wrap: wrap; gap: 6px;
+}
+.tic-from { font-size: 13px; color: #495057; }
+.tic-shifts {
+  display: flex; align-items: stretch; gap: 8px; margin-bottom: 10px;
+}
+.tic-shift {
+  flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #dee2e6;
+  background: #f8f9fa;
+}
+.tic-shift.give { border-color: #dc3545; background: #fff5f5; }
+.tic-shift.get  { border-color: #28a745; background: #f5fff7; }
+.tic-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; margin-bottom: 4px; }
+.tic-shift.give .tic-label { color: #dc3545; }
+.tic-shift.get  .tic-label { color: #28a745; }
+.tic-date  { font-weight: 700; font-size: 12px; color: #212529; }
+.tic-type  { font-size: 12px; color: #495057; margin-top: 2px; }
+.tic-time  { font-size: 11px; color: #888; }
+.tic-arrow { display: flex; align-items: center; font-size: 18px; color: #667eea; flex-shrink: 0; }
+.tic-note  { font-size: 12px; color: #495057; font-style: italic; background: #f0f4ff; padding: 7px 10px; border-radius: 6px; margin-bottom: 8px; }
+.tic-actions { display: flex; gap: 8px; }
+.inbox-empty { font-size: 13px; color: #aaa; padding: 12px 0; text-align: center; }
+/* Mobile calendar horizontal scroll fix */
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden; /* Prevent body scroll */
+  }
+  
+  .cal-scroll {
+    margin: 0 -12px;
+    padding: 0 12px 10px;
+    overflow-x: auto !important;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    /* Ensure scrolling works */
+    width: 100%;
+    max-width: 100vw;
+  }
+  
+  .week-grid {
+    min-width: 560px;
+    grid-template-columns: repeat(7, 80px);
+    /* Force the grid to be wider than viewport */
   }
 }
