@@ -16,7 +16,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .err-msg.show{display:block;}
 
 /* APP */
-.app{max-width:1400px;margin:0 auto;background:white;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden;}
+.app{max-width:1400px;margin:0 auto;background:white;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:visible;}
 .app-hdr{background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
 .app-hdr h1{font-size:19px;font-weight:700;}
 .app-hdr .sub{font-size:12px;opacity:.8;margin-top:2px;}
@@ -75,7 +75,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .v-btn.active{background:white;color:#667eea;box-shadow:0 1px 4px rgba(0,0,0,.12);}
 
 /* CALENDAR GRID */
-.cal-scroll{overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch;margin:0 -20px;padding:0 20px 10px;max-width:100vw;}
+.cal-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -20px;padding:0 20px 10px;position:relative;}
 .week-grid{display:grid;gap:8px;grid-template-columns:repeat(7,1fr);min-width:700px;}
 .day-hdr{text-align:center;font-weight:600;font-size:12px;color:#555;padding:8px 4px;background:#f0f0f0;border-radius:7px;}
 .day-hdr.wknd{background:#e8e0f8;}
