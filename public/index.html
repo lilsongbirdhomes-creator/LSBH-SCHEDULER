@@ -260,21 +260,21 @@
   </div>
 </div>
 
-<div id="passwordModal" class="modal">
-  <div class="modal-content">
-    <h3>Change Password</h3>
-    <p>Please set a new password</p>
-    <div style="margin-bottom:12px;">
-      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">New Password</label>
-      <input type="password" id="newPassword" placeholder="At least 8 characters" class="inp" minlength="8">
+<!-- Change Password Modal -->
+<div id="passwordModal" class="ov">
+  <div class="modal">
+    <h3>🔒 Change Password</h3>
+    <div class="fg">
+      <label>New Password (min 8 characters)</label>
+      <input type="password" id="newPassword" placeholder="Enter new password" class="inp" minlength="8">
     </div>
-    <div style="margin-bottom:12px;">
-      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Confirm Password</label>
+    <div class="fg">
+      <label>Confirm Password</label>
       <input type="password" id="confirmPassword" placeholder="Re-enter password" class="inp">
     </div>
-    <div class="modal-actions">
-      <button onclick="closePasswordModal()">Cancel</button>
-      <button onclick="savePassword()" class="b-pri">Save Password</button>
+    <div class="mbtn-row">
+      <button class="mc" onclick="closePasswordModal()">Cancel</button>
+      <button class="mok" onclick="savePassword()">Save Password</button>
     </div>
   </div>
 </div>
@@ -381,8 +381,9 @@
   <div class="spinner"></div>
 </div>
 <!-- Telegram Setup Modal (First Login for Staff) -->
-<div id="telegramSetupModal" class="modal">
-  <div class="modal-content" style="max-width:500px;">
+<!-- Telegram Setup Modal -->
+<div id="telegramSetupModal" class="ov">
+  <div class="modal" style="max-width:500px;">
     <h2>📱 Set Up Telegram Notifications</h2>
     <p>To receive shift notifications on your phone:</p>
     
