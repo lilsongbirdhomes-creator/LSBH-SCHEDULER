@@ -260,21 +260,21 @@
   </div>
 </div>
 
-<!-- Change Password Modal -->
-<div id="passwordModal" class="ov">
-  <div class="modal">
-    <h3>🔒 Change Password</h3>
-    <div class="fg">
-      <label>New Password (min 8 characters)</label>
-      <input type="password" id="newPassword" placeholder="Enter new password" class="inp" minlength="8">
+<div id="passwordModal" class="modal">
+  <div class="modal-content">
+    <h3>Change Password</h3>
+    <p>Please set a new password</p>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">New Password</label>
+      <input type="password" id="newPassword" placeholder="At least 8 characters" class="inp" minlength="8">
     </div>
-    <div class="fg">
-      <label>Confirm Password</label>
+    <div style="margin-bottom:12px;">
+      <label style="display:block;margin-bottom:4px;font-size:13px;font-weight:600;">Confirm Password</label>
       <input type="password" id="confirmPassword" placeholder="Re-enter password" class="inp">
     </div>
-    <div class="mbtn-row">
-      <button class="mc" onclick="closePasswordModal()">Cancel</button>
-      <button class="mok" onclick="savePassword()">Save Password</button>
+    <div class="modal-actions">
+      <button onclick="closePasswordModal()">Cancel</button>
+      <button onclick="savePassword()" class="b-pri">Save Password</button>
     </div>
   </div>
 </div>
@@ -381,9 +381,8 @@
   <div class="spinner"></div>
 </div>
 <!-- Telegram Setup Modal (First Login for Staff) -->
-<!-- Telegram Setup Modal -->
-<div id="telegramSetupModal" class="ov">
-  <div class="modal" style="max-width:500px;">
+<div id="telegramSetupModal" class="modal">
+  <div class="modal-content" style="max-width:500px;">
     <h2>📱 Set Up Telegram Notifications</h2>
     <p>To receive shift notifications on your phone:</p>
     
@@ -612,6 +611,11 @@
           <div class="rob-title">Report Absence</div>
           <div class="rob-desc">Cannot make your shift — notifies House Manager, Admin, and current shift staff</div>
         </button>
+        <button class="request-option-btn emerg-btn" onclick="showLateForm()">
+          <div class="rob-icon">⏰</div>
+          <div class="rob-title">Will Be Late</div>
+          <div class="rob-desc">Running late for your shift — notifies current staff, House Manager, and Admin</div>
+        </button>
         <button class="request-option-btn emerg-btn" onclick="showIssueForm()">
           <div class="rob-icon">⚠️</div>
           <div class="rob-title">Report an Issue</div>
@@ -641,6 +645,18 @@
           I am currently on duty and became ill / unable to continue
         </label>
         <div style="font-size:11px;color:#888;margin-top:4px;">Checking this notifies House Manager and Admin only (not other shift staff)</div>
+      </div>
+      <div class="fg" id="lateOptionGroup" style="display:none;">
+        <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+          <input type="checkbox" id="absenceWillBeLate" onchange="toggleLateETA()">
+          I will be late (not absent)
+        </label>
+        <div style="font-size:11px;color:#888;margin-top:4px;">Check this if you're running late but will make your shift</div>
+      </div>
+      <div class="fg" id="etaGroup" style="display:none;">
+        <label>Estimated Arrival Time <span style="color:#dc3545;">*</span></label>
+        <input type="text" id="lateETA" placeholder="e.g., 7:15 AM, 15 minutes, in 20 min" class="inp" style="width:100%;padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;">
+        <div style="font-size:11px;color:#888;margin-top:4px;">Enter your estimated arrival time or how many minutes late you'll be</div>
       </div>
       <div class="mbtn-row">
         <button class="mc" onclick="backToEmergencyTypeSelect()">← Back</button>
