@@ -2418,6 +2418,13 @@ function backToEmergencyTypeSelect() {
   document.getElementById('absenceForm').classList.remove('show');
   document.getElementById('issueForm').classList.remove('show');
   document.getElementById('emergencyTypeSelect').classList.add('show');
+  
+  // Clear form fields
+  document.getElementById('absenceShiftSelect').value = '';
+  document.getElementById('absenceReason').value = '';
+  document.getElementById('absenceOnDutyCheck').checked = false;
+  document.getElementById('issueDetails').value = '';
+  document.getElementById('issueNotifyAdmin').checked = false;
 }
 
 async function submitAbsence() {
