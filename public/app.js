@@ -486,13 +486,17 @@ function renderWeekView() {
   
   // Day headers
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const todayStr = formatDate(new Date());
+  
   for (let i = 0; i < 7; i++) {
     const d = new Date(startDate);
     d.setDate(d.getDate() + i);
+    const dateStr = formatDate(d);
     const isWknd = i === 0 || i === 6;
+    const isToday = dateStr === todayStr;
     
     const hdr = document.createElement('div');
-    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '');
+    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
     hdr.innerHTML = `<span class="dn">${dayNames[i]}</span><span class="dt">${d.getDate()}</span>`;
     grid.appendChild(hdr);
   }
@@ -503,9 +507,10 @@ function renderWeekView() {
     d.setDate(d.getDate() + i);
     const dateStr = formatDate(d);
     const isWknd = i === 0 || i === 6;
+    const isToday = dateStr === todayStr;
     
     const col = document.createElement('div');
-    col.className = 'day-col' + (isWknd ? ' wknd' : '');
+    col.className = 'day-col' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
     
     const dayShifts = allShifts
       .filter(s => s.date === dateStr)
@@ -658,6 +663,9 @@ function renderMonthView() {
   }
   
   root.appendChild(grid);
+  
+  // Auto-scroll to today on mobile
+  setTimeout(() => scrollToTodayOnMobile(), 100);
 }
 
 function createShiftTile(shift, viewType = 'week') {
