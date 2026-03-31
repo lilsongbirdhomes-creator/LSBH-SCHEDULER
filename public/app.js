@@ -2567,26 +2567,34 @@ async function buildContactOptions() {
     }
 
     // Staff directory
-    html += `
-      <div class="contact-card">
-        <div class="contact-label">📋 Staff Directory</div>
-        <div class="contact-dir-list">
-          ${allStaffData.map(s => `
-            <div class="contact-dir-item">
-              <div class="contact-dir-dot" style="background:${s.tile_color||'#eee'}"></div>
-              <div class="contact-dir-info">
-                <div class="contact-dir-name">${s.full_name}</div>
-                <div class="contact-dir-role">${s.job_title}</div>
+    if (allStaffData.length === 0) {
+      html += `
+        <div class="contact-card">
+          <div class="contact-label">📋 Staff Directory</div>
+          <div class="contact-meta" style="color:#aaa;padding:12px;">No staff members found</div>
+        </div>`;
+    } else {
+      html += `
+        <div class="contact-card">
+          <div class="contact-label">📋 Staff Directory</div>
+          <div class="contact-dir-list">
+            ${allStaffData.map(s => `
+              <div class="contact-dir-item">
+                <div class="contact-dir-dot" style="background:${s.tile_color||'#eee'}"></div>
+                <div class="contact-dir-info">
+                  <div class="contact-dir-name">${s.full_name}</div>
+                  <div class="contact-dir-role">${s.job_title}</div>
+                </div>
+                <div class="contact-dir-btns">
+                  ${s.phone ? `<a class="contact-btn-sm phone-btn" href="tel:${s.phone}">📞</a>` : ''}
+                  ${s.telegram_id ? `<button class="contact-btn-sm tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️</button>` : ''}
+                  ${!s.phone && !s.telegram_id ? '<span style="font-size:11px;color:#aaa;">No contact</span>' : ''}
+                </div>
               </div>
-              <div class="contact-dir-btns">
-                ${s.phone ? `<a class="contact-btn-sm phone-btn" href="tel:${s.phone}">📞</a>` : ''}
-                ${s.telegram_id ? `<button class="contact-btn-sm tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️</button>` : ''}
-                ${!s.phone && !s.telegram_id ? '<span style="font-size:11px;color:#aaa;">No contact</span>' : ''}
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>`;
+            `).join('')}
+          </div>
+        </div>`;
+    }
 
     container.innerHTML = html;
   } catch (err) {
