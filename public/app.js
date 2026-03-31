@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 let currentUser = null;
 let viewMode = 'week';
-let viewDate = new Date(); // Start at current date
+let viewDate = new Date('2026-02-16'); // Sunday
 let allStaff = [];
 let allShifts = [];
 let showOnlyMyShifts = false; // Staff can toggle this
@@ -234,8 +234,10 @@ async function addStaff() {
     
     alert(`Staff added!\nUsername: ${username}\nTemp Password: ${result.tempPassword}\n\nThey must change password on first login.`);
     
+    // Clear all form fields
     document.getElementById('newUsername').value = '';
     document.getElementById('newFullName').value = '';
+    document.getElementById('newJobTitle').value = 'caregiver'; // Reset to default
     
     // Await loadStaff to ensure allStaff array is updated
     await loadStaff();
@@ -486,17 +488,13 @@ function renderWeekView() {
   
   // Day headers
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const todayStr = formatDate(new Date());
-  
   for (let i = 0; i < 7; i++) {
     const d = new Date(startDate);
     d.setDate(d.getDate() + i);
-    const dateStr = formatDate(d);
     const isWknd = i === 0 || i === 6;
-    const isToday = dateStr === todayStr;
     
     const hdr = document.createElement('div');
-    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
+    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '');
     hdr.innerHTML = `<span class="dn">${dayNames[i]}</span><span class="dt">${d.getDate()}</span>`;
     grid.appendChild(hdr);
   }
@@ -507,10 +505,9 @@ function renderWeekView() {
     d.setDate(d.getDate() + i);
     const dateStr = formatDate(d);
     const isWknd = i === 0 || i === 6;
-    const isToday = dateStr === todayStr;
     
     const col = document.createElement('div');
-    col.className = 'day-col' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
+    col.className = 'day-col' + (isWknd ? ' wknd' : '');
     
     const dayShifts = allShifts
       .filter(s => s.date === dateStr)
@@ -532,33 +529,6 @@ function renderWeekView() {
   }
   
   root.appendChild(grid);
-  
-  // Auto-scroll to today on mobile
-  setTimeout(() => scrollToTodayOnMobile(), 100);
-}
-
-function scrollToTodayOnMobile() {
-  // Only run on mobile
-  if (window.innerWidth > 768) return;
-  
-  const calScroll = document.querySelector('.cal-scroll');
-  if (!calScroll) return;
-  
-  // Find today's day of week (0 = Sunday, 6 = Saturday)
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  
-  // Each column is 80px wide + 8px gap
-  const columnWidth = 88;
-  
-  // Scroll to show today in the middle of the screen
-  const scrollPosition = (dayOfWeek * columnWidth) - (window.innerWidth / 2) + 40;
-  
-  // Smooth scroll to position
-  calScroll.scrollTo({
-    left: Math.max(0, scrollPosition),
-    behavior: 'smooth'
-  });
 }
 
 function computeMonthHours(shifts) {
@@ -663,9 +633,6 @@ function renderMonthView() {
   }
   
   root.appendChild(grid);
-  
-  // Auto-scroll to today on mobile
-  setTimeout(() => scrollToTodayOnMobile(), 100);
 }
 
 function createShiftTile(shift, viewType = 'week') {
