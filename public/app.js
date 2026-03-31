@@ -768,8 +768,8 @@ function createShiftTile(shift, viewType = 'week') {
 // Admin assign open shift modal
 function showAssignOpenShiftModal(shift) {
   console.log("🔍 Opening assign modal - allStaff:", allStaff.length, "members");
-  console.log("📋 All staff details:", allStaff.map(s => ({id: s.id, name: s.full_name, role: s.role, username: s.username})));
-  const filtered = allStaff.filter(s => s.username !== '_open' && s.username !== 'admin');
+  console.log("📋 All staff details:", allStaff.map(s => ({id: s.id, name: s.full_name, job_title: s.job_title, username: s.username})));
+  const filtered = allStaff.filter(s => s.username !== '_open' && s.job_title !== 'admin');
   console.log("✅ Filtered staff for dropdown:", filtered.length, "members");
   
   const modal = document.createElement('div');
@@ -791,7 +791,7 @@ function showAssignOpenShiftModal(shift) {
     <select id="assignStaffSelect" class="inp">
       <option value="">-- Select Assignment --</option>
       <option value="OPEN">📭 Make Open Shift</option>
-      ${allStaff.filter(s => s.username !== '_open' && s.username !== 'admin').map(s => 
+      ${allStaff.filter(s => s.username !== '_open' && s.job_title !== 'admin').map(s => 
         `<option value="${s.id}">${s.full_name} (${s.job_title})</option>`
       ).join('')}
     </select>
@@ -928,7 +928,7 @@ function showReassignModal(shift) {
     <select id="reassignSelect" class="inp">
       <option value="">-- Select Staff --</option>
       <option value="OPEN">Make Open Shift</option>
-      ${allStaff.filter(s => s.role === 'staff').map(s => 
+      ${allStaff.filter(s => s.username !== '_open' && s.job_title !== 'admin').map(s => 
         `<option value="${s.id}" ${s.id === shift.assigned_to ? 'selected' : ''}>${s.full_name}</option>`
       ).join('')}
     </select>
@@ -1476,7 +1476,7 @@ function switchGenTab(tabName) {
 }
 
 function populateStaffDropdowns() {
-  const activeStaff = allStaff.filter(s => s.role === 'staff' && s.username !== '_open');
+  const activeStaff = allStaff.filter(s => s.username !== '_open' && s.job_title !== 'admin');
   
   // Specific staff dropdown
   const specificSelect = document.getElementById('genSpecificStaff');
@@ -2502,7 +2502,7 @@ async function buildContactOptions() {
     // Get next shift after right now
     const now = new Date();
     const todayStr = formatDate(now);
-    const allStaffData = allStaff.filter(s => s.role === 'staff' && s.username !== '_open');
+    const allStaffData = allStaff.filter(s => s.username !== '_open' && s.job_title !== 'admin');
 
     // Find next shift on the calendar (shift starting after now)
     const shiftOrder = { morning: 1, afternoon: 2, overnight: 3 };
