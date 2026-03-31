@@ -2601,7 +2601,7 @@ async function buildContactOptions() {
           <div class="contact-meta">${def.icon} ${def.label} · ${dateLabel}</div>
           <div class="contact-actions">
             ${nextStaff.phone ? `<a class="contact-btn phone-btn" href="tel:${nextStaff.phone}">📞 Call ${nextStaff.phone}</a>` : '<span class="contact-no-info">No phone on file</span>'}
-            ${nextStaff.telegram_id ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${nextStaff.id}, '${(nextStaff.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
+            ${nextStaff.telegram_id ? `<button class="contact-btn tg-btn" onclick="openTelegramChat('${nextStaff.telegram_id}', '${(nextStaff.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Chat</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
           </div>
         </div>`;
     } else {
@@ -2616,7 +2616,7 @@ async function buildContactOptions() {
           <div class="contact-name">${houseManager.full_name}</div>
           <div class="contact-actions">
             ${houseManager.phone ? `<a class="contact-btn phone-btn" href="tel:${houseManager.phone}">📞 Call ${houseManager.phone}</a>` : '<span class="contact-no-info">No phone on file</span>'}
-            ${houseManager.telegram_id ? `<button class="contact-btn tg-btn" onclick="sendTelegramContact(${houseManager.id}, '${(houseManager.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Message</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
+            ${houseManager.telegram_id ? `<button class="contact-btn tg-btn" onclick="openTelegramChat('${houseManager.telegram_id}', '${(houseManager.full_name||'').replace(/'/g,"\\'")}')">✈️ Telegram Chat</button>` : '<span class="contact-no-info">Not on Telegram</span>'}
           </div>
         </div>`;
     }
@@ -2642,7 +2642,7 @@ async function buildContactOptions() {
                 </div>
                 <div class="contact-dir-btns">
                   ${s.phone ? `<a class="contact-btn-sm phone-btn" href="tel:${s.phone}">📞</a>` : ''}
-                  ${s.telegram_id ? `<button class="contact-btn-sm tg-btn" onclick="sendTelegramContact(${s.id}, '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️</button>` : ''}
+                  ${s.telegram_id ? `<button class="contact-btn-sm tg-btn" onclick="openTelegramChat('${s.telegram_id}', '${(s.full_name||'').replace(/'/g,"\\'")}')">✈️</button>` : ''}
                   ${!s.phone && !s.telegram_id ? '<span style="font-size:11px;color:#aaa;">No contact</span>' : ''}
                 </div>
               </div>
@@ -2657,18 +2657,24 @@ async function buildContactOptions() {
   }
 }
 
-async function sendTelegramContact(staffId, staffName) {
-  const msgInput = prompt(`Message to send to ${staffName} via Telegram:`);
-  if (!msgInput || !msgInput.trim()) return;
-  try {
-    await apiCall('/contact-telegram', {
-      method: 'POST',
-      body: JSON.stringify({ targetStaffId: staffId, message: msgInput.trim() })
-    });
-    showSuccess(`Message sent to ${staffName} via Telegram!`);
-  } catch (err) {
-    showWarning('Failed to send: ' + err.message);
-  }
+function openTelegramChat(telegramId, staffName) {
+  // Open Telegram directly to chat with user by their numeric ID
+  // tg://user?id=XXXXX format works on mobile
+  // https://t.me/+XXXXX format works on web/desktop
+  const mobileUrl = `tg://user?id=${telegramId}`;
+  
+  // Try to open the Telegram app
+  window.location.href = mobileUrl;
+  
+  // Show helpful message
+  setTimeout(() => {
+    const msg = `Opening Telegram chat with ${staffName}...\n\n` +
+                `If Telegram doesn't open:\n` +
+                `• Make sure Telegram app is installed\n` +
+                `• You can search for them in Telegram\n` +
+                `• Their Telegram ID: ${telegramId}`;
+    console.log(msg);
+  }, 500);
 }
 
 // ── SETTINGS ──────────────────────────────────────────────
