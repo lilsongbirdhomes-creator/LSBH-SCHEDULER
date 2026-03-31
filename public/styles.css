@@ -664,21 +664,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   }
   
   /* Month View Scroll - Force Fixed Width */
+  #calendarRoot .month-grid,
+  #calendarRootStaff .month-grid,
   .month-grid {
     min-width: 560px !important;
     width: 560px !important;
     grid-template-columns: repeat(7, 80px) !important;
+    display: grid !important;
   }
   
   .month-day-hdr {
     min-width: 80px !important;
     width: 80px !important;
+    box-sizing: border-box;
   }
   
   .month-day-cell {
     min-width: 80px !important;
     width: 80px !important;
     min-height: 100px;
+    box-sizing: border-box;
+  }
+  
+  .month-day-cell.empty {
+    min-width: 80px !important;
+    width: 80px !important;
   }
 }
 
