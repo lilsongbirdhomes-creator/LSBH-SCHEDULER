@@ -2407,19 +2407,14 @@ function showAbsenceForm() {
         { weekday: 'short', month: 'short', day: 'numeric' }) + ' — ' + def.label;
       shiftSel.innerHTML += `<option value="${s.id}">${label}</option>`;
     });
-  
-  // Show late option
-  document.getElementById('lateOptionGroup').style.display = 'block';
-  document.getElementById('etaGroup').style.display = 'none';
-  document.getElementById('absenceWillBeLate').checked = false;
 }
 
 function showLateForm() {
   document.getElementById('emergencyTypeSelect').classList.remove('show');
-  document.getElementById('absenceForm').classList.add('show');
+  document.getElementById('lateForm').classList.add('show');
 
   // Populate shift selector - only today's shifts
-  const shiftSel = document.getElementById('absenceShiftSelect');
+  const shiftSel = document.getElementById('lateShiftSelect');
   shiftSel.innerHTML = '<option value="">-- Select your shift --</option>';
   const now = new Date();
   const todayStr = formatDate(now);
@@ -2427,17 +2422,9 @@ function showLateForm() {
     .filter(s => s.assigned_to === currentUser.id && s.date === todayStr)
     .forEach(s => {
       const def = SHIFT_DEFS[s.shift_type];
-      const label = def.label;
+      const label = def.label + ' (' + def.time + ')';
       shiftSel.innerHTML += `<option value="${s.id}">${label}</option>`;
     });
-  
-  // Pre-check "will be late" and show ETA
-  document.getElementById('lateOptionGroup').style.display = 'block';
-  document.getElementById('absenceWillBeLate').checked = true;
-  document.getElementById('etaGroup').style.display = 'block';
-  
-  // Update submit button text
-  document.getElementById('submitAbsenceBtn').textContent = 'Report Late Arrival';
 }
 
 function showIssueForm() {
@@ -2447,40 +2434,34 @@ function showIssueForm() {
 
 function backToEmergencyTypeSelect() {
   document.getElementById('absenceForm').classList.remove('show');
+  document.getElementById('lateForm').classList.remove('show');
   document.getElementById('issueForm').classList.remove('show');
   document.getElementById('emergencyTypeSelect').classList.add('show');
   
-  // Clear form fields
+  // Clear absence form fields
   document.getElementById('absenceShiftSelect').value = '';
   document.getElementById('absenceReason').value = '';
   document.getElementById('absenceOnDutyCheck').checked = false;
-  document.getElementById('absenceWillBeLate').checked = false;
-  document.getElementById('lateETA').value = '';
-  document.getElementById('etaGroup').style.display = 'none';
-  document.getElementById('submitAbsenceBtn').textContent = 'Submit Report';
+  
+  // Clear late form fields
+  document.getElementById('lateShiftSelect').value = '';
+  const lateRadios = document.getElementsByName('lateMinutes');
+  lateRadios.forEach(radio => radio.checked = false);
+  
+  // Clear issue form fields
   document.getElementById('issueDetails').value = '';
   document.getElementById('issueNotifyAdmin').checked = false;
 }
 
-// Toggle ETA field based on "will be late" checkbox
-function toggleLateETA() {
-  const isLate = document.getElementById('absenceWillBeLate').checked;
-  document.getElementById('etaGroup').style.display = isLate ? 'block' : 'none';
-  if (!isLate) {
-    document.getElementById('lateETA').value = '';
-  }
-}
+// Remove toggleLateETA function - no longer needed
 
 async function submitAbsence() {
   const shiftId = document.getElementById('absenceShiftSelect').value;
   const reason = document.getElementById('absenceReason').value.trim();
   const reportedWhileOnDuty = document.getElementById('absenceOnDutyCheck').checked;
-  const willBeLate = document.getElementById('absenceWillBeLate') ? document.getElementById('absenceWillBeLate').checked : false;
-  const eta = document.getElementById('lateETA') ? document.getElementById('lateETA').value.trim() : '';
 
   if (!shiftId) { showWarning('Please select which shift you cannot make.'); return; }
   if (!reason) { showWarning('Please describe the reason.'); return; }
-  if (willBeLate && !eta) { showWarning('Please provide your estimated arrival time.'); return; }
 
   const btn = document.getElementById('submitAbsenceBtn');
   btn.disabled = true; btn.textContent = 'Submitting…';
@@ -2491,8 +2472,7 @@ async function submitAbsence() {
         shiftId, 
         reason, 
         reportedWhileOnDuty,
-        willBeLate,
-        eta: willBeLate ? eta : null
+        willBeLate: false
       })
     });
     closeEmergencyDialog();
@@ -2500,13 +2480,49 @@ async function submitAbsence() {
     document.getElementById('emergencyTypeSelect').classList.add('show');
     document.getElementById('absenceReason').value = '';
     document.getElementById('absenceOnDutyCheck').checked = false;
-    if (document.getElementById('absenceWillBeLate')) document.getElementById('absenceWillBeLate').checked = false;
-    if (document.getElementById('lateETA')) document.getElementById('lateETA').value = '';
-    showSuccess(willBeLate ? 'Late arrival reported. Team has been notified.' : 'Absence reported. House Manager and Admin have been notified.');
+    showSuccess('Absence reported. House Manager and Admin have been notified.');
   } catch (err) {
     showWarning('Error: ' + err.message);
   } finally {
     btn.disabled = false; btn.textContent = 'Submit Report';
+  }
+}
+
+async function submitLate() {
+  const shiftId = document.getElementById('lateShiftSelect').value;
+  const lateRadios = document.getElementsByName('lateMinutes');
+  let minutesLate = null;
+  for (const radio of lateRadios) {
+    if (radio.checked) {
+      minutesLate = radio.value;
+      break;
+    }
+  }
+
+  if (!shiftId) { showWarning('Please select which shift you are running late for.'); return; }
+  if (!minutesLate) { showWarning('Please select how many minutes late you will be.'); return; }
+
+  const btn = document.getElementById('submitLateBtn');
+  btn.disabled = true; btn.textContent = 'Submitting…';
+  try {
+    await apiCall('/absences/late', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        shiftId, 
+        minutesLate: parseInt(minutesLate)
+      })
+    });
+    closeEmergencyDialog();
+    document.getElementById('lateForm').classList.remove('show');
+    document.getElementById('emergencyTypeSelect').classList.add('show');
+    document.getElementById('lateShiftSelect').value = '';
+    const radios = document.getElementsByName('lateMinutes');
+    radios.forEach(r => r.checked = false);
+    showSuccess('Late arrival reported. Team has been notified of your ETA.');
+  } catch (err) {
+    showWarning('Error: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Report Late Arrival';
   }
 }
 
