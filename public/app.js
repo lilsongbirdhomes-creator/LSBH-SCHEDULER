@@ -1632,28 +1632,24 @@ function updateGeneratorPreview() {
     return;
   }
   
-  // Count selected days
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const selectedDays = days.filter((_, i) => document.getElementById('day' + days[i]).checked);
-  
   // Count selected shift types
   const shiftTypes = [];
   if (document.getElementById('shiftMorning').checked) shiftTypes.push('Morning');
   if (document.getElementById('shiftAfternoon').checked) shiftTypes.push('Afternoon');
   if (document.getElementById('shiftOvernight').checked) shiftTypes.push('Overnight');
   
-  // Calculate days in range
+  // Calculate days in range - will generate shifts for ALL days in range
   const dayCount = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
   const pattern = document.getElementById('genPattern').value;
   
-  const estimatedShifts = selectedDays.length * shiftTypes.length * Math.ceil(dayCount / 7);
+  const estimatedShifts = dayCount * shiftTypes.length;
   
   let patternText = pattern === 'open' ? 'as open shifts' : 
                    pattern === 'specific' ? 'assigned to selected staff' : 
                    'rotating through staff';
   
   document.getElementById('genPreviewText').textContent = 
-    `Will create ~${estimatedShifts} shifts (${selectedDays.length} days/week × ${shiftTypes.length} shift types × ${Math.ceil(dayCount/7)} weeks) ${patternText}`;
+    `Will create ~${estimatedShifts} shifts (${dayCount} days × ${shiftTypes.length} shift types) ${patternText}`;
 }
 
 async function generateShifts() {
@@ -1673,12 +1669,6 @@ async function generateShifts() {
   const endDate = new Date(endYear, endMonth - 1, endDay);
   
   const pattern = document.getElementById('genPattern').value;
-  
-  // Get selected days
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const selectedDays = days.map((day, i) => 
-    document.getElementById('day' + day).checked ? i : -1
-  ).filter(i => i !== -1);
   
   // Get selected shift types
   const shiftTypes = [];
@@ -1722,11 +1712,6 @@ async function generateShifts() {
     
     // Generate shifts for each day in range
     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      
-      // Skip if this day not selected
-      if (!selectedDays.includes(dayOfWeek)) continue;
-      
       const dateStr = formatDate(d);
       
       // Create each shift type for this day
@@ -1798,10 +1783,10 @@ async function copyShifts() {
     
     const keepAssignments = document.getElementById('copyKeepAssignments').checked;
     
-    // skipExisting checkbox doesn't exist in HTML, default to false
-    const skipExisting = false;
+    // Use the checkbox from HTML
+    const replaceExisting = document.getElementById('copyReplaceExisting').checked;
     
-    console.log('📋 Copy parameters:', { copyFrom, sourceDate, targetDate, keepAssignments, skipExisting });
+    console.log('📋 Copy parameters:', { copyFrom, sourceDate, targetDate, keepAssignments, replaceExisting });
     console.log('📅 Source input:', sourceInput, '→ parsed:', sourceDate.toLocaleDateString());
     console.log('📅 Target input:', targetInput, '→ parsed:', targetDate.toLocaleDateString());
     
@@ -1837,7 +1822,7 @@ async function copyShifts() {
       targetDate: formatDate(targetDate),
       copyType: copyFrom,
       keepAssignments,
-      skipExisting
+      replaceExisting
     };
     
     console.log('📤 Sending to backend:', payload);
