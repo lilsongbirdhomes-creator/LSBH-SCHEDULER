@@ -1706,31 +1706,46 @@ async function copyShifts() {
       return;
     }
     
-    if (!confirm(`Copy shifts from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}?`)) {
+    // Determine direction for user info
+    const isPastToFuture = sourceDate < targetDate;
+    const direction = isPastToFuture ? 'forward' : 'backward';
+    console.log(`📅 Copy direction: ${direction} (source: ${sourceDate.toLocaleDateString()}, target: ${targetDate.toLocaleDateString()})`);
+    
+    if (!confirm(`Copy shifts from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}?\n\nThis will ${isPastToFuture ? 'copy past shifts to a future date' : 'copy future/current shifts to a past date'}.`)) {
       return;
     }
     
     showLoading();
     
+    const payload = {
+      sourceDate: formatDate(sourceDate),
+      targetDate: formatDate(targetDate),
+      copyType: copyFrom,
+      keepAssignments,
+      skipExisting
+    };
+    
+    console.log('📤 Sending to backend:', payload);
+    
     const result = await apiCall('/shifts/copy', {
       method: 'POST',
-      body: JSON.stringify({
-        sourceDate: formatDate(sourceDate),
-        targetDate: formatDate(targetDate),
-        copyType: copyFrom,
-        keepAssignments,
-        skipExisting
-      })
+      body: JSON.stringify(payload)
     });
     
     console.log('✅ Copy result:', result);
     closeShiftGenerator();
-    showSuccess(`${result.copied} shifts copied successfully!`);
+    
+    if (result.copied === 0) {
+      showWarning(`No shifts were copied. Make sure there are shifts on ${sourceDate.toLocaleDateString()} to copy.`);
+    } else {
+      showSuccess(`${result.copied} shift${result.copied > 1 ? 's' : ''} copied successfully from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}!`);
+    }
+    
     loadShifts();
     
   } catch (err) {
     console.error('❌ Copy shifts error:', err);
-    alert('Error: ' + err.message);
+    alert('Error copying shifts: ' + err.message + '\n\nCheck the browser console for details.');
   } finally {
     hideLoading();
   }
