@@ -800,3 +800,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   color: white;
   font-weight: 600;
 }
+
+/* Other-month days in month view (prev/next month) */
+.month-day-cell.other-month {
+  opacity: 0.5;
+}
+
+.month-day-cell.other-month .month-day-num {
+  color: #adb5bd;
+}
