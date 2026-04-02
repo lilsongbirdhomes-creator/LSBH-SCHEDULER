@@ -617,28 +617,35 @@ function renderMonthView() {
   const startDay = firstDay.getDay();
   
   // Get last day of month
-  const lastDay = new Date(year, month + 1, 0).getDate();
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const lastDay = new Date(year, month, lastDayOfMonth);
+  const endDay = lastDay.getDay();
   
-  // Add empty cells for days before month starts
-  for (let i = 0; i < startDay; i++) {
-    const emptyCell = document.createElement('div');
-    emptyCell.className = 'month-day-cell empty';
-    grid.appendChild(emptyCell);
-  }
+  // Calculate start date (beginning of first week - may be in previous month)
+  const startDate = new Date(year, month, 1 - startDay);
   
-  // Add cells for each day of month
-  for (let day = 1; day <= lastDay; day++) {
-    const d = new Date(year, month, day);
+  // Calculate end date (end of last week - may be in next month)
+  const daysToAdd = endDay === 6 ? 0 : (6 - endDay);
+  const endDate = new Date(year, month, lastDayOfMonth + daysToAdd);
+  
+  // Render all days from start to end (including prev/next month days)
+  const currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    const d = new Date(currentDate);
     const dateStr = formatDate(d);
     const isToday = dateStr === formatDate(new Date());
     const isWknd = d.getDay() === 0 || d.getDay() === 6;
+    const isCurrentMonth = d.getMonth() === month;
     
     const cell = document.createElement('div');
-    cell.className = 'month-day-cell' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
+    cell.className = 'month-day-cell' + 
+      (isWknd ? ' wknd' : '') + 
+      (isToday ? ' today' : '') +
+      (!isCurrentMonth ? ' other-month' : '');
     
     const dayNum = document.createElement('div');
     dayNum.className = 'month-day-num';
-    dayNum.textContent = day;
+    dayNum.textContent = d.getDate();
     cell.appendChild(dayNum);
     
     const shiftsContainer = document.createElement('div');
@@ -662,6 +669,9 @@ function renderMonthView() {
     
     cell.appendChild(shiftsContainer);
     grid.appendChild(cell);
+    
+    // Move to next day
+    currentDate.setDate(currentDate.getDate() + 1);
   }
   
   root.appendChild(grid);
