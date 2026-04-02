@@ -941,7 +941,7 @@ function showReassignModal(shift) {
   content.className = 'modal-content';
   content.innerHTML = `
     <h3>Reassign Shift</h3>
-    <p><strong>Date:</strong> ${new Date(shift.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
+    <p><strong>Date:</strong> ${new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</p>
     <p><strong>Type:</strong> ${def.icon} ${shift.shift_type.charAt(0).toUpperCase() + shift.shift_type.slice(1)} (${def.time})</p>
     <p><strong>Currently:</strong> ${currentStaff?.full_name || 'Unknown'}</p>
     <hr>
@@ -955,6 +955,7 @@ function showReassignModal(shift) {
     </select>
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-del" onclick="deleteShift(${shift.id})" style="background:#dc3545;margin-right:auto;">Delete Shift</button>
       <button class="b-pri" onclick="saveReassignment(${shift.id})">Save</button>
     </div>
   `;
@@ -988,6 +989,56 @@ async function saveReassignment(shiftId) {
     const newStaffId = isOpen ? null : parseInt(newAssignee);
     
     if (isOpen) {
+      await apiCall(`/shifts/${shiftId}/make-open`, { method: 'POST' });
+    } else {
+      await apiCall(`/shifts/${shiftId}/assign`, {
+        method: 'POST',
+        body: JSON.stringify({ staffId: newStaffId })
+      });
+    }
+    
+    document.querySelector('.modal-overlay').remove();
+    showSuccess('Shift reassigned!');
+    
+    // Restore view mode and reload
+    viewMode = savedViewMode;
+    await loadShifts();
+    
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+async function deleteShift(shiftId) {
+  const shift = allShifts.find(s => s.id === shiftId);
+  if (!shift) {
+    alert('Shift not found');
+    return;
+  }
+  
+  const def = SHIFT_DEFS[shift.shift_type];
+  const dateStr = new Date(shift.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  
+  if (!confirm(`Delete this shift?\n\n${dateStr} - ${def.label} (${def.time})\n\nThis cannot be undone.`)) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    await apiCall(`/shifts/${shiftId}`, { method: 'DELETE' });
+    
+    document.querySelector('.modal-overlay').remove();
+    showSuccess('Shift deleted!');
+    await loadShifts();
+    
+  } catch (err) {
+    alert('Error deleting shift: ' + err.message);
+  } finally {
+    hideLoading();
+  }
+}
       // Make it an open shift
       await apiCall(`/shifts/${shiftId}`, {
         method: 'PUT',
@@ -1606,8 +1657,21 @@ function updateGeneratorPreview() {
 }
 
 async function generateShifts() {
-  const startDate = new Date(document.getElementById('genStartDate').value);
-  const endDate = new Date(document.getElementById('genEndDate').value);
+  // Fix: Parse dates in local timezone
+  const startInput = document.getElementById('genStartDate').value;
+  const endInput = document.getElementById('genEndDate').value;
+  
+  if (!startInput || !endInput) {
+    alert('Please select both start and end dates');
+    return;
+  }
+  
+  const [startYear, startMonth, startDay] = startInput.split('-').map(Number);
+  const [endYear, endMonth, endDay] = endInput.split('-').map(Number);
+  
+  const startDate = new Date(startYear, startMonth - 1, startDay);
+  const endDate = new Date(endYear, endMonth - 1, endDay);
+  
   const pattern = document.getElementById('genPattern').value;
   
   // Get selected days
