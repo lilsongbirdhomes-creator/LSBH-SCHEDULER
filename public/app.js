@@ -429,9 +429,20 @@ async function loadShifts() {
   
   if (viewMode === 'month') {
     // Get first day of month
-    startDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const startDay = firstDay.getDay(); // 0 = Sunday
+    
     // Get last day of month
-    endDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    const lastDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+    const lastDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), lastDayOfMonth);
+    const endDay = lastDay.getDay();
+    
+    // Start from beginning of first week (may be in previous month)
+    startDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1 - startDay);
+    
+    // End at end of last week (may be in next month)
+    const daysToAdd = endDay === 6 ? 0 : (6 - endDay);
+    endDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), lastDayOfMonth + daysToAdd);
   } else {
     // Week view
     startDate = getWeekStart(viewDate);
@@ -1693,6 +1704,9 @@ async function generateShifts() {
 
 async function copyShifts() {
   console.log('🔍 copyShifts function called');
+  console.log('📊 Total shifts loaded in allShifts:', allShifts.length);
+  console.log('📅 Current viewMode:', viewMode);
+  console.log('📅 Current viewDate:', viewDate);
   
   try {
     const copyFromEl = document.querySelector('input[name="copyFrom"]:checked');
@@ -1726,6 +1740,17 @@ async function copyShifts() {
     console.log('📋 Copy parameters:', { copyFrom, sourceDate, targetDate, keepAssignments, skipExisting });
     console.log('📅 Source input:', sourceInput, '→ parsed:', sourceDate.toLocaleDateString());
     console.log('📅 Target input:', targetInput, '→ parsed:', targetDate.toLocaleDateString());
+    
+    // Show what shifts exist on source date
+    const sourceShifts = allShifts.filter(s => s.date === formatDate(sourceDate));
+    console.log(`📊 Shifts on source date (${formatDate(sourceDate)}):`, sourceShifts.length);
+    if (sourceShifts.length > 0) {
+      console.log('   Shifts:', sourceShifts.map(s => `${s.shift_type} (ID: ${s.id})`));
+    } else {
+      console.warn('⚠️ WARNING: No shifts found on source date in currently loaded shifts!');
+      console.log('   This might be because the source date is outside the currently loaded range.');
+      console.log('   The backend will still attempt to copy if shifts exist in the database.');
+    }
     
     if (isNaN(sourceDate) || isNaN(targetDate)) {
       alert('Invalid date selection');
