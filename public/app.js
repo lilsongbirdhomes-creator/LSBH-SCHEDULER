@@ -1692,24 +1692,40 @@ async function copyShifts() {
     }
     const copyFrom = copyFromEl.value;
     
-    const sourceDate = new Date(document.getElementById('copySourceDate').value);
-    const targetDate = new Date(document.getElementById('copyTargetDate').value);
+    // Fix: Parse dates in local timezone to avoid off-by-one errors
+    const sourceInput = document.getElementById('copySourceDate').value;
+    const targetInput = document.getElementById('copyTargetDate').value;
+    
+    if (!sourceInput || !targetInput) {
+      alert('Please select both source and target dates');
+      return;
+    }
+    
+    // Parse as local date (YYYY-MM-DD) to avoid timezone shifts
+    const [sourceYear, sourceMonth, sourceDay] = sourceInput.split('-').map(Number);
+    const [targetYear, targetMonth, targetDay] = targetInput.split('-').map(Number);
+    
+    const sourceDate = new Date(sourceYear, sourceMonth - 1, sourceDay);
+    const targetDate = new Date(targetYear, targetMonth - 1, targetDay);
+    
     const keepAssignments = document.getElementById('copyKeepAssignments').checked;
     
     // skipExisting checkbox doesn't exist in HTML, default to false
     const skipExisting = false;
     
     console.log('📋 Copy parameters:', { copyFrom, sourceDate, targetDate, keepAssignments, skipExisting });
+    console.log('📅 Source input:', sourceInput, '→ parsed:', sourceDate.toLocaleDateString());
+    console.log('📅 Target input:', targetInput, '→ parsed:', targetDate.toLocaleDateString());
     
     if (isNaN(sourceDate) || isNaN(targetDate)) {
-      alert('Please select both source and target dates');
+      alert('Invalid date selection');
       return;
     }
     
     // Determine direction for user info
     const isPastToFuture = sourceDate < targetDate;
     const direction = isPastToFuture ? 'forward' : 'backward';
-    console.log(`📅 Copy direction: ${direction} (source: ${sourceDate.toLocaleDateString()}, target: ${targetDate.toLocaleDateString()})`);
+    console.log(`📅 Copy direction: ${direction}`);
     
     if (!confirm(`Copy shifts from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}?\n\nThis will ${isPastToFuture ? 'copy past shifts to a future date' : 'copy future/current shifts to a past date'}.`)) {
       return;
