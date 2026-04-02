@@ -1682,22 +1682,32 @@ async function generateShifts() {
 }
 
 async function copyShifts() {
-  const copyFrom = document.querySelector('input[name="copyFrom"]:checked').value;
-  const sourceDate = new Date(document.getElementById('copySourceDate').value);
-  const targetDate = new Date(document.getElementById('copyTargetDate').value);
-  const keepAssignments = document.getElementById('copyKeepAssignments').checked;
-  const skipExisting = document.getElementById('copySkipExisting').checked;
-  
-  if (isNaN(sourceDate) || isNaN(targetDate)) {
-    alert('Please select both source and target dates');
-    return;
-  }
-  
-  if (!confirm(`Copy shifts from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}?`)) {
-    return;
-  }
+  console.log('🔍 copyShifts function called');
   
   try {
+    const copyFromEl = document.querySelector('input[name="copyFrom"]:checked');
+    if (!copyFromEl) {
+      alert('Please select copy type (Single Day/Full Week/Full Month)');
+      return;
+    }
+    const copyFrom = copyFromEl.value;
+    
+    const sourceDate = new Date(document.getElementById('copySourceDate').value);
+    const targetDate = new Date(document.getElementById('copyTargetDate').value);
+    const keepAssignments = document.getElementById('copyKeepAssignments').checked;
+    const skipExisting = document.getElementById('copySkipExisting').checked;
+    
+    console.log('📋 Copy parameters:', { copyFrom, sourceDate, targetDate, keepAssignments, skipExisting });
+    
+    if (isNaN(sourceDate) || isNaN(targetDate)) {
+      alert('Please select both source and target dates');
+      return;
+    }
+    
+    if (!confirm(`Copy shifts from ${sourceDate.toLocaleDateString()} to ${targetDate.toLocaleDateString()}?`)) {
+      return;
+    }
+    
     showLoading();
     
     const result = await apiCall('/shifts/copy', {
@@ -1711,11 +1721,13 @@ async function copyShifts() {
       })
     });
     
+    console.log('✅ Copy result:', result);
     closeShiftGenerator();
     showSuccess(`${result.copied} shifts copied successfully!`);
     loadShifts();
     
   } catch (err) {
+    console.error('❌ Copy shifts error:', err);
     alert('Error: ' + err.message);
   } finally {
     hideLoading();
