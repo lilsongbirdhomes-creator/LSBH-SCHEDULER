@@ -1695,7 +1695,9 @@ async function copyShifts() {
     const sourceDate = new Date(document.getElementById('copySourceDate').value);
     const targetDate = new Date(document.getElementById('copyTargetDate').value);
     const keepAssignments = document.getElementById('copyKeepAssignments').checked;
-    const skipExisting = document.getElementById('copySkipExisting').checked;
+    
+    // skipExisting checkbox doesn't exist in HTML, default to false
+    const skipExisting = false;
     
     console.log('📋 Copy parameters:', { copyFrom, sourceDate, targetDate, keepAssignments, skipExisting });
     
