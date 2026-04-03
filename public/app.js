@@ -1525,33 +1525,37 @@ function switchGenTab(tabName) {
 function populateStaffDropdowns() {
   const activeStaff = allStaff.filter(s => s.username !== '_open' && s.job_title !== 'admin');
   
-  // Specific staff dropdown
+  // Specific staff dropdown - check if element exists
   const specificSelect = document.getElementById('genSpecificStaff');
-  specificSelect.innerHTML = '<option value="">-- Select Staff --</option>';
-  activeStaff.forEach(s => {
-    specificSelect.innerHTML += `<option value="${s.id}">${s.full_name}</option>`;
-  });
+  if (specificSelect) {
+    specificSelect.innerHTML = '<option value="">-- Select Staff --</option>';
+    activeStaff.forEach(s => {
+      specificSelect.innerHTML += `<option value="${s.id}">${s.full_name}</option>`;
+    });
+  }
   
-  // Rotation list
+  // Rotation list - check if element exists
   const rotationList = document.getElementById('rotationList');
-  rotationList.innerHTML = '';
-  activeStaff.forEach(s => {
-    const item = document.createElement('div');
-    item.className = 'rotation-item';
-    item.draggable = true;
-    item.dataset.staffId = s.id;
-    item.innerHTML = `
-      <span class="drag-handle">⋮⋮</span>
-      <label>
-        <input type="checkbox" checked data-staff-id="${s.id}">
-        ${s.full_name}
-      </label>
-    `;
-    rotationList.appendChild(item);
-  });
-  
-  // Add drag and drop handlers
-  setupRotationDragDrop();
+  if (rotationList) {
+    rotationList.innerHTML = '';
+    activeStaff.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'rotation-item';
+      item.draggable = true;
+      item.dataset.staffId = s.id;
+      item.innerHTML = `
+        <span class="drag-handle">⋮⋮</span>
+        <label>
+          <input type="checkbox" checked data-staff-id="${s.id}">
+          ${s.full_name}
+        </label>
+      `;
+      rotationList.appendChild(item);
+    });
+    
+    // Add drag and drop handlers
+    setupRotationDragDrop();
+  }
 }
 
 function setupRotationDragDrop() {
@@ -1831,17 +1835,46 @@ async function loadTemplates() {
   try {
     const templates = await apiCall('/shift-templates');
     
-    document.getElementById('tmplMorningLabel').value = templates.morning?.label || 'Morning';
-    document.getElementById('tmplMorningTime').value = templates.morning?.time || '7:00 AM – 3:00 PM';
-    document.getElementById('tmplMorningHours').value = templates.morning?.hours || '8.0';
+    // Check if template elements exist before trying to set their values
+    const elements = {
+      'tmplMorningLabel': 'tmplMorningLabel',
+      'tmplMorningTime': 'tmplMorningTime',
+      'tmplMorningHours': 'tmplMorningHours',
+      'tmplAfternoonLabel': 'tmplAfternoonLabel',
+      'tmplAfternoonTime': 'tmplAfternoonTime',
+      'tmplAfternoonHours': 'tmplAfternoonHours',
+      'tmplOvernightLabel': 'tmplOvernightLabel',
+      'tmplOvernightTime': 'tmplOvernightTime',
+      'tmplOvernightHours': 'tmplOvernightHours'
+    };
     
-    document.getElementById('tmplAfternoonLabel').value = templates.afternoon?.label || 'Afternoon';
-    document.getElementById('tmplAfternoonTime').value = templates.afternoon?.time || '3:00 PM – 7:00 PM';
-    document.getElementById('tmplAfternoonHours').value = templates.afternoon?.hours || '4.0';
+    // Only set values if the elements exist
+    const morningLabel = document.getElementById('tmplMorningLabel');
+    if (morningLabel) morningLabel.value = templates.morning?.label || 'Morning';
     
-    document.getElementById('tmplOvernightLabel').value = templates.overnight?.label || 'Overnight';
-    document.getElementById('tmplOvernightTime').value = templates.overnight?.time || '7:00 PM – 7:00 AM';
-    document.getElementById('tmplOvernightHours').value = templates.overnight?.hours || '12.0';
+    const morningTime = document.getElementById('tmplMorningTime');
+    if (morningTime) morningTime.value = templates.morning?.time || '7:00 AM – 3:00 PM';
+    
+    const morningHours = document.getElementById('tmplMorningHours');
+    if (morningHours) morningHours.value = templates.morning?.hours || '8.0';
+    
+    const afternoonLabel = document.getElementById('tmplAfternoonLabel');
+    if (afternoonLabel) afternoonLabel.value = templates.afternoon?.label || 'Afternoon';
+    
+    const afternoonTime = document.getElementById('tmplAfternoonTime');
+    if (afternoonTime) afternoonTime.value = templates.afternoon?.time || '3:00 PM – 7:00 PM';
+    
+    const afternoonHours = document.getElementById('tmplAfternoonHours');
+    if (afternoonHours) afternoonHours.value = templates.afternoon?.hours || '4.0';
+    
+    const overnightLabel = document.getElementById('tmplOvernightLabel');
+    if (overnightLabel) overnightLabel.value = templates.overnight?.label || 'Overnight';
+    
+    const overnightTime = document.getElementById('tmplOvernightTime');
+    if (overnightTime) overnightTime.value = templates.overnight?.time || '7:00 PM – 7:00 AM';
+    
+    const overnightHours = document.getElementById('tmplOvernightHours');
+    if (overnightHours) overnightHours.value = templates.overnight?.hours || '12.0';
     
     // Update SHIFT_DEFS with loaded values
     if (templates.morning) {
@@ -1861,7 +1894,7 @@ async function loadTemplates() {
     }
   } catch (err) {
     console.error('Load templates error:', err);
-    // Use defaults if loading fails
+    // Use defaults if loading fails - this is ok
   }
 }
 
