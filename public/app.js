@@ -998,7 +998,10 @@ async function saveReassignment(shiftId) {
       })
     });
     
-    document.querySelector('.modal-overlay').remove();
+    // Close ONLY the reassign modal (not the first modal on page)
+    const modal = select.closest('.modal-overlay');
+    if (modal) modal.remove();
+    
     showSuccess('Shift reassigned!');
     
     // Restore view mode and reload
@@ -1030,7 +1033,14 @@ async function deleteShift(shiftId) {
     showLoading();
     await apiCall(`/shifts/${shiftId}`, { method: 'DELETE' });
     
-    document.querySelector('.modal-overlay').remove();
+    // Find and close the closest modal (could be reassign, assign, or other)
+    // Try to find the button that triggered this function and close its modal
+    const btn = document.querySelector(`button[onclick*="deleteShift(${shiftId})"]`);
+    if (btn) {
+      const modal = btn.closest('.modal-overlay');
+      if (modal) modal.remove();
+    }
+    
     showSuccess('Shift deleted!');
     await loadShifts();
     
