@@ -819,6 +819,7 @@ function showAssignOpenShiftModal(shift) {
     <div id="assignHoursWarning" style="display:none;margin-top:8px;padding:8px;background:#fff3cd;border-radius:6px;font-size:13px;color:#856404;"></div>
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+      <button class="b-del" onclick="deleteShift(${shift.id})" style="margin-right:auto;">🗑️ Delete Shift</button>
       <button class="b-pri" onclick="confirmAssignOpenShift(${shift.id})">Assign</button>
     </div>
   `;
@@ -955,7 +956,7 @@ function showReassignModal(shift) {
     </select>
     <div class="modal-actions">
       <button class="b-can" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
-      <button class="b-del" onclick="deleteShift(${shift.id})" style="background:#dc3545;margin-right:auto;">Delete Shift</button>
+      <button class="b-del" onclick="deleteShift(${shift.id})" style="margin-right:auto;">🗑️ Delete Shift</button>
       <button class="b-pri" onclick="saveReassignment(${shift.id})">Save</button>
     </div>
   `;
