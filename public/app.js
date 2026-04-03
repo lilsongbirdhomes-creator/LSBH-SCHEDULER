@@ -1496,11 +1496,30 @@ function closeShiftGenerator() {
 function switchGenTab(tabName) {
   // Update tab buttons
   document.querySelectorAll('.gen-tab').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
+  
+  // Find and activate the correct button
+  // Works both as onclick handler (with event) and programmatic call
+  if (event && event.target) {
+    event.target.classList.add('active');
+  } else {
+    // Find the button that matches the tab name
+    const buttons = document.querySelectorAll('.gen-tab');
+    for (const btn of buttons) {
+      if (btn.textContent.toLowerCase().includes(tabName) || 
+          btn.onclick.toString().includes("'" + tabName + "'")) {
+        btn.classList.add('active');
+        break;
+      }
+    }
+  }
   
   // Update tab content
   document.querySelectorAll('.gen-tab-content').forEach(content => content.classList.remove('active'));
-  document.getElementById('genTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1)).classList.add('active');
+  const contentId = 'genTab' + tabName.charAt(0).toUpperCase() + tabName.slice(1);
+  const contentElement = document.getElementById(contentId);
+  if (contentElement) {
+    contentElement.classList.add('active');
+  }
 }
 
 function populateStaffDropdowns() {
