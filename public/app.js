@@ -1477,13 +1477,24 @@ function openShiftGenerator() {
   const twoWeeks = new Date(today);
   twoWeeks.setDate(twoWeeks.getDate() + 14);
   
-  document.getElementById('genStartDate').value = formatDate(today);
-  document.getElementById('genEndDate').value = formatDate(twoWeeks);
-  document.getElementById('copySourceDate').value = formatDate(today);
-  document.getElementById('copyTargetDate').value = formatDate(twoWeeks);
+  // Set date values with null checks
+  const genStartDate = document.getElementById('genStartDate');
+  if (genStartDate) genStartDate.value = formatDate(today);
+  
+  const genEndDate = document.getElementById('genEndDate');
+  if (genEndDate) genEndDate.value = formatDate(twoWeeks);
+  
+  const copySourceDate = document.getElementById('copySourceDate');
+  if (copySourceDate) copySourceDate.value = formatDate(today);
+  
+  const copyTargetDate = document.getElementById('copyTargetDate');
+  if (copyTargetDate) copyTargetDate.value = formatDate(twoWeeks);
   
   // Show modal
-  document.getElementById('shiftGeneratorModal').style.display = 'flex';
+  const modal = document.getElementById('shiftGeneratorModal');
+  if (modal) {
+    modal.style.display = 'flex';
+  }
   
   // Default to create tab
   switchGenTab('create');
