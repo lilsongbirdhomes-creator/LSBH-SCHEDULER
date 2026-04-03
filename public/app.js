@@ -988,14 +988,14 @@ async function saveReassignment(shiftId) {
     const isOpen = (newAssignee === 'OPEN');
     const newStaffId = isOpen ? null : parseInt(newAssignee);
     
-    if (isOpen) {
-      await apiCall(`/shifts/${shiftId}/make-open`, { method: 'POST' });
-    } else {
-      await apiCall(`/shifts/${shiftId}/assign`, {
-        method: 'POST',
-        body: JSON.stringify({ staffId: newStaffId })
-      });
-    }
+    // Use PUT endpoint to update shift with assignedTo and isOpen
+    await apiCall(`/shifts/${shiftId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        assignedTo: newStaffId,
+        isOpen: isOpen
+      })
+    });
     
     document.querySelector('.modal-overlay').remove();
     showSuccess('Shift reassigned!');
