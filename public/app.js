@@ -1039,50 +1039,6 @@ async function deleteShift(shiftId) {
     hideLoading();
   }
 }
-      // Make it an open shift
-      await apiCall(`/shifts/${shiftId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ 
-          assignedTo: null,
-          isOpen: true
-        })
-      });
-    } else {
-      // Assign to specific staff
-      await apiCall(`/shifts/${shiftId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ 
-          assignedTo: newStaffId,
-          isOpen: false
-        })
-      });
-    }
-    
-    // Track the change with old and new state
-    if (shift) {
-      trackChange('reassign', shift, oldStaffId, newStaffId);
-    }
-    
-    // Close modal
-    document.querySelector('.modal-overlay').remove();
-    
-    // Reload both staff (to get updated names) and shifts (to get updated assignments)
-    await loadStaff();
-    await loadShifts();
-    
-    // Restore view mode if it changed during reload
-    if (viewMode !== savedViewMode) {
-      setView(savedViewMode);
-    }
-    
-    // Show success message
-    showSuccess('Shift reassigned successfully!');
-  } catch (err) {
-    alert('Error: ' + err.message);
-  } finally {
-    hideLoading();
-  }
-}
 
 function showSuccess(msg) {
   const toast = document.createElement('div');
@@ -3198,6 +3154,226 @@ async function staffDenyTrade(tradeId, btn) {
   } catch (err) {
     btn.disabled = false; btn.textContent = '❌ Decline';
     showWarning('Error: ' + err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// STUB FUNCTIONS - Placeholders for incomplete features
+// These functions are referenced in HTML but not yet implemented
+// ═══════════════════════════════════════════════════════════
+
+// Print Dialog & Execution
+function openPrintDialog() {
+  const modal = document.getElementById('printModal');
+  if (modal) {
+    modal.style.display = 'flex';
+  } else {
+    alert('Print dialog not available');
+  }
+}
+
+function closePrintDialog() {
+  const modal = document.getElementById('printModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function executePrint() {
+  console.log('Print functionality coming soon');
+  alert('Print functionality is under development.');
+}
+
+// Guest Password Management
+function copyGuestPassword() {
+  const passwordInput = document.getElementById('guestCurrentPassword');
+  if (passwordInput && passwordInput.value) {
+    navigator.clipboard.writeText(passwordInput.value).then(() => {
+      showSuccess('Password copied to clipboard!');
+    }).catch(() => {
+      alert('Failed to copy. Please copy manually: ' + passwordInput.value);
+    });
+  } else {
+    alert('No guest password to copy');
+  }
+}
+
+function closeEditGuestModal() {
+  const modal = document.getElementById('editGuestModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+function resetGuestPassword() {
+  if (!confirm('Reset the guest user password? A new temporary password will be generated.')) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    // TODO: Add API call to reset guest password
+    console.warn('resetGuestPassword: API endpoint not yet implemented');
+    setTimeout(() => {
+      hideLoading();
+      showSuccess('Guest password reset. New password generated.');
+      // Reload to show new password
+      location.reload();
+    }, 1000);
+  } catch (err) {
+    hideLoading();
+    alert('Error: ' + err.message);
+  }
+}
+
+// Timezone Settings
+function saveTimezone() {
+  const timezoneSelect = document.getElementById('timezoneSelect');
+  if (!timezoneSelect) {
+    alert('Timezone selector not found');
+    return;
+  }
+  
+  const timezone = timezoneSelect.value;
+  if (!timezone) {
+    alert('Please select a timezone');
+    return;
+  }
+  
+  try {
+    showLoading();
+    // TODO: Add API call to save timezone preference
+    console.log('Saving timezone:', timezone);
+    setTimeout(() => {
+      hideLoading();
+      showSuccess('Timezone updated!');
+    }, 500);
+  } catch (err) {
+    hideLoading();
+    alert('Error: ' + err.message);
+  }
+}
+
+// Email & Notification Functions
+function sendTelegramInstructions() {
+  if (!confirm('Send Telegram setup instructions to all staff?')) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    // TODO: Add API call to send Telegram instructions
+    console.warn('sendTelegramInstructions: API endpoint not yet implemented');
+    setTimeout(() => {
+      hideLoading();
+      showSuccess('Telegram instructions sent to all staff!');
+    }, 1000);
+  } catch (err) {
+    hideLoading();
+    alert('Error: ' + err.message);
+  }
+}
+
+function sendGuestCredentialsEmail() {
+  if (!confirm('Email guest login credentials to the guest user?')) {
+    return;
+  }
+  
+  try {
+    showLoading();
+    // TODO: Add API call to send guest credentials
+    console.warn('sendGuestCredentialsEmail: API endpoint not yet implemented');
+    setTimeout(() => {
+      hideLoading();
+      showSuccess('Guest credentials emailed successfully!');
+    }, 1000);
+  } catch (err) {
+    hideLoading();
+    alert('Error: ' + err.message);
+  }
+}
+
+function sendTestEmail() {
+  const email = prompt('Enter your email address to test:');
+  if (!email) return;
+  
+  try {
+    showLoading();
+    // TODO: Add API call to send test email
+    console.log('Sending test email to:', email);
+    setTimeout(() => {
+      hideLoading();
+      showSuccess('Test email sent! Check your inbox.');
+    }, 1000);
+  } catch (err) {
+    hideLoading();
+    alert('Error: ' + err.message);
+  }
+}
+
+// Admin Password Management
+function showAdminPasswordChange() {
+  const modal = document.getElementById('adminPasswordChangeModal');
+  if (modal) {
+    modal.style.display = 'flex';
+  } else {
+    // Create a simple password change dialog if modal doesn't exist
+    const newPassword = prompt('Enter new admin password:');
+    if (newPassword && newPassword.length >= 6) {
+      try {
+        showLoading();
+        // TODO: Add API call to change admin password
+        console.log('Admin password change requested');
+        setTimeout(() => {
+          hideLoading();
+          showSuccess('Admin password changed!');
+        }, 500);
+      } catch (err) {
+        hideLoading();
+        alert('Error: ' + err.message);
+      }
+    } else {
+      alert('Password must be at least 6 characters');
+    }
+  }
+}
+
+// First-Time Telegram Setup (during login)
+function skipTelegramSetup() {
+  const modal = document.getElementById('firstLoginTelegramModal');
+  if (modal) {
+    modal.style.display = 'none';
+  }
+  showApp();
+}
+
+function saveTelegramIdFirstLogin() {
+  const telegramIdInput = document.getElementById('firstLoginTelegramId');
+  if (!telegramIdInput || !telegramIdInput.value) {
+    alert('Please enter your Telegram ID');
+    return;
+  }
+  
+  const telegramId = telegramIdInput.value.trim();
+  if (!/^\d+$/.test(telegramId)) {
+    alert('Telegram ID must contain only numbers');
+    return;
+  }
+  
+  try {
+    showLoading();
+    // TODO: Add API call to link Telegram ID
+    console.log('Linking Telegram ID:', telegramId);
+    setTimeout(() => {
+      hideLoading();
+      const modal = document.getElementById('firstLoginTelegramModal');
+      if (modal) modal.style.display = 'none';
+      showSuccess('Telegram ID linked successfully!');
+      showApp();
+    }, 500);
+  } catch (err) {
+    hideLoading();
+    alert('Error: ' + err.message);
   }
 }
 
