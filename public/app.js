@@ -32,35 +32,16 @@ styleSheet.textContent = `
   
   /* PRINT STYLES */
   @media print {
-    /* Hide UI containers */
     .app-header,
     #adminPanel,
     .staff-action-bar,
     .dashboard-card,
     #tradeInboxCard,
-    .cal-nav {
+    .cal-nav,
+    .view-toggle,
+    #printDialog,
+    .modal-overlay {
       display: none !important;
-    }
-    
-    /* Show calendar */
-    #calendarRoot,
-    #calendarRootStaff,
-    .cal-scroll {
-      display: block !important;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    
-    /* Calendar sizing */
-    .month-grid,
-    .week-grid {
-      min-width: auto !important;
-      width: 100% !important;
-    }
-    
-    /* Clean body */
-    body {
-      margin: 0.5in;
     }
   }
 `;
