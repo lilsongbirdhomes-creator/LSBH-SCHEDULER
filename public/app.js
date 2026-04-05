@@ -685,7 +685,12 @@ function renderMonthView() {
     currentDate.setDate(currentDate.getDate() + 1);
   }
   
-  root.appendChild(grid);
+  // Wrap grid in scrollable container for mobile
+  const scrollWrapper = document.createElement('div');
+  scrollWrapper.className = 'cal-scroll';
+  scrollWrapper.style.minWidth = '100%';
+  scrollWrapper.appendChild(grid);
+  root.appendChild(scrollWrapper);
   
   // Auto-scroll to today on mobile
   setTimeout(() => scrollToTodayOnMobile(), 100);
@@ -748,8 +753,22 @@ function createShiftTile(shift, viewType = 'week') {
     const hClass = hours >= 40 ? 'hrs-over' : hours >= 36 ? 'hrs-warn' : 'hrs-ok';
 
     if (!isPending) {
-      tile.style.background = staff?.tile_color || '#f5f5f5';
-      tile.style.color = staff?.text_color || 'black';
+      // For staff view: color own shifts green, other staff black, keep admin colors
+      if (currentUser.role === 'staff') {
+        if (shift.assigned_to === currentUser.id) {
+          // User's own shift - green
+          tile.style.background = '#28a745';
+          tile.style.color = 'white';
+        } else {
+          // Other staff's shift - black
+          tile.style.background = '#000000';
+          tile.style.color = 'white';
+        }
+      } else {
+        // Admin view - use staff colors
+        tile.style.background = staff?.tile_color || '#f5f5f5';
+        tile.style.color = staff?.text_color || 'black';
+      }
     }
 
     tile.style.cursor = 'pointer';
