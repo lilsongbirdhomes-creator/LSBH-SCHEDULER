@@ -30,20 +30,7 @@ styleSheet.textContent = `
     }
   }
   
-  /* PRINT STYLES */
-  @media print {
-    .app-header,
-    #adminPanel,
-    .staff-action-bar,
-    .dashboard-card,
-    #tradeInboxCard,
-    .cal-nav,
-    .view-toggle,
-    #printDialog,
-    .modal-overlay {
-      display: none !important;
-    }
-  }
+  // No print media queries - let page print naturally
 `;
 document.head.appendChild(styleSheet);
 
@@ -3313,12 +3300,41 @@ function closePrintDialog() {
 }
 
 function executePrint() {
-  // Close the dialog first
+  // Close the dialog
   closePrintDialog();
   
-  // Use browser's print functionality
+  // Temporarily hide non-calendar UI elements
+  const elementsToHide = [
+    document.querySelector('.app-header'),
+    document.getElementById('adminPanel'),
+    document.querySelector('.staff-action-bar'),
+    document.querySelector('.dashboard-card'),
+    document.getElementById('tradeInboxCard'),
+    document.querySelector('.cal-nav'),
+    document.querySelector('.view-toggle')
+  ];
+  
+  // Store original display values
+  const originalValues = {};
+  elementsToHide.forEach((el, idx) => {
+    if (el) {
+      originalValues[idx] = el.style.display;
+      el.style.display = 'none';
+    }
+  });
+  
+  // Print after a short delay to ensure DOM updates
   setTimeout(() => {
     window.print();
+    
+    // Restore elements after print dialog closes
+    setTimeout(() => {
+      elementsToHide.forEach((el, idx) => {
+        if (el) {
+          el.style.display = originalValues[idx] || '';
+        }
+      });
+    }, 500);
   }, 100);
 }
 
