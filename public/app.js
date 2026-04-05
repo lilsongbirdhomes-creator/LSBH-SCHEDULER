@@ -730,8 +730,14 @@ function createShiftTile(shift, viewType = 'week') {
 
   if (shift.is_open) {
     if (!isPending) {
-      tile.style.background = '#f5f5f5';
-      tile.style.color = 'black';
+      // For house managers, show open shifts as tentatively assigned (light green)
+      if (currentUser.job_title === 'House Manager') {
+        tile.style.background = '#c8e6c9';
+        tile.style.color = '#2e7d32';
+      } else {
+        tile.style.background = '#f5f5f5';
+        tile.style.color = 'black';
+      }
     }
     tile.style.cursor = 'pointer';
 
