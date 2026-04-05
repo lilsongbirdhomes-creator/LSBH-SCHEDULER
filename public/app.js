@@ -15,6 +15,24 @@ const SHIFT_DEFS = {
 };
 
 // ═══════════════════════════════════════════════════════════
+// MOBILE RESPONSIVE CSS FIXES
+// ═══════════════════════════════════════════════════════════
+// Inject CSS for month view scrolling on mobile
+const styleSheet = document.createElement('style');
+styleSheet.textContent = `
+  .month-grid {
+    min-width: 700px;
+  }
+  @media (max-width: 768px) {
+    .month-grid {
+      min-width: 600px;
+      grid-template-columns: repeat(7, 85px);
+    }
+  }
+`;
+document.head.appendChild(styleSheet);
+
+// ═══════════════════════════════════════════════════════════
 // API HELPERS
 // ═══════════════════════════════════════════════════════════
 async function apiCall(endpoint, options = {}) {
