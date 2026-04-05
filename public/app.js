@@ -32,82 +32,35 @@ styleSheet.textContent = `
   
   /* PRINT STYLES */
   @media print {
-    /* Hide app container first */
-    .app {
-      max-width: 100% !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      box-shadow: none !important;
-    }
-    
-    /* Hide all UI elements */
+    /* Hide UI containers */
     .app-header,
-    .admin-panel,
     #adminPanel,
-    #staffDashboard > .dashboard-card,
-    #staffDashboard > .staff-action-bar,
-    .cal-nav,
-    .view-toggle,
+    .staff-action-bar,
+    .dashboard-card,
     #tradeInboxCard,
-    #printDialog,
-    .modal-overlay,
-    .hidden {
+    .cal-nav {
       display: none !important;
     }
     
-    /* Show staff dashboard but hide its children except calendar */
-    #staffDashboard {
-      display: block !important;
-    }
-    
-    /* Calendar sizing for print */
+    /* Show calendar */
     #calendarRoot,
-    #calendarRootStaff {
+    #calendarRootStaff,
+    .cal-scroll {
       display: block !important;
       margin: 0 !important;
       padding: 0 !important;
     }
     
-    .cal-scroll {
-      margin: 0 !important;
-      padding: 0 !important;
-      overflow: visible !important;
-    }
-    
-    .month-grid {
-      min-width: auto !important;
-      width: 100% !important;
-      page-break-inside: avoid;
-      margin: 0 !important;
-      padding: 0 !important;
-    }
-    
+    /* Calendar sizing */
+    .month-grid,
     .week-grid {
       min-width: auto !important;
       width: 100% !important;
-      page-break-inside: avoid;
-      margin: 0 !important;
     }
     
-    .month-day-cell {
-      page-break-inside: avoid;
-      min-height: 80px;
-    }
-    
-    .shift-tile,
-    .month-shift-tile {
-      page-break-inside: avoid;
-    }
-    
-    /* Hide print dialog itself */
-    #printDialog {
-      display: none !important;
-    }
-    
-    /* Clean body for printing */
+    /* Clean body */
     body {
-      margin: 0.25in;
-      padding: 0;
+      margin: 0.5in;
     }
   }
 `;
