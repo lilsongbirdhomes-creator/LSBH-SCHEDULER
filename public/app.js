@@ -29,6 +29,77 @@ styleSheet.textContent = `
       grid-template-columns: repeat(7, 85px);
     }
   }
+  
+  /* PRINT STYLES */
+  @media print {
+    /* Hide everything except calendar */
+    body * {
+      display: none !important;
+    }
+    
+    /* Show only calendar elements */
+    #app,
+    #app * {
+      display: block !important;
+    }
+    
+    /* Hide app chrome */
+    .app-header,
+    .admin-panel,
+    .staff-action-bar,
+    .dashboard-card,
+    .cal-nav,
+    .view-toggle,
+    #tradeInboxCard,
+    #printDialog,
+    .modal-overlay {
+      display: none !important;
+    }
+    
+    /* Show calendar root */
+    #calendarRoot,
+    #calendarRootStaff {
+      display: block !important;
+    }
+    
+    /* Calendar sizing for print */
+    .month-grid {
+      min-width: auto !important;
+      width: 100% !important;
+      page-break-inside: avoid;
+    }
+    
+    .week-grid {
+      min-width: auto !important;
+      width: 100% !important;
+      page-break-inside: avoid;
+    }
+    
+    .month-day-cell {
+      page-break-inside: avoid;
+      min-height: 100px;
+    }
+    
+    .shift-tile {
+      page-break-inside: avoid;
+    }
+    
+    .month-shift-tile {
+      page-break-inside: avoid;
+    }
+    
+    /* Ensure proper spacing */
+    .cal-scroll {
+      margin: 0 !important;
+      padding: 0 !important;
+      overflow: visible !important;
+    }
+    
+    /* Paper margins */
+    body {
+      margin: 0.5in;
+    }
+  }
 `;
 document.head.appendChild(styleSheet);
 
