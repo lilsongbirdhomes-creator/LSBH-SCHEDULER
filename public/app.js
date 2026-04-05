@@ -3282,7 +3282,7 @@ async function staffDenyTrade(tradeId, btn) {
 
 // Print Dialog & Execution
 function openPrintDialog() {
-  const modal = document.getElementById('printModal');
+  const modal = document.getElementById('printDialog');
   if (modal) {
     modal.style.display = 'flex';
   } else {
@@ -3291,7 +3291,7 @@ function openPrintDialog() {
 }
 
 function closePrintDialog() {
-  const modal = document.getElementById('printModal');
+  const modal = document.getElementById('printDialog');
   if (modal) {
     modal.style.display = 'none';
   }
