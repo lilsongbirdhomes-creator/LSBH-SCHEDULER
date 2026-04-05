@@ -731,7 +731,8 @@ function createShiftTile(shift, viewType = 'week') {
   if (shift.is_open) {
     if (!isPending) {
       // For house managers, show open shifts as tentatively assigned (light green)
-      if (currentUser.job_title === 'House Manager') {
+      const currentUserStaff = allStaff.find(s => s.id === currentUser.id);
+      if (currentUserStaff && currentUserStaff.job_title === 'House Manager') {
         tile.style.background = '#c8e6c9';
         tile.style.color = '#2e7d32';
       } else {
@@ -3297,8 +3298,13 @@ function closePrintDialog() {
 }
 
 function executePrint() {
-  console.log('Print functionality coming soon');
-  alert('Print functionality is under development.');
+  // Close the dialog first
+  closePrintDialog();
+  
+  // Use browser's print functionality
+  setTimeout(() => {
+    window.print();
+  }, 100);
 }
 
 // Guest Password Management
