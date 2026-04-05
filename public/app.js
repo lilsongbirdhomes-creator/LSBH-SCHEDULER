@@ -32,72 +32,82 @@ styleSheet.textContent = `
   
   /* PRINT STYLES */
   @media print {
-    /* Hide everything except calendar */
-    body * {
-      display: none !important;
+    /* Hide app container first */
+    .app {
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      box-shadow: none !important;
     }
     
-    /* Show only calendar elements */
-    #app,
-    #app * {
-      display: block !important;
-    }
-    
-    /* Hide app chrome */
+    /* Hide all UI elements */
     .app-header,
     .admin-panel,
-    .staff-action-bar,
-    .dashboard-card,
+    #adminPanel,
+    #staffDashboard > .dashboard-card,
+    #staffDashboard > .staff-action-bar,
     .cal-nav,
     .view-toggle,
     #tradeInboxCard,
     #printDialog,
-    .modal-overlay {
+    .modal-overlay,
+    .hidden {
       display: none !important;
     }
     
-    /* Show calendar root */
-    #calendarRoot,
-    #calendarRootStaff {
+    /* Show staff dashboard but hide its children except calendar */
+    #staffDashboard {
       display: block !important;
     }
     
     /* Calendar sizing for print */
-    .month-grid {
-      min-width: auto !important;
-      width: 100% !important;
-      page-break-inside: avoid;
+    #calendarRoot,
+    #calendarRootStaff {
+      display: block !important;
+      margin: 0 !important;
+      padding: 0 !important;
     }
     
-    .week-grid {
-      min-width: auto !important;
-      width: 100% !important;
-      page-break-inside: avoid;
-    }
-    
-    .month-day-cell {
-      page-break-inside: avoid;
-      min-height: 100px;
-    }
-    
-    .shift-tile {
-      page-break-inside: avoid;
-    }
-    
-    .month-shift-tile {
-      page-break-inside: avoid;
-    }
-    
-    /* Ensure proper spacing */
     .cal-scroll {
       margin: 0 !important;
       padding: 0 !important;
       overflow: visible !important;
     }
     
-    /* Paper margins */
+    .month-grid {
+      min-width: auto !important;
+      width: 100% !important;
+      page-break-inside: avoid;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    
+    .week-grid {
+      min-width: auto !important;
+      width: 100% !important;
+      page-break-inside: avoid;
+      margin: 0 !important;
+    }
+    
+    .month-day-cell {
+      page-break-inside: avoid;
+      min-height: 80px;
+    }
+    
+    .shift-tile,
+    .month-shift-tile {
+      page-break-inside: avoid;
+    }
+    
+    /* Hide print dialog itself */
+    #printDialog {
+      display: none !important;
+    }
+    
+    /* Clean body for printing */
     body {
-      margin: 0.5in;
+      margin: 0.25in;
+      padding: 0;
     }
   }
 `;
