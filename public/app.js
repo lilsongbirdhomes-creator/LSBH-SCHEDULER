@@ -2601,8 +2601,9 @@ function showAbsenceForm() {
   document.getElementById('emergencyTypeSelect').classList.remove('show');
   document.getElementById('absenceForm').classList.add('show');
   
-  // Hide all submit buttons, show only absence
-  document.getElementById('submitAbsenceBtn').style.display = 'block';
+  // Hide close button, show only absence submit
+  document.getElementById('emergencyCloseBtn').style.display = 'none';
+  document.getElementById('submitAbsenceBtn').style.display = 'inline-block';
   document.getElementById('submitLateBtn').style.display = 'none';
   document.getElementById('submitIssueBtn').style.display = 'none';
 
@@ -2625,9 +2626,10 @@ function showLateForm() {
   document.getElementById('emergencyTypeSelect').classList.remove('show');
   document.getElementById('lateForm').classList.add('show');
   
-  // Hide all submit buttons, show only late
+  // Hide close button, show only late submit
+  document.getElementById('emergencyCloseBtn').style.display = 'none';
   document.getElementById('submitAbsenceBtn').style.display = 'none';
-  document.getElementById('submitLateBtn').style.display = 'block';
+  document.getElementById('submitLateBtn').style.display = 'inline-block';
   document.getElementById('submitIssueBtn').style.display = 'none';
 
   // Populate shift selector - only today's shifts
@@ -2648,10 +2650,11 @@ function showIssueForm() {
   document.getElementById('emergencyTypeSelect').classList.remove('show');
   document.getElementById('issueForm').classList.add('show');
   
-  // Hide all submit buttons, show only issue
+  // Hide close button, show only issue submit
+  document.getElementById('emergencyCloseBtn').style.display = 'none';
   document.getElementById('submitAbsenceBtn').style.display = 'none';
   document.getElementById('submitLateBtn').style.display = 'none';
-  document.getElementById('submitIssueBtn').style.display = 'block';
+  document.getElementById('submitIssueBtn').style.display = 'inline-block';
 }
 
 function backToEmergencyTypeSelect() {
@@ -2660,7 +2663,8 @@ function backToEmergencyTypeSelect() {
   document.getElementById('issueForm').classList.remove('show');
   document.getElementById('emergencyTypeSelect').classList.add('show');
   
-  // Hide all submit buttons
+  // Show close button, hide all submit buttons
+  document.getElementById('emergencyCloseBtn').style.display = 'inline-block';
   document.getElementById('submitAbsenceBtn').style.display = 'none';
   document.getElementById('submitLateBtn').style.display = 'none';
   document.getElementById('submitIssueBtn').style.display = 'none';
