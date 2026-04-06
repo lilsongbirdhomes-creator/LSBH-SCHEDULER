@@ -623,13 +623,10 @@
           <div class="rob-desc">Safety, maintenance, or other concern — notifies House Manager by default</div>
         </button>
       </div>
-      <div class="mbtn-row" style="margin-top:16px;">
-        <button class="mc" onclick="closeEmergencyDialog()">Close</button>
-      </div>
     </div>
 
     <!-- Absence form -->
-    <div id="absenceForm">
+    <div id="absenceForm" style="display:none;">
       <div class="fg">
         <label>Which shift are you unable to make?</label>
         <select id="absenceShiftSelect" class="inp-full">
@@ -647,14 +644,10 @@
         </label>
         <div style="font-size:11px;color:#888;margin-top:4px;">Checking this notifies House Manager and Admin only (not other shift staff)</div>
       </div>
-      <div class="mbtn-row">
-        <button class="mc" onclick="backToEmergencyTypeSelect()">← Back</button>
-        <button class="mok" style="background:#dc3545;" id="submitAbsenceBtn" onclick="submitAbsence()">Submit Report</button>
-      </div>
     </div>
 
     <!-- Will Be Late form (separate) -->
-    <div id="lateForm">
+    <div id="lateForm" style="display:none;">
       <div class="fg">
         <label>Which shift are you running late for?</label>
         <select id="lateShiftSelect" class="inp-full">
@@ -690,14 +683,10 @@
           </label>
         </div>
       </div>
-      <div class="mbtn-row">
-        <button class="mc" onclick="backToEmergencyTypeSelect()">← Back</button>
-        <button class="mok" style="background:#ff9800;" id="submitLateBtn" onclick="submitLate()">Report Late Arrival</button>
-      </div>
     </div>
 
     <!-- Issue form -->
-    <div id="issueForm">
+    <div id="issueForm" style="display:none;">
       <div class="fg">
         <label>Issue Details <span style="color:#dc3545;">*</span></label>
         <textarea id="issueDetails" rows="4" placeholder="Describe the issue in detail…" style="width:100%;padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:13px;resize:vertical;"></textarea>
@@ -712,10 +701,14 @@
           Also notify Admin
         </label>
       </div>
-      <div class="mbtn-row">
-        <button class="mc" onclick="backToEmergencyTypeSelect()">← Back</button>
-        <button class="mok" style="background:#dc3545;" id="submitIssueBtn" onclick="submitIssue()">Submit Issue</button>
-      </div>
+    </div>
+
+    <!-- Close and Submit buttons at bottom -->
+    <div class="mbtn-row" style="margin-top:16px;">
+      <button class="mc" id="emergencyCloseBtn" onclick="closeEmergencyDialog()">Close</button>
+      <button class="mok" style="background:#dc3545;display:none;" id="submitAbsenceBtn" onclick="submitAbsence()">Submit Report</button>
+      <button class="mok" style="background:#ff9800;display:none;" id="submitLateBtn" onclick="submitLate()">Report Late Arrival</button>
+      <button class="mok" style="background:#dc3545;display:none;" id="submitIssueBtn" onclick="submitIssue()">Submit Issue</button>
     </div>
   </div>
 </div>
