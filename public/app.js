@@ -3303,17 +3303,33 @@ function executePrint() {
   closePrintDialog();
   
   // Get the actual calendar element that's visible
-  const calendarRoot = document.getElementById('calendarRoot') || document.getElementById('calendarRootStaff');
+  let calendarRoot = document.getElementById('calendarRoot');
+  if (!calendarRoot || calendarRoot.offsetParent === null) {
+    // Try staff calendar if admin calendar is hidden
+    calendarRoot = document.getElementById('calendarRootStaff');
+  }
   
-  if (!calendarRoot || calendarRoot.innerHTML.trim() === '') {
+  // Check if we have a calendar and it's not empty
+  if (!calendarRoot) {
+    console.error('No calendar container found');
     alert('No calendar to print. Please view the schedule first.');
     return;
   }
   
-  // Get calendar title
-  const titleId = document.getElementById('calendarRoot') ? 'calTitle' : 'calTitleStaff';
-  const titleEl = document.getElementById(titleId);
-  const title = titleEl ? titleEl.textContent : 'Schedule';
+  // Check if calendar has content (children elements, not just whitespace)
+  const hasContent = calendarRoot.children && calendarRoot.children.length > 0;
+  if (!hasContent) {
+    console.error('Calendar is empty. Content:', calendarRoot.innerHTML.length);
+    alert('No calendar to print. Please view the schedule first.');
+    return;
+  }
+  
+  // Get calendar title - try both possible locations
+  let titleEl = document.getElementById('calTitle');
+  if (!titleEl || titleEl.offsetParent === null) {
+    titleEl = document.getElementById('calTitleStaff');
+  }
+  const title = (titleEl && titleEl.textContent) ? titleEl.textContent : 'Schedule';
   
   // Get the calendar HTML and remove "Tap to assign" text that appears only in interactive mode
   let calendarHTML = calendarRoot.innerHTML;
