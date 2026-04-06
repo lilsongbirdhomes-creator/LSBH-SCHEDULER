@@ -110,9 +110,11 @@ async function showApp() {
   // Load shift templates from database
   loadTemplates();
   
+  // Load staff for all users (needed for contact dialog)
+  await loadStaff();
+  
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
-    await loadStaff();
     loadPendingApprovals();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
