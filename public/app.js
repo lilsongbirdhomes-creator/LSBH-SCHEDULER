@@ -3310,13 +3310,23 @@ function executePrint() {
     return;
   }
   
-  // Create a new window for printing
-  const printWindow = window.open('', '_blank');
-  
   // Get calendar title
   const titleId = document.getElementById('calendarRoot') ? 'calTitle' : 'calTitleStaff';
   const titleEl = document.getElementById(titleId);
   const title = titleEl ? titleEl.textContent : 'Schedule';
+  
+  // Get the calendar HTML and remove "Tap to assign" text that appears only in interactive mode
+  let calendarHTML = calendarRoot.innerHTML;
+  calendarHTML = calendarHTML.replace(/Tap to assign/g, '');
+  calendarHTML = calendarHTML.replace(/<div[^>]*class="[^"]*no-print[^"]*"[^>]*>[\s\S]*?<\/div>/g, '');
+  
+  // Add filter note if "only my shifts" is enabled
+  let filterNote = '';
+  if (showOnlyMyShifts && currentUser) {
+    filterNote = `<p style="text-align: center; font-style: italic; margin-bottom: 15px; color: #666;">
+      Filtered to show only shifts for ${currentUser.fullName}
+    </p>`;
+  }
   
   // Copy all stylesheets from parent document
   let stylesheets = '';
@@ -3324,7 +3334,7 @@ function executePrint() {
     stylesheets += link.outerHTML;
   }
   
-  // Add critical print styles
+  // Add critical print styles (minimal margins to avoid blank page)
   const printStyles = `
     <style>
       * {
@@ -3336,109 +3346,122 @@ function executePrint() {
         font-family: Arial, sans-serif;
         background: white;
         color: #000;
-        padding: 20px;
+        padding: 10px;
+        margin: 0;
       }
       h1 {
         text-align: center;
-        margin-bottom: 20px;
-        font-size: 24px;
+        margin: 0 0 5px 0;
+        font-size: 20px;
+        padding: 0;
+      }
+      p {
+        margin: 0;
+        padding: 0;
       }
       .week-grid {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
         gap: 8px;
-        margin-bottom: 20px;
+        margin: 10px 0;
       }
       .month-grid {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
         gap: 4px;
         width: 100%;
+        margin: 0;
       }
       .day-hdr {
         background: #f5f5f5;
         border: 1px solid #ddd;
-        padding: 8px;
+        padding: 6px;
         text-align: center;
         font-weight: bold;
+        font-size: 12px;
       }
       .day-col {
         border: 1px solid #ddd;
-        padding: 8px;
+        padding: 6px;
         min-height: 100px;
       }
       .month-day-cell {
         border: 1px solid #ddd;
-        padding: 8px;
-        min-height: 80px;
+        padding: 6px;
+        min-height: 70px;
       }
       .month-day-hdr {
         background: #f5f5f5;
         border: 1px solid #ddd;
-        padding: 8px;
+        padding: 6px;
         text-align: center;
         font-weight: bold;
+        font-size: 12px;
       }
       .shift-tile {
         background: #f0f0f0;
         border: 1px solid #999;
         border-radius: 4px;
-        padding: 6px;
-        margin: 4px 0;
-        font-size: 11px;
+        padding: 4px;
+        margin: 3px 0;
+        font-size: 10px;
         line-height: 1.3;
       }
       .month-shift-tile {
         background: #f0f0f0;
         border: 1px solid #999;
         border-radius: 3px;
-        padding: 4px;
-        margin: 2px 0;
-        font-size: 10px;
+        padding: 3px;
+        margin: 1px 0;
+        font-size: 9px;
       }
       .month-shift-name {
         font-weight: bold;
       }
       .month-shift-time {
-        font-size: 9px;
+        font-size: 8px;
       }
       .month-shift-hours {
-        font-size: 9px;
+        font-size: 8px;
         color: #666;
       }
       .t-name {
         font-weight: bold;
-        font-size: 12px;
+        font-size: 11px;
       }
       .t-time {
-        font-size: 10px;
+        font-size: 9px;
         color: #666;
       }
       .t-foot {
-        font-size: 9px;
-        margin-top: 4px;
+        font-size: 8px;
+        margin-top: 2px;
       }
       .month-day-num {
         font-weight: bold;
-        margin-bottom: 4px;
+        margin-bottom: 3px;
+        font-size: 11px;
       }
       .month-shifts {
-        font-size: 10px;
+        font-size: 9px;
       }
       .pending-badge {
         background: #fff3cd;
         color: #856404;
-        padding: 2px 4px;
+        padding: 1px 3px;
         border-radius: 2px;
-        font-size: 8px;
+        font-size: 7px;
       }
       @media print {
-        body { padding: 10px; }
-        h1 { margin-bottom: 15px; }
+        body { padding: 5px; margin: 0; }
+        h1 { margin-bottom: 3px; padding: 0; }
         .week-grid, .month-grid { page-break-inside: avoid; }
       }
     </style>
   `;
+  
+  // Create a new window for printing
+  const printWindow = window.open('', '_blank');
   
   // Write the print document
   const printContent = `
@@ -3452,7 +3475,8 @@ function executePrint() {
     </head>
     <body>
       <h1>Schedule: ${title}</h1>
-      ${calendarRoot.innerHTML}
+      ${filterNote}
+      ${calendarHTML}
     </body>
     </html>
   `;
