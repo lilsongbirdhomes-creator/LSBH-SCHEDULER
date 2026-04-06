@@ -3300,42 +3300,78 @@ function closePrintDialog() {
 }
 
 function executePrint() {
-  // Close the dialog
   closePrintDialog();
   
-  // Temporarily hide non-calendar UI elements
-  const elementsToHide = [
-    document.querySelector('.app-header'),
-    document.getElementById('adminPanel'),
-    document.querySelector('.staff-action-bar'),
-    document.querySelector('.dashboard-card'),
-    document.getElementById('tradeInboxCard'),
-    document.querySelector('.cal-nav'),
-    document.querySelector('.view-toggle')
-  ];
+  // Get the actual calendar element that's visible
+  const calendarRoot = document.getElementById('calendarRoot') || document.getElementById('calendarRootStaff');
   
-  // Store original display values
-  const originalValues = {};
-  elementsToHide.forEach((el, idx) => {
-    if (el) {
-      originalValues[idx] = el.style.display;
-      el.style.display = 'none';
-    }
-  });
+  if (!calendarRoot || calendarRoot.innerHTML.trim() === '') {
+    alert('No calendar to print. Please view the schedule first.');
+    return;
+  }
   
-  // Print after a short delay to ensure DOM updates
-  setTimeout(() => {
-    window.print();
-    
-    // Restore elements after print dialog closes
-    setTimeout(() => {
-      elementsToHide.forEach((el, idx) => {
-        if (el) {
-          el.style.display = originalValues[idx] || '';
+  // Create a new window for printing
+  const printWindow = window.open('', '_blank');
+  
+  // Get calendar title
+  const titleId = document.getElementById('calendarRoot') ? 'calTitle' : 'calTitleStaff';
+  const titleEl = document.getElementById(titleId);
+  const title = titleEl ? titleEl.textContent : 'Schedule';
+  
+  // Write a clean print document
+  const printContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Schedule - ${title}</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 20px;
+          background: white;
         }
-      });
-    }, 500);
-  }, 100);
+        h1 {
+          text-align: center;
+          margin-bottom: 20px;
+        }
+        .calendar {
+          width: 100%;
+          border-collapse: collapse;
+        }
+        .calendar td, .calendar th {
+          border: 1px solid #ddd;
+          padding: 8px;
+          text-align: left;
+        }
+        .calendar th {
+          background: #f5f5f5;
+          font-weight: bold;
+        }
+        .shift-tile {
+          font-size: 12px;
+          padding: 4px;
+          margin: 2px 0;
+          border-radius: 4px;
+        }
+        @media print {
+          body { margin: 10px; }
+          .no-print { display: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <h1>Schedule: ${title}</h1>
+      ${calendarRoot.innerHTML}
+      <script>
+        window.print();
+        setTimeout(() => window.close(), 500);
+      </script>
+    </body>
+    </html>
+  `;
+  
+  printWindow.document.write(printContent);
+  printWindow.document.close();
 }
 
 // Guest Password Management
