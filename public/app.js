@@ -3476,34 +3476,74 @@ function executePrint() {
     </style>
   `;
   
-  // Create a new window for printing
-  const printWindow = window.open('', '_blank');
+  // Detect if mobile
+  const isMobile = window.innerWidth < 768;
   
-  // Write the print document
-  const printContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Schedule - ${title}</title>
-      ${stylesheets}
-      ${printStyles}
-    </head>
-    <body>
-      <h1>Schedule: ${title}</h1>
-      ${filterNote}
-      ${calendarHTML}
-    </body>
-    </html>
-  `;
-  
-  printWindow.document.write(printContent);
-  printWindow.document.close();
-  
-  // Trigger print after a delay to ensure content loads
-  setTimeout(() => {
-    printWindow.print();
-  }, 500);
+  if (isMobile) {
+    // On mobile: create an iframe, print it, then remove it
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Schedule - ${title}</title>
+        ${stylesheets}
+        ${printStyles}
+      </head>
+      <body>
+        <h1>Schedule: ${title}</h1>
+        ${filterNote}
+        ${calendarHTML}
+      </body>
+      </html>
+    `;
+    
+    iframe.onload = function() {
+      setTimeout(() => {
+        iframe.contentWindow.print();
+        // Remove iframe after print dialog closes
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 500);
+      }, 100);
+    };
+    
+    // Write content to iframe
+    iframe.srcdoc = printContent;
+  } else {
+    // On desktop: use new window as before
+    const printWindow = window.open('', '_blank');
+    
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Schedule - ${title}</title>
+        ${stylesheets}
+        ${printStyles}
+      </head>
+      <body>
+        <h1>Schedule: ${title}</h1>
+        ${filterNote}
+        ${calendarHTML}
+      </body>
+      </html>
+    `;
+    
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    
+    // Trigger print after a delay to ensure content loads
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
+  }
 }
 
 // Guest Password Management
