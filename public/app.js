@@ -2600,12 +2600,6 @@ function closeEmergencyDialog() {
 function showAbsenceForm() {
   document.getElementById('emergencyTypeSelect').classList.remove('show');
   document.getElementById('absenceForm').classList.add('show');
-  
-  // Hide close button, show only absence submit
-  document.getElementById('emergencyCloseBtn').style.display = 'none';
-  document.getElementById('submitAbsenceBtn').style.display = 'inline-block';
-  document.getElementById('submitLateBtn').style.display = 'none';
-  document.getElementById('submitIssueBtn').style.display = 'none';
 
   // Populate shift selector with user's upcoming shifts (within 48h)
   const shiftSel = document.getElementById('absenceShiftSelect');
@@ -2625,12 +2619,6 @@ function showAbsenceForm() {
 function showLateForm() {
   document.getElementById('emergencyTypeSelect').classList.remove('show');
   document.getElementById('lateForm').classList.add('show');
-  
-  // Hide close button, show only late submit
-  document.getElementById('emergencyCloseBtn').style.display = 'none';
-  document.getElementById('submitAbsenceBtn').style.display = 'none';
-  document.getElementById('submitLateBtn').style.display = 'inline-block';
-  document.getElementById('submitIssueBtn').style.display = 'none';
 
   // Populate shift selector - only today's shifts
   const shiftSel = document.getElementById('lateShiftSelect');
@@ -2649,12 +2637,6 @@ function showLateForm() {
 function showIssueForm() {
   document.getElementById('emergencyTypeSelect').classList.remove('show');
   document.getElementById('issueForm').classList.add('show');
-  
-  // Hide close button, show only issue submit
-  document.getElementById('emergencyCloseBtn').style.display = 'none';
-  document.getElementById('submitAbsenceBtn').style.display = 'none';
-  document.getElementById('submitLateBtn').style.display = 'none';
-  document.getElementById('submitIssueBtn').style.display = 'inline-block';
 }
 
 function backToEmergencyTypeSelect() {
@@ -2663,13 +2645,7 @@ function backToEmergencyTypeSelect() {
   document.getElementById('issueForm').classList.remove('show');
   document.getElementById('emergencyTypeSelect').classList.add('show');
   
-  // Show close button, hide all submit buttons
-  document.getElementById('emergencyCloseBtn').style.display = 'inline-block';
-  document.getElementById('submitAbsenceBtn').style.display = 'none';
-  document.getElementById('submitLateBtn').style.display = 'none';
-  document.getElementById('submitIssueBtn').style.display = 'none';
-  
-  // Clear form fields
+  // Clear absence form fields
   document.getElementById('absenceShiftSelect').value = '';
   document.getElementById('absenceReason').value = '';
   document.getElementById('absenceOnDutyCheck').checked = false;
