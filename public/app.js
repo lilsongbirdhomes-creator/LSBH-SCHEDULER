@@ -3318,60 +3318,152 @@ function executePrint() {
   const titleEl = document.getElementById(titleId);
   const title = titleEl ? titleEl.textContent : 'Schedule';
   
-  // Write a clean print document
+  // Copy all stylesheets from parent document
+  let stylesheets = '';
+  for (let link of document.querySelectorAll('link[rel="stylesheet"]')) {
+    stylesheets += link.outerHTML;
+  }
+  
+  // Add critical print styles
+  const printStyles = `
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background: white;
+        color: #000;
+        padding: 20px;
+      }
+      h1 {
+        text-align: center;
+        margin-bottom: 20px;
+        font-size: 24px;
+      }
+      .week-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      .month-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+        width: 100%;
+      }
+      .day-hdr {
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+        font-weight: bold;
+      }
+      .day-col {
+        border: 1px solid #ddd;
+        padding: 8px;
+        min-height: 100px;
+      }
+      .month-day-cell {
+        border: 1px solid #ddd;
+        padding: 8px;
+        min-height: 80px;
+      }
+      .month-day-hdr {
+        background: #f5f5f5;
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+        font-weight: bold;
+      }
+      .shift-tile {
+        background: #f0f0f0;
+        border: 1px solid #999;
+        border-radius: 4px;
+        padding: 6px;
+        margin: 4px 0;
+        font-size: 11px;
+        line-height: 1.3;
+      }
+      .month-shift-tile {
+        background: #f0f0f0;
+        border: 1px solid #999;
+        border-radius: 3px;
+        padding: 4px;
+        margin: 2px 0;
+        font-size: 10px;
+      }
+      .month-shift-name {
+        font-weight: bold;
+      }
+      .month-shift-time {
+        font-size: 9px;
+      }
+      .month-shift-hours {
+        font-size: 9px;
+        color: #666;
+      }
+      .t-name {
+        font-weight: bold;
+        font-size: 12px;
+      }
+      .t-time {
+        font-size: 10px;
+        color: #666;
+      }
+      .t-foot {
+        font-size: 9px;
+        margin-top: 4px;
+      }
+      .month-day-num {
+        font-weight: bold;
+        margin-bottom: 4px;
+      }
+      .month-shifts {
+        font-size: 10px;
+      }
+      .pending-badge {
+        background: #fff3cd;
+        color: #856404;
+        padding: 2px 4px;
+        border-radius: 2px;
+        font-size: 8px;
+      }
+      @media print {
+        body { padding: 10px; }
+        h1 { margin-bottom: 15px; }
+        .week-grid, .month-grid { page-break-inside: avoid; }
+      }
+    </style>
+  `;
+  
+  // Write the print document
   const printContent = `
     <!DOCTYPE html>
     <html>
     <head>
+      <meta charset="UTF-8">
       <title>Schedule - ${title}</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 20px;
-          background: white;
-        }
-        h1 {
-          text-align: center;
-          margin-bottom: 20px;
-        }
-        .calendar {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        .calendar td, .calendar th {
-          border: 1px solid #ddd;
-          padding: 8px;
-          text-align: left;
-        }
-        .calendar th {
-          background: #f5f5f5;
-          font-weight: bold;
-        }
-        .shift-tile {
-          font-size: 12px;
-          padding: 4px;
-          margin: 2px 0;
-          border-radius: 4px;
-        }
-        @media print {
-          body { margin: 10px; }
-          .no-print { display: none; }
-        }
-      </style>
+      ${stylesheets}
+      ${printStyles}
     </head>
     <body>
       <h1>Schedule: ${title}</h1>
       ${calendarRoot.innerHTML}
-      <script>
-        window.print();
-        setTimeout(() => window.close(), 500);
-      </script>
     </body>
     </html>
   `;
   
   printWindow.document.write(printContent);
   printWindow.document.close();
+  
+  // Trigger print after a delay to ensure content loads
+  setTimeout(() => {
+    printWindow.print();
+  }, 500);
 }
 
 // Guest Password Management
