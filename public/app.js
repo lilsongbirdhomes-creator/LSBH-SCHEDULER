@@ -3482,10 +3482,13 @@ function executePrint() {
   const isMobile = window.innerWidth < 768;
   
   if (isMobile) {
-    // On mobile: create an iframe, print it, then remove it
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    document.body.appendChild(iframe);
+    // On mobile: use a new window instead of iframe to avoid print blocking
+    const printWindow = window.open('', '_blank');
+    
+    if (!printWindow) {
+      alert('Please allow popups to print. Check your browser settings.');
+      return;
+    }
     
     const printContent = `
       <!DOCTYPE html>
@@ -3505,18 +3508,13 @@ function executePrint() {
       </html>
     `;
     
-    iframe.onload = function() {
-      setTimeout(() => {
-        iframe.contentWindow.print();
-        // Remove iframe after print dialog closes
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 500);
-      }, 100);
-    };
+    printWindow.document.write(printContent);
+    printWindow.document.close();
     
-    // Write content to iframe
-    iframe.srcdoc = printContent;
+    // Longer delay on mobile and user-triggered print (not auto)
+    setTimeout(() => {
+      printWindow.print();
+    }, 1000);
   } else {
     // On desktop: use new window as before
     const printWindow = window.open('', '_blank');
