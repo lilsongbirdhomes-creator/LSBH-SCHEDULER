@@ -3326,224 +3326,59 @@ function executePrint() {
     return;
   }
   
-  // Get calendar title - try both possible locations
+  // Hide everything except calendar
+  const appContainer = document.getElementById('app');
+  const originalDisplay = appContainer.style.display;
+  
+  // Hide all UI elements except calendar
+  const elementsToHide = document.querySelectorAll('#topBar, #staffDashboard, #adminPanel, .staff-action-buttons, #calTitle, #calTitleStaff');
+  const hiddenStates = [];
+  elementsToHide.forEach(el => {
+    hiddenStates.push({el: el, display: el.style.display});
+    el.style.display = 'none';
+  });
+  
+  // Show only the calendar title and calendar
   let titleEl = document.getElementById('calTitle');
   if (!titleEl || titleEl.offsetParent === null) {
     titleEl = document.getElementById('calTitleStaff');
   }
-  const title = (titleEl && titleEl.textContent) ? titleEl.textContent : 'Schedule';
+  if (titleEl) {
+    titleEl.style.display = 'block';
+  }
   
-  // Get the calendar HTML and remove "Tap to assign" text that appears only in interactive mode
-  let calendarHTML = calendarRoot.innerHTML;
-  calendarHTML = calendarHTML.replace(/Tap to assign/g, '');
-  calendarHTML = calendarHTML.replace(/<div[^>]*class="[^"]*no-print[^"]*"[^>]*>[\s\S]*?<\/div>/g, '');
-  
-  // Add filter note if "only my shifts" is enabled
-  let filterNote = '';
+  // Add print-only filter note if "only my shifts" is enabled
   if (showOnlyMyShifts && currentUser) {
-    filterNote = `<p style="text-align: center; font-style: italic; margin-bottom: 15px; color: #666;">
-      Filtered to show only shifts for ${currentUser.fullName}
-    </p>`;
+    const filterNote = document.createElement('div');
+    filterNote.id = 'printFilterNote';
+    filterNote.style.textAlign = 'center';
+    filterNote.style.fontStyle = 'italic';
+    filterNote.style.marginBottom = '15px';
+    filterNote.style.color = '#666';
+    filterNote.textContent = `Filtered to show only shifts for ${currentUser.fullName}`;
+    document.getElementById('calendarRoot') ? 
+      document.getElementById('calendarRoot').parentNode.insertBefore(filterNote, document.getElementById('calendarRoot')) :
+      document.getElementById('calendarRootStaff').parentNode.insertBefore(filterNote, document.getElementById('calendarRootStaff'));
   }
   
-  // Copy all stylesheets from parent document
-  let stylesheets = '';
-  for (let link of document.querySelectorAll('link[rel="stylesheet"]')) {
-    stylesheets += link.outerHTML;
-  }
-  
-  // Add critical print styles (minimal margins to avoid blank page)
-  const printStyles = `
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        font-family: Arial, sans-serif;
-        background: white;
-        color: #000;
-        padding: 10px;
-        margin: 0;
-      }
-      h1 {
-        text-align: center;
-        margin: 0 0 5px 0;
-        font-size: 20px;
-        padding: 0;
-      }
-      p {
-        margin: 0;
-        padding: 0;
-      }
-      .week-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 8px;
-        margin: 10px 0;
-      }
-      .month-grid {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 4px;
-        width: 100%;
-        margin: 0;
-      }
-      .day-hdr {
-        background: #f5f5f5;
-        border: 1px solid #ddd;
-        padding: 6px;
-        text-align: center;
-        font-weight: bold;
-        font-size: 12px;
-      }
-      .day-col {
-        border: 1px solid #ddd;
-        padding: 6px;
-        min-height: 100px;
-      }
-      .month-day-cell {
-        border: 1px solid #ddd;
-        padding: 6px;
-        min-height: 70px;
-      }
-      .month-day-hdr {
-        background: #f5f5f5;
-        border: 1px solid #ddd;
-        padding: 6px;
-        text-align: center;
-        font-weight: bold;
-        font-size: 12px;
-      }
-      .shift-tile {
-        background: #f0f0f0;
-        border: 1px solid #999;
-        border-radius: 4px;
-        padding: 4px;
-        margin: 3px 0;
-        font-size: 10px;
-        line-height: 1.3;
-      }
-      .month-shift-tile {
-        background: #f0f0f0;
-        border: 1px solid #999;
-        border-radius: 3px;
-        padding: 3px;
-        margin: 1px 0;
-        font-size: 9px;
-      }
-      .month-shift-name {
-        font-weight: bold;
-      }
-      .month-shift-time {
-        font-size: 8px;
-      }
-      .month-shift-hours {
-        font-size: 8px;
-        color: #666;
-      }
-      .t-name {
-        font-weight: bold;
-        font-size: 11px;
-      }
-      .t-time {
-        font-size: 9px;
-        color: #666;
-      }
-      .t-foot {
-        font-size: 8px;
-        margin-top: 2px;
-      }
-      .month-day-num {
-        font-weight: bold;
-        margin-bottom: 3px;
-        font-size: 11px;
-      }
-      .month-shifts {
-        font-size: 9px;
-      }
-      .pending-badge {
-        background: #fff3cd;
-        color: #856404;
-        padding: 1px 3px;
-        border-radius: 2px;
-        font-size: 7px;
-      }
-      @media print {
-        body { padding: 5px; margin: 0; }
-        h1 { margin-bottom: 3px; padding: 0; }
-        .week-grid, .month-grid { page-break-inside: avoid; }
-      }
-    </style>
-  `;
-  
-  // Detect if mobile
-  const isMobile = window.innerWidth < 768;
-  
-  if (isMobile) {
-    // On mobile: use a new window instead of iframe to avoid print blocking
-    const printWindow = window.open('', '_blank');
+  // Trigger browser print
+  setTimeout(() => {
+    window.print();
     
-    if (!printWindow) {
-      alert('Please allow popups to print. Check your browser settings.');
-      return;
-    }
-    
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Schedule - ${title}</title>
-        ${stylesheets}
-        ${printStyles}
-      </head>
-      <body>
-        <h1>Schedule: ${title}</h1>
-        ${filterNote}
-        ${calendarHTML}
-      </body>
-      </html>
-    `;
-    
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    
-    // Longer delay on mobile and user-triggered print (not auto)
+    // Restore UI after print dialog closes (user cancels or prints)
     setTimeout(() => {
-      printWindow.print();
-    }, 1000);
-  } else {
-    // On desktop: use new window as before
-    const printWindow = window.open('', '_blank');
-    
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Schedule - ${title}</title>
-        ${stylesheets}
-        ${printStyles}
-      </head>
-      <body>
-        <h1>Schedule: ${title}</h1>
-        ${filterNote}
-        ${calendarHTML}
-      </body>
-      </html>
-    `;
-    
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    
-    // Trigger print after a delay to ensure content loads
-    setTimeout(() => {
-      printWindow.print();
+      // Restore hidden elements
+      hiddenStates.forEach(({el, display}) => {
+        el.style.display = display;
+      });
+      
+      // Remove filter note
+      const filterNote = document.getElementById('printFilterNote');
+      if (filterNote) {
+        filterNote.remove();
+      }
     }, 500);
-  }
+  }, 100);
 }
 
 // Guest Password Management
