@@ -3431,19 +3431,48 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
     month: monthName
   });
   
-  // Build print HTML (without outer wrapper - added by createElement below)
+  // Build print HTML with print styles embedded
   let html = `
-    <div class="print-header">
-      <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>${monthName}</h2>
-      ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
-    </div>
-    <div class="print-calendar">
-      <div class="print-month-grid">
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: white; color: #000; margin: 0; padding: 5px; }
+        .print-container { width: 100%; max-width: 100%; }
+        .print-header { text-align: center; margin-bottom: 10px; }
+        .print-header h1 { font-size: 16px; margin: 0 0 5px 0; }
+        .print-header h2 { font-size: 14px; margin: 0; }
+        .print-header h3 { font-size: 12px; margin: 5px 0 0 0; color: #666; }
+        .print-calendar { width: 100%; }
+        .print-month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; width: 100%; }
+        .print-day-header { background: #f0f0f0; border: 1px solid #999; padding: 4px 2px; text-align: center; font-weight: bold; font-size: 10px; }
+        .print-day-cell { border: 1px solid #ddd; padding: 3px; min-height: 60px; font-size: 9px; }
+        .print-day-cell.wknd { background: #f9f9f9; }
+        .print-day-cell.other-month { background: #fafafa; opacity: 0.6; }
+        .print-day-num { font-weight: bold; margin-bottom: 2px; font-size: 9px; }
+        .print-shift { border: 1px solid #999; border-radius: 2px; padding: 2px; margin: 1px 0; font-size: 8px; line-height: 1.2; }
+        @media print {
+          body { margin: 0; padding: 2px; }
+          .print-container { page-break-after: avoid; }
+          .print-month-grid { page-break-inside: avoid; }
+          .print-day-cell { page-break-inside: avoid; }
+        }
+      </style>
+    </head>
+    <body>
+    <div class="print-container">
+      <div class="print-header">
+        <h1>LilSongBirdHomes Staff Schedule</h1>
+        <h2>${monthName}</h2>
+        ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
+      </div>
+      <div class="print-calendar">
+        <div class="print-month-grid">
   `;
   
   // Day headers
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   dayNames.forEach(day => {
     html += `<div class="print-day-header">${day}</div>`;
   });
@@ -3474,43 +3503,36 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
       if (myShiftsOnly) {
         const isHouseManager = currentUser?.jobTitle === 'House Manager';
         const isStaffView = currentUser?.role === 'staff';
-        const isMine = shift.assigned_to === targetUserId;  // Use target user, not current
+        const isMine = shift.assigned_to === targetUserId;
         const isOpenForHM = shift.is_open && ((isHouseManager && isStaffView) || printAsHouseManager);
         
-        // Keep shift if: assigned to me OR (open and I'm House Manager)
         if (!isMine && !isOpenForHM) {
-          return; // Skip this shift
+          return;
         }
       }
       
       totalShiftsRendered++;
       
-      
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
       
-      // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
       const isStaffView = currentUser?.role === 'staff';
       const showAsTentative = isOpen && ((isHouseManager && isStaffView) || printAsHouseManager);
       
-      // Get staff info for colors
       let staff, staffName, tileColor, textColor;
       
       if (showAsTentative) {
-        // House Manager: show open shifts as tentatively assigned to them
-        // If admin printing as HM, find the House Manager; otherwise use current user
         if (printAsHouseManager) {
           staff = allStaff.find(s => s.job_title === 'House Manager');
-          staffName = staff?.full_name || 'House Manager';
+          staffName = staff?.full_name || 'HM';
         } else {
           staff = allStaff.find(s => s.id === currentUser.id);
-          staffName = currentUser?.fullName || 'House Manager';
+          staffName = currentUser?.fullName || 'HM';
         }
         tileColor = staff?.tile_color || '#f5f5f5';
         textColor = staff?.text_color || 'black';
       } else {
-        // Normal rendering
         staff = allStaff.find(s => s.id === shift.assigned_to);
         staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
         tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
@@ -3519,30 +3541,33 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
       
       let borderColor = isOpen ? "black" : tileColor;
       
-      // Apply grayscale if black & white mode
       if (blackWhite) {
         tileColor = colorToGrayscale(tileColor);
         textColor = "black";
         borderColor = "black";
       }
       
-      // Use dashed border for tentative assignments
       const borderStyle = showAsTentative ? 'dashed' : 'solid';
+      const initials = staffName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px ${borderStyle} ${borderColor};">`;
-      html += `<strong>${staffName}</strong>`;
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px ${borderStyle} ${borderColor};">`;
+      html += `<strong>${initials}</strong>`;
       if (showAsTentative) {
-        html += ` <em style="font-size:8px;opacity:0.8;">(tentative)</em>`;
+        html += ` <em>(T)</em>`;
       }
-      html += `<br>${shiftDef.label || shift.shift_type}<br>`;
-      html += `${shift.start_time || shiftDef.time || ''}`;
       html += `</div>`;
     });
     
     html += `</div>`;
   }
   
-  html += `</div></div>`;
+  html += `
+        </div>
+      </div>
+    </div>
+    </body>
+    </html>
+  `;
   
   console.log('📄 Total shifts rendered:', totalShiftsRendered);
   
@@ -3551,20 +3576,16 @@ function printCalendarView(myShiftsOnly, blackWhite = false, printAsHouseManager
     return;
   }
   
-  // Create temporary container with correct ID
-  const printDiv = document.createElement('div');
-  printDiv.id = 'printContainer';
-  printDiv.innerHTML = html;
-  document.body.appendChild(printDiv);
+  // Open in new window for printing
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(html);
+  printWindow.document.close();
   
-  // Wait for DOM to update before printing
   setTimeout(() => {
-    window.print();
-    
-    // Clean up after print dialog closes
+    printWindow.print();
     setTimeout(() => {
-      document.body.removeChild(printDiv);
-    }, 500);
+      printWindow.close();
+    }, 100);
   }, 250);
 }
 
@@ -3581,7 +3602,6 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
   // Determine who we're printing for
   let targetUserId;
   if (printAsHouseManager) {
-    // Admin printing as House Manager - find the actual HM
     const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
     if (!houseManagerStaff) {
       alert('House Manager not found in staff list');
@@ -3589,7 +3609,6 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
     }
     targetUserId = houseManagerStaff.id;
   } else {
-    // Regular user printing their own shifts
     targetUserId = currentUser.id;
   }
   
@@ -3600,18 +3619,42 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
   
   const weekLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${weekEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
   
-  // Build print HTML (without outer wrapper - added by createElement below)
+  // Build print HTML with styles
   let html = `
-    <div class="print-header">
-      <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>Week of ${weekLabel}</h2>
-      ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
-    </div>
-    <div class="print-calendar">
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: white; color: #000; margin: 0; padding: 5px; }
+        .print-container { width: 100%; max-width: 100%; }
+        .print-header { text-align: center; margin-bottom: 10px; }
+        .print-header h1 { font-size: 16px; margin: 0 0 5px 0; }
+        .print-header h2 { font-size: 14px; margin: 0; }
+        .print-header h3 { font-size: 12px; margin: 5px 0 0 0; color: #666; }
+        .print-week-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; width: 100%; }
+        .print-week-day { border: 1px solid #ddd; padding: 3px; font-size: 9px; }
+        .print-week-day.wknd { background: #f9f9f9; }
+        .print-week-header { background: #f0f0f0; border: 1px solid #999; padding: 4px 2px; text-align: center; font-weight: bold; font-size: 10px; margin-bottom: 2px; }
+        .print-shift { border: 1px solid #999; border-radius: 2px; padding: 2px; margin: 1px 0; font-size: 8px; line-height: 1.2; }
+        @media print {
+          body { margin: 0; padding: 2px; }
+          .print-container { page-break-after: avoid; }
+          .print-week-grid { page-break-inside: avoid; }
+        }
+      </style>
+    </head>
+    <body>
+    <div class="print-container">
+      <div class="print-header">
+        <h1>LilSongBirdHomes Staff Schedule</h1>
+        <h2>Week of ${weekLabel}</h2>
+        ${myShiftsOnly ? `<h3>${currentUser?.full_name || 'My Shifts'} Only</h3>` : ''}
+      </div>
       <div class="print-week-grid">
   `;
   
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   let totalShiftsRendered = 0;
   
   // Generate each day column
@@ -3637,43 +3680,36 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
       if (myShiftsOnly) {
         const isHouseManager = currentUser?.jobTitle === 'House Manager';
         const isStaffView = currentUser?.role === 'staff';
-        const isMine = shift.assigned_to === targetUserId;  // Use target user, not current
+        const isMine = shift.assigned_to === targetUserId;
         const isOpenForHM = shift.is_open && ((isHouseManager && isStaffView) || printAsHouseManager);
         
-        // Keep shift if: assigned to me OR (open and I'm House Manager)
         if (!isMine && !isOpenForHM) {
-          return; // Skip this shift
+          return;
         }
       }
       
       totalShiftsRendered++;
       
-      
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const isOpen = shift.is_open || !shift.assigned_to;
       
-      // Check if this is House Manager viewing their own print
       const isHouseManager = currentUser?.jobTitle === 'House Manager';
       const isStaffView = currentUser?.role === 'staff';
       const showAsTentative = isOpen && ((isHouseManager && isStaffView) || printAsHouseManager);
       
-      // Get staff info for colors
       let staff, staffName, tileColor, textColor;
       
       if (showAsTentative) {
-        // House Manager: show open shifts as tentatively assigned to them
-        // If admin printing as HM, find the House Manager; otherwise use current user
         if (printAsHouseManager) {
           staff = allStaff.find(s => s.job_title === 'House Manager');
-          staffName = staff?.full_name || 'House Manager';
+          staffName = staff?.full_name || 'HM';
         } else {
           staff = allStaff.find(s => s.id === currentUser.id);
-          staffName = currentUser?.fullName || 'House Manager';
+          staffName = currentUser?.fullName || 'HM';
         }
         tileColor = staff?.tile_color || '#f5f5f5';
         textColor = staff?.text_color || 'black';
       } else {
-        // Normal rendering
         staff = allStaff.find(s => s.id === shift.assigned_to);
         staffName = isOpen ? 'OPEN' : (staff?.full_name || 'Unknown');
         tileColor = isOpen ? '#dc3545' : (staff?.tile_color || '#f5f5f5');
@@ -3682,30 +3718,32 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
       
       let borderColor = isOpen ? "black" : tileColor;
       
-      // Apply grayscale if black & white mode
       if (blackWhite) {
         tileColor = colorToGrayscale(tileColor);
         borderColor = "black";
         textColor = "black";
       }
       
-      // Use dashed border for tentative assignments
       const borderStyle = showAsTentative ? 'dashed' : 'solid';
+      const initials = staffName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 
-      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:2px ${borderStyle} ${borderColor};">`;
-      html += `<strong>${staffName}</strong>`;
+      html += `<div class="print-shift" style="background:${tileColor}; color:${textColor}; border:1px ${borderStyle} ${borderColor};">`;
+      html += `<strong>${initials}</strong>`;
       if (showAsTentative) {
-        html += ` <em style="font-size:8px;opacity:0.8;">(tentative)</em>`;
+        html += ` <em>(T)</em>`;
       }
-      html += `<br>${shiftDef.label || shift.shift_type}<br>`;
-      html += `${shift.start_time || shiftDef.time || ''}`;
       html += `</div>`;
     });
     
     html += `</div>`;
   }
   
-  html += `</div></div>`;
+  html += `
+      </div>
+    </div>
+    </body>
+    </html>
+  `;
   
   console.log('📄 Total shifts rendered:', totalShiftsRendered);
   
@@ -3714,20 +3752,16 @@ function printWeekView(myShiftsOnly, blackWhite = false, printAsHouseManager = f
     return;
   }
   
-  // Create temporary container with correct ID
-  const printDiv = document.createElement('div');
-  printDiv.id = 'printContainer';
-  printDiv.innerHTML = html;
-  document.body.appendChild(printDiv);
+  // Open in new window for printing
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(html);
+  printWindow.document.close();
   
-  // Wait for DOM to update before printing
   setTimeout(() => {
-    window.print();
-    
-    // Clean up after print dialog closes
+    printWindow.print();
     setTimeout(() => {
-      document.body.removeChild(printDiv);
-    }, 500);
+      printWindow.close();
+    }, 100);
   }, 250);
 }
 
@@ -3741,7 +3775,6 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
   let targetUser, targetIsHM;
   
   if (printAsHouseManager) {
-    // Admin printing as House Manager - find the actual HM
     const houseManagerStaff = allStaff.find(s => s.job_title === 'House Manager');
     targetUser = houseManagerStaff ? {
       id: houseManagerStaff.id,
@@ -3750,7 +3783,6 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
     } : null;
     targetIsHM = true;
   } else {
-    // Regular user printing their own shifts
     targetUser = currentUser;
     targetIsHM = currentUser?.jobTitle === 'House Manager' && currentUser?.role === 'staff';
   }
@@ -3761,11 +3793,10 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
   }
   
   // Get shifts for target user
-  // House Manager includes open shifts as tentative
   const myShifts = allShifts
     .filter(s => {
       if (s.assigned_to === targetUser.id) return true;
-      if (targetIsHM && s.is_open) return true;  // Include open for HM
+      if (targetIsHM && s.is_open) return true;
       return false;
     })
     .sort((a, b) => {
@@ -3781,13 +3812,32 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
     printAsHouseManager
   });
   
-  // Build HTML (without outer wrapper - added by createElement below)
+  // Build HTML with styles
   let html = `
-    <div class="print-header">
-      <h1>LilSongBirdHomes Staff Schedule</h1>
-      <h2>${monthName} - ${targetUser?.fullName || 'Staff Member'}</h2>
-    </div>
-    <div class="print-list">
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: white; color: #000; margin: 0; padding: 5px; }
+        .print-header { text-align: center; margin-bottom: 10px; }
+        .print-header h1 { font-size: 16px; margin: 0 0 5px 0; }
+        .print-header h2 { font-size: 14px; margin: 0; }
+        .print-list-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .print-list-table th { background: #f0f0f0; border: 1px solid #999; padding: 4px; text-align: left; font-weight: bold; }
+        .print-list-table td { border: 1px solid #ddd; padding: 4px; }
+        .print-list-table tr:nth-child(even) { background: #f9f9f9; }
+        @media print {
+          body { margin: 0; padding: 2px; }
+          .print-list-table { page-break-inside: avoid; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="print-header">
+        <h1>LilSongBirdHomes Staff Schedule</h1>
+        <h2>${monthName} - ${targetUser?.fullName || 'Staff Member'}</h2>
+      </div>
       <table class="print-list-table">
         <thead>
           <tr>
@@ -3807,21 +3857,20 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
   if (myShifts.length === 0) {
     html += `
       <tr>
-        <td colspan="5" style="text-align:center;padding:20px;">No shifts assigned for this period</td>
+        <td colspan="6" style="text-align:center;padding:20px;">No shifts assigned for this period</td>
       </tr>
     `;
   } else {
     myShifts.forEach(shift => {
       const d = new Date(shift.date + 'T12:00:00');
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'long' });
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
       const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
       const hours = shiftDef.hours || 0;
       totalHours += hours;
       
-      // Check if this is a tentative assignment (open shift for House Manager)
       const isTentative = shift.is_open && targetIsHM;
-      const statusText = isTentative ? '<em style="font-style:italic;">Tentative</em>' : 'Assigned';
+      const statusText = isTentative ? 'Tentative' : 'Assigned';
       
       html += `
         <tr>
@@ -3837,31 +3886,28 @@ function printListView(blackWhite = false, printAsHouseManager = false) {
   }
   
   html += `
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colspan="4" style="text-align:right;font-weight:bold;">Total Hours:</td>
-              <td style="font-weight:bold;">${totalHours}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" style="text-align:right;font-weight:bold;">Total Hours:</td>
+            <td colspan="2" style="font-weight:bold;">${totalHours}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </body>
+    </html>
   `;
   
-  // Create temporary container with correct ID
-  const printDiv = document.createElement('div');
-  printDiv.id = 'printContainer';
-  printDiv.innerHTML = html;
-  document.body.appendChild(printDiv);
+  // Open in new window for printing
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(html);
+  printWindow.document.close();
   
-  // Wait for DOM to update before printing
   setTimeout(() => {
-    window.print();
-    
-    // Clean up after print dialog closes
+    printWindow.print();
     setTimeout(() => {
-      document.body.removeChild(printDiv);
-    }, 500);
+      printWindow.close();
+    }, 100);
   }, 250);
 }
 
