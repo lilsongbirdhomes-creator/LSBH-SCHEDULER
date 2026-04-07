@@ -3326,58 +3326,34 @@ function executePrint() {
     return;
   }
   
-  // Hide everything except calendar
-  const appContainer = document.getElementById('app');
-  const originalDisplay = appContainer.style.display;
-  
-  // Hide all UI elements except calendar
-  const elementsToHide = document.querySelectorAll('#topBar, #staffDashboard, #adminPanel, .staff-action-buttons, #calTitle, #calTitleStaff');
-  const hiddenStates = [];
-  elementsToHide.forEach(el => {
-    hiddenStates.push({el: el, display: el.style.display});
-    el.style.display = 'none';
-  });
-  
-  // Show only the calendar title and calendar
-  let titleEl = document.getElementById('calTitle');
-  if (!titleEl || titleEl.offsetParent === null) {
-    titleEl = document.getElementById('calTitleStaff');
-  }
-  if (titleEl) {
-    titleEl.style.display = 'block';
-  }
-  
-  // Add print-only filter note if "only my shifts" is enabled
-  if (showOnlyMyShifts && currentUser) {
-    const filterNote = document.createElement('div');
-    filterNote.id = 'printFilterNote';
-    filterNote.style.textAlign = 'center';
-    filterNote.style.fontStyle = 'italic';
-    filterNote.style.marginBottom = '15px';
-    filterNote.style.color = '#666';
-    filterNote.textContent = `Filtered to show only shifts for ${currentUser.fullName}`;
-    document.getElementById('calendarRoot') ? 
-      document.getElementById('calendarRoot').parentNode.insertBefore(filterNote, document.getElementById('calendarRoot')) :
-      document.getElementById('calendarRootStaff').parentNode.insertBefore(filterNote, document.getElementById('calendarRootStaff'));
+  // Add print-specific CSS to hide UI elements during print only
+  let printStyleId = 'printHideStyles';
+  if (!document.getElementById(printStyleId)) {
+    const printStyle = document.createElement('style');
+    printStyle.id = printStyleId;
+    printStyle.textContent = `
+      @media print {
+        body { margin: 0; padding: 10px; background: white; }
+        #topBar { display: none !important; }
+        #staffDashboard > *:not(#calendarRootStaff) { display: none !important; }
+        #adminPanel > *:not(#calendarRoot) { display: none !important; }
+        .staff-action-buttons { display: none !important; }
+        #printDialog { display: none !important; }
+        .modal-overlay { display: none !important; }
+        #calendarRoot { display: block !important; }
+        #calendarRootStaff { display: block !important; }
+        #calTitle { display: block !important; margin: 0 0 10px 0; text-align: center; }
+        #calTitleStaff { display: block !important; margin: 0 0 10px 0; text-align: center; }
+        .week-grid { page-break-inside: avoid; }
+        .month-grid { page-break-inside: avoid; }
+      }
+    `;
+    document.head.appendChild(printStyle);
   }
   
-  // Trigger browser print
+  // Trigger native browser print
   setTimeout(() => {
     window.print();
-    
-    // Restore UI after print dialog closes (user cancels or prints)
-    setTimeout(() => {
-      // Restore hidden elements
-      hiddenStates.forEach(({el, display}) => {
-        el.style.display = display;
-      });
-      
-      // Remove filter note
-      const filterNote = document.getElementById('printFilterNote');
-      if (filterNote) {
-        filterNote.remove();
-      }
-    }, 500);
   }, 100);
 }
 
