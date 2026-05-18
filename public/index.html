@@ -257,6 +257,45 @@
 
     </div>
 
+    <!-- Guest Dashboard -->
+    <div id="guestDashboard" class="hidden">
+      <div style="text-align:center;padding:12px 16px 4px;background:#f8f9fa;border-bottom:1px solid #dee2e6;">
+        <div style="font-size:13px;color:#666;">👁️ Guest View — Schedule is read-only. Staff names are anonymized.</div>
+      </div>
+
+      <!-- Current Month -->
+      <div style="padding:8px 12px 4px;">
+        <div class="cal-nav">
+          <div class="cal-nav-left" style="justify-content:center;width:100%;">
+            <span class="cal-title" id="guestTitle1" style="font-size:16px;font-weight:700;"></span>
+          </div>
+        </div>
+        <div class="cal-scroll" style="margin-top:6px;">
+          <div id="guestCalRoot1"></div>
+        </div>
+      </div>
+
+      <!-- Next Month -->
+      <div style="padding:8px 12px 4px;">
+        <div class="cal-nav">
+          <div class="cal-nav-left" style="justify-content:center;width:100%;">
+            <span class="cal-title" id="guestTitle2" style="font-size:16px;font-weight:700;"></span>
+          </div>
+        </div>
+        <div class="cal-scroll" style="margin-top:6px;">
+          <div id="guestCalRoot2"></div>
+        </div>
+      </div>
+
+      <!-- Logout only -->
+      <div style="text-align:center;padding:20px;">
+        <button class="staff-action-btn btn-logout" style="max-width:200px;margin:0 auto;" onclick="handleLogout()">
+          <span class="sab-icon">🚪</span>
+          <span class="sab-label">Logout</span>
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 
