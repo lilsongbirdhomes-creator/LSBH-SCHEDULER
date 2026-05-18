@@ -533,9 +533,10 @@ function renderWeekView() {
     const dateStr = formatDate(d);
     const isWknd = i === 0 || i === 6;
     const isToday = dateStr === todayStr;
+    const isPast = dateStr < todayStr;
     
     const hdr = document.createElement('div');
-    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
+    hdr.className = 'day-hdr' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '') + (isPast ? ' past' : '');
     hdr.innerHTML = `<span class="dn">${dayNames[i]}</span><span class="dt">${d.getDate()}</span>`;
     grid.appendChild(hdr);
   }
@@ -547,9 +548,10 @@ function renderWeekView() {
     const dateStr = formatDate(d);
     const isWknd = i === 0 || i === 6;
     const isToday = dateStr === todayStr;
+    const isPast = dateStr < todayStr;
     
     const col = document.createElement('div');
-    col.className = 'day-col' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '');
+    col.className = 'day-col' + (isWknd ? ' wknd' : '') + (isToday ? ' today' : '') + (isPast ? ' past' : '');
     
     const dayShifts = allShifts
       .filter(s => s.date === dateStr)
@@ -673,11 +675,13 @@ function renderMonthView() {
     const isToday = dateStr === formatDate(new Date());
     const isWknd = d.getDay() === 0 || d.getDay() === 6;
     const isCurrentMonth = d.getMonth() === month;
+    const isPast = dateStr < formatDate(new Date());
     
     const cell = document.createElement('div');
     cell.className = 'month-day-cell' + 
       (isWknd ? ' wknd' : '') + 
       (isToday ? ' today' : '') +
+      (isPast ? ' past' : '') +
       (!isCurrentMonth ? ' other-month' : '');
     
     const dayNum = document.createElement('div');
