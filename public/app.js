@@ -2292,7 +2292,17 @@ async function sendScheduleNotifications() {
     });
     
     console.log('✅ Notifications sent:', result);
-    showSuccess(`Notifications sent to ${result.notified} staff member(s)!`);
+    
+    if (result.notified === 0) {
+      const detail = result.noTelegramIds 
+        ? `\n\nNote: ${result.noTelegramIds} staff member(s) have no Telegram ID linked. Go to Manage Staff to add their Telegram IDs.`
+        : result.telegramDisabled
+          ? '\n\nNote: Telegram bot is not configured on the server. Check that TELEGRAM_BOT_TOKEN is set in the server .env file.'
+          : '\n\nCheck server logs for details.';
+      alert(`No notifications were sent (0 of ${changes.length} changes delivered).${detail}`);
+    } else {
+      showSuccess(`Notifications sent to ${result.notified} staff member(s)!`);
+    }
     
     // Clear changes and timer
     scheduleChanges = {};
