@@ -7,6 +7,7 @@ let viewDate = new Date(); // Start at current date
 let allStaff = [];
 let allShifts = [];
 let showOnlyMyShifts = false; // Staff can toggle this
+let printingAsHM = false; // Flag for print-as-HM rendering
 
 const SHIFT_DEFS = {
   morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
@@ -734,9 +735,9 @@ function createShiftTile(shift, viewType = 'week') {
 
   if (shift.is_open) {
     if (!isPending) {
-      // For house managers, show open shifts as tentatively assigned (light green)
+      // For house managers (or print-as-HM), show open shifts as tentatively assigned (light green)
       const currentUserStaff = allStaff.find(s => s.id === currentUser.id);
-      if (currentUserStaff && currentUserStaff.job_title === 'House Manager') {
+      if (printingAsHM || (currentUserStaff && currentUserStaff.job_title === 'House Manager')) {
         tile.style.background = '#c8e6c9';
         tile.style.color = '#2e7d32';
       } else {
@@ -757,22 +758,26 @@ function createShiftTile(shift, viewType = 'week') {
     };
 
     const pendingBadge = isPending ? '<div class="pending-badge">⏳ Pending Change</div>' : '';
+    // When printing as HM, show HM name instead of "Open Shift"
+    const hmStaff = printingAsHM ? allStaff.find(s => s.job_title === 'House Manager') : null;
+    const openLabel = hmStaff ? hmStaff.full_name : 'Open Shift';
+    const openSubLabel = hmStaff ? '<em style="font-size:9px;">(tentative)</em>' : `Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}`;
     if (viewType === 'month') {
       tile.innerHTML = `
         ${pendingBadge}
-        <div class="month-shift-name">Open Shift</div>
+        <div class="month-shift-name">${openLabel}</div>
         <div class="month-shift-time">${def.icon} ${def.time}</div>
-        <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}</div>
+        <div class="month-shift-hours" style="font-size:9px;opacity:0.7;">${openSubLabel}</div>
       `;
     } else {
       tile.innerHTML = `
         ${pendingBadge}
         <div>
-          <div class="t-name">Open Shift</div>
+          <div class="t-name">${openLabel}</div>
           <div class="t-time">${def.time}</div>
         </div>
         <div class="t-foot" style="font-size:10px;opacity:0.7;">
-          Tap to ${currentUser.role === 'admin' ? 'assign' : 'request'}
+          ${openSubLabel}
         </div>
       `;
     }
@@ -3324,22 +3329,10 @@ function executePrint() {
     return;
   }
   
-  // If printing as HM, temporarily impersonate HM so open shifts render as tentative
-  let savedUser = null;
+  // If printing as HM, set flag and re-render calendar in place (no user swap)
   if (printAsHouseManager) {
-    const hmStaff = allStaff.find(s => s.job_title === 'House Manager');
-    if (hmStaff) {
-      savedUser = currentUser;
-      currentUser = {
-        ...currentUser,
-        id: hmStaff.id,
-        fullName: hmStaff.full_name,
-        full_name: hmStaff.full_name,
-        jobTitle: hmStaff.job_title,
-        role: 'staff'  // forces staff calendar render with HM open-shift logic
-      };
-      renderCalendar();
-    }
+    printingAsHM = true;
+    renderCalendar();
   }
   
   // Inject print CSS (always refresh)
@@ -3409,9 +3402,9 @@ function executePrint() {
   setTimeout(() => {
     window.print();
     
-    // Restore original user and re-render after printing
-    if (savedUser) {
-      currentUser = savedUser;
+    // Restore normal render after printing
+    if (printAsHouseManager) {
+      printingAsHM = false;
       renderCalendar();
     }
   }, 150);
