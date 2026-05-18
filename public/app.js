@@ -120,7 +120,8 @@ async function showApp() {
     loadShifts();
   } else if (currentUser.role === 'guest') {
     document.getElementById('guestDashboard').classList.remove('hidden');
-    loadShifts().then(() => renderGuestCalendars());
+    await loadStaff();
+    loadGuestView();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
     loadDashboard();
@@ -3706,42 +3707,55 @@ function printListViewSimple() {
   }, 300);
 }
 
-// Guest View — anonymous month calendars
-function renderGuestCalendars() {
+// ═══════════════════════════════════════════════════════════
+// GUEST VIEW
+// ═══════════════════════════════════════════════════════════
+
+async function loadGuestView() {
   const now = new Date();
-  const month1 = new Date(now.getFullYear(), now.getMonth(), 1);
-  const month2 = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  
+  // Current month full calendar range (Sun of first week → Sat of last week)
+  const m1Start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const m1StartDay = m1Start.getDay();
+  const m1Last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const m1EndDay = m1Last.getDay();
+  const rangeStart = new Date(now.getFullYear(), now.getMonth(), 1 - m1StartDay);
+  const rangeEnd   = new Date(now.getFullYear(), now.getMonth() + 1, m1Last.getDate() + (m1EndDay === 6 ? 0 : 6 - m1EndDay));
 
-  // Build stable anonymous staff map: real id → "Staff #N"
-  // Sort by id for consistency, exclude _open/admin/guest
-  const realStaff = allStaff
-    .filter(s => s.username !== '_open' && s.role !== 'admin' && s.role !== 'guest')
-    .sort((a, b) => a.id - b.id);
-  const anonMap = {};
-  realStaff.forEach((s, i) => { anonMap[s.id] = `Staff #${i + 1}`; });
+  try {
+    showLoading();
+    const result = await apiCall(`/shifts?startDate=${formatDate(rangeStart)}&endDate=${formatDate(rangeEnd)}`);
+    const shifts = result.shifts;
 
-  renderGuestMonth('guestCalRoot1', 'guestTitle1', month1, anonMap);
-  renderGuestMonth('guestCalRoot2', 'guestTitle2', month2, anonMap);
+    // Build stable anon map sorted by staff id
+    const realStaff = allStaff
+      .filter(s => s.username !== '_open' && s.role !== 'admin' && s.role !== 'guest')
+      .sort((a, b) => a.id - b.id);
+    const anonMap = {};
+    realStaff.forEach((s, i) => { anonMap[s.id] = `Staff #${i + 1}`; });
+
+    // Render single month calendar spanning full range
+    const title = m1Start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    document.getElementById('guestTitle1').textContent = title;
+    renderGuestMonth('guestCalRoot1', shifts, rangeStart, rangeEnd, anonMap);
+
+    // Hide second calendar
+    const c2 = document.getElementById('guestCalRoot2');
+    const t2 = document.getElementById('guestTitle2');
+    if (c2) c2.style.display = 'none';
+    if (t2) t2.style.display = 'none';
+  } catch (err) {
+    console.error('Guest view load error:', err);
+  } finally {
+    hideLoading();
+  }
 }
 
-function renderGuestMonth(rootId, titleId, monthStart, anonMap) {
+function renderGuestMonth(rootId, shifts, rangeStart, rangeEnd, anonMap) {
   const root = document.getElementById(rootId);
-  const titleEl = document.getElementById(titleId);
   if (!root) return;
 
-  const year = monthStart.getFullYear();
-  const month = monthStart.getMonth();
-  titleEl.textContent = monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
   const todayStr = formatDate(new Date());
-  const startDay = monthStart.getDay();
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  const lastDayDate = new Date(year, month, lastDay);
-  const endDay = lastDayDate.getDay();
-  const startDate = new Date(year, month, 1 - startDay);
-  const endDate = new Date(year, month, lastDay + (endDay === 6 ? 0 : 6 - endDay));
-
-  // Build month grid
   const grid = document.createElement('div');
   grid.className = 'month-grid';
 
@@ -3753,50 +3767,56 @@ function renderGuestMonth(rootId, titleId, monthStart, anonMap) {
     grid.appendChild(hdr);
   });
 
-  // Days
-  const cur = new Date(startDate);
-  while (cur <= endDate) {
+  // All days in range
+  const cur = new Date(rangeStart);
+  while (cur <= rangeEnd) {
     const dateStr = formatDate(cur);
     const isToday = dateStr === todayStr;
-    const isPast = dateStr < todayStr;
-    const isCurrentMonth = cur.getMonth() === month;
-    const isWknd = cur.getDay() === 0 || cur.getDay() === 6;
+    const isPast  = dateStr < todayStr;
+    const isWknd  = cur.getDay() === 0 || cur.getDay() === 6;
 
     const cell = document.createElement('div');
     cell.className = 'month-day-cell' +
-      (isWknd ? ' wknd' : '') +
-      (isToday ? ' today' : '') +
-      (isPast ? ' past' : '') +
-      (!isCurrentMonth ? ' other-month' : '');
+      (isWknd  ? ' wknd'        : '') +
+      (isToday ? ' today'       : '') +
+      (isPast  ? ' past'        : '');
 
     const dayNum = document.createElement('div');
     dayNum.className = 'month-day-num';
-    dayNum.textContent = cur.getDate();
+    dayNum.textContent = cur.getDate() + (cur.getMonth() !== rangeStart.getMonth() || 
+      (cur < new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1)) ? 
+      ' ' + cur.toLocaleDateString('en-US',{month:'short'}) : '');
     cell.appendChild(dayNum);
 
-    // Shifts for this day — anonymized, no open shifts shown
-    const dayShifts = allShifts
-      .filter(s => s.date === dateStr && !s.is_open && s.assigned_to)
+    // Shifts for this day
+    const dayShifts = shifts
+      .filter(s => s.date === dateStr)
       .sort((a, b) => {
         const order = { morning: 1, afternoon: 2, overnight: 3 };
         return order[a.shift_type] - order[b.shift_type];
       });
 
     dayShifts.forEach(shift => {
-      const def = SHIFT_DEFS[shift.shift_type] || {};
-      const anonName = anonMap[shift.assigned_to] || 'Staff';
-      const staff = allStaff.find(s => s.id === shift.assigned_to);
-      // Use staff tile color but show anon name
-      const bg = staff?.tile_color || '#f0f0f0';
-      const fg = staff?.text_color || 'black';
+      const def  = SHIFT_DEFS[shift.shift_type] || {};
+      const isOpen = shift.is_open || !shift.assigned_to;
+      let name, bg, fg;
+
+      if (isOpen) {
+        name = 'Open Shift';
+        bg   = '#f5f5f5';
+        fg   = '#dc3545';
+      } else {
+        name = anonMap[shift.assigned_to] || 'Staff';
+        const staff = allStaff.find(s => s.id === shift.assigned_to);
+        bg = staff?.tile_color || '#f0f0f0';
+        fg = staff?.text_color || 'black';
+      }
 
       const tile = document.createElement('div');
       tile.className = 'month-shift-tile';
-      tile.style.background = bg;
-      tile.style.color = fg;
-      tile.style.border = `1px solid ${bg}`;
+      tile.style.cssText = `background:${bg};color:${fg};border:1px solid rgba(0,0,0,.1);${isOpen ? 'border:1px dashed #dc3545;' : ''}`;
       tile.innerHTML = `
-        <div class="month-shift-name">${anonName}</div>
+        <div class="month-shift-name">${name}</div>
         <div class="month-shift-time">${def.icon || ''} ${def.time || ''}</div>
       `;
       cell.appendChild(tile);
