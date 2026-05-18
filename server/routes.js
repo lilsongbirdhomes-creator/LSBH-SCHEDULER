@@ -537,20 +537,23 @@ router.post('/shifts/bulk', requireAdmin, async (req, res) => {
   
   try {
     for (const shift of shifts) {
-      const { date, shiftType, assignedTo, isOpen } = shift;
+      const { date, shiftType, assignedTo, isOpen, notes } = shift;
       
-      // Check if shift already exists
-      const existing = req.db.prepare(`
-        SELECT id FROM shifts WHERE date = ? AND shift_type = ?
-      `).get(date, shiftType);
-      
-      if (existing) {
-        skipped++;
-        continue;
+      // For holiday, allow multiple per day (no type clash check needed)
+      if (shiftType !== 'holiday') {
+        // Check if shift already exists
+        const existing = req.db.prepare(`
+          SELECT id FROM shifts WHERE date = ? AND shift_type = ?
+        `).get(date, shiftType);
+        
+        if (existing) {
+          skipped++;
+          continue;
+        }
       }
       
-      // Check hours limit if assigning
-      if (assignedTo && !isOpen) {
+      // Check hours limit if assigning (skip for holidays)
+      if (assignedTo && !isOpen && shiftType !== 'holiday') {
         const check = checkHoursLimit(req.db, assignedTo, date, shiftType);
         if (check.wouldExceed) {
           errors.push(`${date} ${shiftType}: Would exceed 40-hour limit for staff`);
@@ -561,13 +564,14 @@ router.post('/shifts/bulk', requireAdmin, async (req, res) => {
       
       // Create shift
       req.db.prepare(`
-        INSERT INTO shifts (date, shift_type, assigned_to, is_open, created_by)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO shifts (date, shift_type, assigned_to, is_open, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?)
       `).run(
         date,
         shiftType,
-        isOpen ? null : assignedTo,
+        isOpen ? null : (assignedTo || null),
         isOpen ? 1 : 0,
+        notes || null,
         req.session.userId
       );
       
