@@ -117,6 +117,9 @@ async function showApp() {
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
     loadPendingApprovals();
+    // Restore any unsent schedule changes from previous session
+    loadChangesFromStorage();
+    updateNotificationButton();
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
     loadDashboard();
@@ -2145,8 +2148,30 @@ async function confirmImport() {
 // Global change tracking
 // CHANGE TRACKING SYSTEM - With Debug Logging
 
+// Global change tracking
 let scheduleChanges = {}; // Object for consolidation
 let changeTimer = null;
+
+function saveChangesToStorage() {
+  try {
+    localStorage.setItem('lsbh_scheduleChanges', JSON.stringify(scheduleChanges));
+  } catch(e) {
+    console.warn('Could not save changes to localStorage:', e);
+  }
+}
+
+function loadChangesFromStorage() {
+  try {
+    const saved = localStorage.getItem('lsbh_scheduleChanges');
+    if (saved) {
+      scheduleChanges = JSON.parse(saved);
+      console.log('📂 Loaded', Object.keys(scheduleChanges).length, 'pending changes from storage');
+    }
+  } catch(e) {
+    console.warn('Could not load changes from localStorage:', e);
+    scheduleChanges = {};
+  }
+}
 
 function trackChange(changeType, shift, oldStaffId, newStaffId) {
   console.log('🔵 trackChange called:', { changeType, shift, oldStaffId, newStaffId });
@@ -2189,6 +2214,7 @@ function trackChange(changeType, shift, oldStaffId, newStaffId) {
   }
   
   console.log('📊 Total changes:', Object.keys(scheduleChanges).length);
+  saveChangesToStorage();
   updateNotificationButton();
   startReminderTimer();
 }
@@ -2270,6 +2296,7 @@ async function sendScheduleNotifications() {
     
     // Clear changes and timer
     scheduleChanges = {};
+    localStorage.removeItem('lsbh_scheduleChanges');
     if (changeTimer) {
       clearTimeout(changeTimer);
       changeTimer = null;
@@ -2290,6 +2317,7 @@ function clearScheduleChanges() {
   
   if (confirm(`Clear ${count} tracked ${count === 1 ? 'change' : 'changes'} without sending notifications?`)) {
     scheduleChanges = {};
+    localStorage.removeItem('lsbh_scheduleChanges');
     if (changeTimer) {
       clearTimeout(changeTimer);
       changeTimer = null;
