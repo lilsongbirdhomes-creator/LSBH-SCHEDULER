@@ -10,9 +10,10 @@ let showOnlyMyShifts = false; // Staff can toggle this
 let printingAsHM = false; // Flag for print-as-HM rendering
 
 const SHIFT_DEFS = {
-  morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0, icon: '🌅' },
-  afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0, icon: '🌆' },
-  overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0, icon: '🌙' }
+  morning:   { label: 'Morning',   time: '7:00 AM – 3:00 PM', hours: 8.0,  icon: '🌅' },
+  afternoon: { label: 'Afternoon', time: '3:00 PM – 7:00 PM', hours: 4.0,  icon: '🌆' },
+  overnight: { label: 'Overnight', time: '7:00 PM – 7:00 AM', hours: 12.0, icon: '🌙' },
+  holiday:   { label: 'Holiday',   time: '',                   hours: 0,    icon: '🎉' }
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -845,6 +846,41 @@ function createShiftTile(shift, viewType = 'week') {
   const def = SHIFT_DEFS[shift.shift_type];
   const tile = document.createElement('div');
   tile.className = viewType === 'month' ? 'month-shift-tile' : 'shift-tile';
+
+  // ── HOLIDAY TILE ──────────────────────────────────────────
+  if (shift.shift_type === 'holiday') {
+    const label = shift.notes || 'Holiday';
+    tile.style.cssText = `
+      background: linear-gradient(135deg, #ff6b6b, #ffa07a);
+      color: white;
+      border: 2px solid #ff4444;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: ${viewType === 'month' ? '80px' : '120px'};
+      cursor: ${currentUser.role === 'admin' ? 'pointer' : 'default'};
+      padding: 8px;
+    `;
+    tile.innerHTML = `
+      <div>
+        <div style="font-size:22px;margin-bottom:4px;">🎉</div>
+        <div style="font-size:${viewType === 'month' ? '12px' : '16px'};font-weight:800;line-height:1.2;">${label}</div>
+      </div>
+    `;
+    if (currentUser.role === 'admin') {
+      tile.onclick = () => {
+        if (confirm(`Delete holiday "${label}"?`)) {
+          apiCall(`/shifts/${shift.id}`, { method: 'DELETE' })
+            .then(() => { showSuccess('Holiday removed'); loadShifts(); })
+            .catch(err => alert('Error: ' + err.message));
+        }
+      };
+    }
+    return tile;
+  }
+  // ─────────────────────────────────────────────────────────
 
   // Determine pending state
   const hasPendingShiftReq = pendingShiftIds.has(shift.id);
@@ -1680,6 +1716,21 @@ function openShiftGenerator() {
   const copyTargetDate = document.getElementById('copyTargetDate');
   if (copyTargetDate) copyTargetDate.value = formatDate(twoWeeks);
   
+  // Set holiday date default to today
+  const holidayStartDate = document.getElementById('holidayStartDate');
+  if (holidayStartDate) holidayStartDate.value = formatDate(today);
+  const holidayEndDate = document.getElementById('holidayEndDate');
+  if (holidayEndDate) holidayEndDate.value = formatDate(today);
+
+  // Live preview for holiday name
+  const holidayName = document.getElementById('holidayName');
+  const holidayPreviewText = document.getElementById('holidayPreviewText');
+  if (holidayName && holidayPreviewText) {
+    holidayName.oninput = () => {
+      holidayPreviewText.textContent = holidayName.value.trim() || 'Holiday';
+    };
+  }
+
   // Show modal
   const modal = document.getElementById('shiftGeneratorModal');
   if (modal) {
@@ -1831,6 +1882,50 @@ function updateGeneratorPreview() {
   
   document.getElementById('genPreviewText').textContent = 
     `Will create ~${estimatedShifts} shifts (${dayCount} days × ${shiftTypes.length} shift types) ${patternText}`;
+}
+
+async function generateHoliday() {
+  const startInput = document.getElementById('holidayStartDate').value;
+  const endInput   = document.getElementById('holidayEndDate').value;
+  const name       = document.getElementById('holidayName').value.trim();
+
+  if (!startInput) { alert('Please select a start date'); return; }
+  if (!name)        { alert('Please enter a holiday name'); return; }
+
+  const endUsed = endInput || startInput; // default to single day
+  const [sy, sm, sd] = startInput.split('-').map(Number);
+  const [ey, em, ed] = endUsed.split('-').map(Number);
+  const startDate = new Date(sy, sm - 1, sd);
+  const endDate   = new Date(ey, em - 1, ed);
+
+  if (endDate < startDate) { alert('End date must be on or after start date'); return; }
+
+  const days = Math.round((endDate - startDate) / 86400000) + 1;
+  const label = days === 1
+    ? `Add holiday "${name}" on ${startDate.toLocaleDateString()}?`
+    : `Add holiday "${name}" for ${days} days (${startDate.toLocaleDateString()} – ${endDate.toLocaleDateString()})?`;
+  if (!confirm(label)) return;
+
+  try {
+    showLoading();
+    const shifts = [];
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      shifts.push({ date: formatDate(d), shiftType: 'holiday', isOpen: false, assignedTo: null, notes: name });
+    }
+
+    const result = await apiCall('/shifts/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ shifts })
+    });
+
+    closeShiftGenerator();
+    showSuccess(`Holiday "${name}" added for ${result.created} day(s)!`);
+    loadShifts();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  } finally {
+    hideLoading();
+  }
 }
 
 async function generateShifts() {
