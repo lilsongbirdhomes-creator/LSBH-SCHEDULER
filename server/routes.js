@@ -1841,6 +1841,7 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
     
     // Send notifications
     let notified = 0;
+    let noTelegramIds = 0;
     for (const [staffId, staffChanges] of Object.entries(notifications)) {
       try {
         console.log("🔍 Looking up staff ID:", staffId);
@@ -1851,7 +1852,7 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
           let message = `📅 Schedule Update for ${staff.full_name}:\n\n`;
           
           staffChanges.forEach(change => {
-            const readableDate = new Date(change.date).toLocaleDateString('en-US', { 
+            const readableDate = new Date(change.date + 'T12:00:00').toLocaleDateString('en-US', { 
               weekday: 'short', 
               month: 'short', 
               day: 'numeric' 
@@ -1864,20 +1865,32 @@ router.post('/send-schedule-notifications', requireAdmin, async (req, res) => {
             }
           });
           
-          
           // Add web app link
           message += "\n🔗 Check the schedule for details:\n";
           message += process.env.APP_URL || "https://your-app.railway.app";
-          await telegram.sendNotification(staff.telegram_id, message);
-          notified++;
-          console.log("📧 Sending to", staff.full_name, ":", message);
+          const sent = await telegram.sendNotification(staff.telegram_id, message);
+          if (sent) {
+            notified++;
+            console.log("📧 Sent to", staff.full_name);
+          } else {
+            console.warn("⚠️ Failed to send to", staff.full_name, "- Telegram may be disabled or token missing");
+          }
+        } else {
+          noTelegramIds++;
+          console.warn("⚠️ No Telegram ID for staff:", staff?.full_name || staffId);
         }
       } catch (err) {
         console.error(`Failed to notify staff ${staffId}:`, err);
       }
     }
     
-    res.json({ success: true, notified, totalChanges: changes.length });
+    res.json({ 
+      success: true, 
+      notified, 
+      totalChanges: changes.length,
+      noTelegramIds,
+      telegramDisabled: !telegram.isEnabled
+    });
   } catch (err) {
     console.error('Send notifications error:', err);
     res.status(500).json({ error: 'Failed to send notifications' });
