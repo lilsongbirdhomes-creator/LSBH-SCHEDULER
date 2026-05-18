@@ -3323,44 +3323,93 @@ function executePrint() {
   
   closePrintDialog();
   
-  // Only print list if that option was selected
   if (printType === 'list') {
     printListViewSimple();
-  } else {
-    // For calendar views, use the native print with CSS
-    // Add print-specific CSS to hide UI elements and fit calendar
-    let printStyleId = 'printHideStyles';
-    if (!document.getElementById(printStyleId)) {
-      const printStyle = document.createElement('style');
-      printStyle.id = printStyleId;
-      printStyle.textContent = `
-        @media print {
-          body { margin: 0; padding: 0; background: white; }
-          * { margin: 0; padding: 0; }
-          #topBar { display: none !important; }
-          #staffDashboard > *:not(#calendarRootStaff) { display: none !important; }
-          #adminPanel > *:not(#calendarRoot) { display: none !important; }
-          .staff-action-buttons { display: none !important; }
-          #printDialog { display: none !important; }
-          .modal-overlay { display: none !important; }
-          #calendarRoot { display: block !important; margin: 0 !important; padding: 0 !important; }
-          #calendarRootStaff { display: block !important; margin: 0 !important; padding: 0 !important; }
-          #calTitle { display: block !important; margin: 0 0 5px 0; text-align: center; font-size: 14px; }
-          #calTitleStaff { display: block !important; margin: 0 0 5px 0; text-align: center; font-size: 14px; }
-          .week-grid { page-break-inside: avoid; margin: 0 !important; }
-          .month-grid { page-break-inside: avoid; margin: 0 !important; gap: 2px !important; }
-          .shift-tile { padding: 2px !important; font-size: 8px !important; margin: 1px 0 !important; }
-          .day-col { padding: 3px !important; }
-        }
-      `;
-      document.head.appendChild(printStyle);
-    }
-    
-    // Trigger native browser print
-    setTimeout(() => {
-      window.print();
-    }, 100);
+    return;
   }
+  
+  // For calendar views, inject targeted print CSS
+  let printStyleId = 'printHideStyles';
+  let existing = document.getElementById(printStyleId);
+  if (existing) existing.remove(); // Always refresh
+  
+  const printStyle = document.createElement('style');
+  printStyle.id = printStyleId;
+  printStyle.textContent = `
+    @media print {
+      /* Hide everything by default */
+      body > * { display: none !important; }
+      /* Show only the app container */
+      body > #app { display: block !important; }
+      /* Hide top bar */
+      #app #topBar { display: none !important; }
+      /* Hide content areas we don't need */
+      #app .content > * { display: none !important; }
+      /* Show only the active panel */
+      #app .content > #adminPanel { display: block !important; }
+      #app .content > #staffDashboard { display: block !important; }
+      /* Hide tabs/toolbars inside admin panel */
+      #adminPanel > .admin-tabs { display: none !important; }
+      #adminPanel > #staffTab { display: none !important; }
+      #adminPanel > #approvalsTab { display: none !important; }
+      /* Show schedule tab */
+      #adminPanel > #scheduleTab { display: block !important; }
+      /* Hide toolbar inside schedule tab */
+      #scheduleTab > .schedule-toolbar { display: none !important; }
+      /* Show cal-nav and cal-scroll */
+      #scheduleTab > .cal-nav { display: flex !important; }
+      #scheduleTab > .cal-scroll { display: block !important; }
+      /* Staff dashboard - hide non-calendar items */
+      #staffDashboard > *:not(.cal-nav):not(.cal-scroll) { display: none !important; }
+      /* Calendar sizing to fit page */
+      .cal-scroll { overflow: visible !important; }
+      .cal-nav { margin: 0 !important; padding: 4px 0 !important; }
+      .cal-nav .view-toggle { display: none !important; }
+      .cal-nav-left { width: 100% !important; justify-content: center !important; }
+      #calendarRoot, #calendarRootStaff { width: 100% !important; }
+      .month-grid {
+        display: grid !important;
+        grid-template-columns: repeat(7, 1fr) !important;
+        gap: 1px !important;
+        margin: 0 !important;
+        width: 100% !important;
+      }
+      .week-grid {
+        display: grid !important;
+        grid-template-columns: repeat(7, 1fr) !important;
+        gap: 2px !important;
+        margin: 0 !important;
+        width: 100% !important;
+      }
+      .day-col, .month-day-cell { 
+        padding: 2px !important; 
+        min-height: 50px !important;
+        overflow: hidden !important;
+      }
+      .shift-tile, .month-shift-tile {
+        padding: 1px 2px !important;
+        font-size: 7px !important;
+        margin: 1px 0 !important;
+        line-height: 1.1 !important;
+      }
+      .t-name { font-size: 7px !important; }
+      .t-time { font-size: 6px !important; }
+      .t-foot { display: none !important; }
+      .month-shift-name { font-size: 7px !important; }
+      .month-shift-time { font-size: 6px !important; }
+      .month-shift-hours { display: none !important; }
+      .day-hdr, .month-day-hdr { font-size: 8px !important; padding: 2px !important; }
+      /* Hide modals and dialogs */
+      .modal-overlay, .ov { display: none !important; }
+      /* Page setup */
+      @page { margin: 0.3in; size: landscape; }
+    }
+  `;
+  document.head.appendChild(printStyle);
+  
+  setTimeout(() => {
+    window.print();
+  }, 150);
 }
 
 function printListViewSimple() {
