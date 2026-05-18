@@ -3311,14 +3311,10 @@ function closePrintDialog() {
 }
 
 function executePrint() {
-  // Get selected print type from radio buttons
   const printTypeRadio = document.querySelector('input[name="printType"]:checked');
-  if (!printTypeRadio) {
-    alert('Please select a print option');
-    return;
-  }
+  if (!printTypeRadio) { alert('Please select a print option'); return; }
   
-  const printType = printTypeRadio.value;  // 'all', 'myshifts', or 'list'
+  const printType = printTypeRadio.value;
   const printAsHouseManager = document.getElementById('printAsHouseManager')?.checked || false;
   
   closePrintDialog();
@@ -3328,40 +3324,45 @@ function executePrint() {
     return;
   }
   
-  // For calendar views, inject targeted print CSS
-  let printStyleId = 'printHideStyles';
-  let existing = document.getElementById(printStyleId);
-  if (existing) existing.remove(); // Always refresh
+  // If printing as HM, temporarily impersonate HM so open shifts render as tentative
+  let savedUser = null;
+  if (printAsHouseManager) {
+    const hmStaff = allStaff.find(s => s.job_title === 'House Manager');
+    if (hmStaff) {
+      savedUser = currentUser;
+      currentUser = {
+        ...currentUser,
+        id: hmStaff.id,
+        fullName: hmStaff.full_name,
+        full_name: hmStaff.full_name,
+        jobTitle: hmStaff.job_title,
+        role: 'staff'  // forces staff calendar render with HM open-shift logic
+      };
+      renderCalendar();
+    }
+  }
   
+  // Inject print CSS (always refresh)
+  const existing = document.getElementById('printHideStyles');
+  if (existing) existing.remove();
   const printStyle = document.createElement('style');
-  printStyle.id = printStyleId;
+  printStyle.id = 'printHideStyles';
   printStyle.textContent = `
     @media print {
-      /* Hide everything by default */
       body > * { display: none !important; }
-      /* Show only the app container */
       body > #app { display: block !important; }
-      /* Hide top bar */
       #app #topBar { display: none !important; }
-      /* Hide content areas we don't need */
       #app .content > * { display: none !important; }
-      /* Show only the active panel */
       #app .content > #adminPanel { display: block !important; }
       #app .content > #staffDashboard { display: block !important; }
-      /* Hide tabs/toolbars inside admin panel */
       #adminPanel > .admin-tabs { display: none !important; }
       #adminPanel > #staffTab { display: none !important; }
       #adminPanel > #approvalsTab { display: none !important; }
-      /* Show schedule tab */
       #adminPanel > #scheduleTab { display: block !important; }
-      /* Hide toolbar inside schedule tab */
       #scheduleTab > .schedule-toolbar { display: none !important; }
-      /* Show cal-nav and cal-scroll */
       #scheduleTab > .cal-nav { display: flex !important; }
       #scheduleTab > .cal-scroll { display: block !important; }
-      /* Staff dashboard - hide non-calendar items */
       #staffDashboard > *:not(.cal-nav):not(.cal-scroll) { display: none !important; }
-      /* Calendar sizing to fit page */
       .cal-scroll { overflow: visible !important; }
       .cal-nav { margin: 0 !important; padding: 4px 0 !important; }
       .cal-nav .view-toggle { display: none !important; }
@@ -3399,9 +3400,7 @@ function executePrint() {
       .month-shift-time { font-size: 6px !important; }
       .month-shift-hours { display: none !important; }
       .day-hdr, .month-day-hdr { font-size: 8px !important; padding: 2px !important; }
-      /* Hide modals and dialogs */
       .modal-overlay, .ov { display: none !important; }
-      /* Page setup */
       @page { margin: 0.3in; size: landscape; }
     }
   `;
@@ -3409,95 +3408,134 @@ function executePrint() {
   
   setTimeout(() => {
     window.print();
+    
+    // Restore original user and re-render after printing
+    if (savedUser) {
+      currentUser = savedUser;
+      renderCalendar();
+    }
   }, 150);
 }
 
 function printListViewSimple() {
-  // Get shifts for current user
-  const filteredShifts = allShifts
-    .filter(s => s.assigned_to === currentUser.id)
-    .sort((a, b) => {
-      if (a.date !== b.date) return a.date < b.date ? -1 : 1;
-      const order = { morning: 1, afternoon: 2, overnight: 3 };
-      return order[a.shift_type] - order[b.shift_type];
-    });
+  const isAdmin = currentUser?.role === 'admin';
+  const printAsHouseManager = document.getElementById('printAsHouseManager')?.checked || false;
+  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   
-  if (filteredShifts.length === 0) {
+  // Find HM if needed
+  const hmStaff = allStaff.find(s => s.job_title === 'House Manager');
+  
+  // Build rows: admin prints everyone, staff prints own shifts
+  let rows = [];
+  
+  if (isAdmin && !printAsHouseManager) {
+    // Admin: print all assigned shifts, grouped by staff member
+    const activeStaff = allStaff.filter(s => s.username !== '_open' && s.job_title !== 'admin');
+    activeStaff.forEach(staff => {
+      const staffShifts = allShifts
+        .filter(s => s.assigned_to === staff.id)
+        .sort((a, b) => a.date < b.date ? -1 : 1);
+      staffShifts.forEach(shift => {
+        rows.push({ shift, staffName: staff.full_name, tentative: false });
+      });
+    });
+    // Also include open shifts as unassigned
+    allShifts.filter(s => s.is_open).sort((a, b) => a.date < b.date ? -1 : 1).forEach(shift => {
+      rows.push({ shift, staffName: 'OPEN', tentative: false });
+    });
+    rows.sort((a, b) => a.shift.date < b.shift.date ? -1 : 1);
+  } else if (printAsHouseManager && hmStaff) {
+    // Print as HM: HM's assigned shifts + all open shifts as tentative
+    const hmShifts = allShifts.filter(s => s.assigned_to === hmStaff.id);
+    hmShifts.forEach(shift => rows.push({ shift, staffName: hmStaff.full_name, tentative: false }));
+    allShifts.filter(s => s.is_open).forEach(shift => {
+      rows.push({ shift, staffName: hmStaff.full_name, tentative: true });
+    });
+    rows.sort((a, b) => a.shift.date < b.shift.date ? -1 : 1);
+  } else {
+    // Staff: own shifts only
+    allShifts.filter(s => s.assigned_to === currentUser.id)
+      .sort((a, b) => a.date < b.date ? -1 : 1)
+      .forEach(shift => rows.push({ shift, staffName: currentUser.full_name, tentative: false }));
+  }
+  
+  if (rows.length === 0) {
     alert('No shifts to print');
     return;
   }
   
-  // Get month info
-  const year = viewDate.getFullYear();
-  const month = viewDate.getMonth();
-  const monthName = viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const title = isAdmin && !printAsHouseManager
+    ? 'All Staff Shifts'
+    : printAsHouseManager
+      ? `${hmStaff?.full_name || 'House Manager'} (incl. Open Shifts)`
+      : currentUser?.full_name || 'My Shifts';
   
-  // Build print HTML
   let html = `
     <html>
     <head>
       <meta charset="UTF-8">
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: white; color: #000; margin: 0; padding: 5px; }
-        .print-header { text-align: center; margin-bottom: 10px; }
-        .print-header h1 { font-size: 16px; margin: 0 0 5px 0; }
-        .print-header h2 { font-size: 14px; margin: 0; }
-        .print-list-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-        .print-list-table th { background: #f0f0f0; border: 1px solid #999; padding: 4px; text-align: left; font-weight: bold; }
-        .print-list-table td { border: 1px solid #ddd; padding: 4px; }
-        .print-list-table tr:nth-child(even) { background: #f9f9f9; }
-        @media print {
-          body { margin: 0; padding: 2px; }
-          .print-list-table { page-break-inside: avoid; }
-        }
+        body { font-family: Arial, sans-serif; background: white; color: #000; padding: 10px; }
+        h1 { font-size: 16px; text-align: center; margin-bottom: 4px; }
+        h2 { font-size: 13px; text-align: center; margin-bottom: 10px; color: #444; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        th { background: #f0f0f0; border: 1px solid #999; padding: 5px 4px; text-align: left; font-weight: bold; }
+        td { border: 1px solid #ddd; padding: 4px; }
+        tr:nth-child(even) td { background: #f9f9f9; }
+        .tentative { font-style: italic; color: #666; }
+        .open { color: #dc3545; font-weight: bold; }
+        tfoot td { font-weight: bold; background: #f0f0f0; }
+        @page { margin: 0.4in; }
       </style>
     </head>
     <body>
-      <div class="print-header">
-        <h1>LilSongBirdHomes Staff Schedule</h1>
-        <h2>${monthName} - ${currentUser?.full_name || 'Staff Member'}</h2>
-      </div>
-      <table class="print-list-table">
+      <h1>LilSongBirdHomes Staff Schedule</h1>
+      <h2>${monthName} — ${title}</h2>
+      <table>
         <thead>
           <tr>
             <th>Date</th>
             <th>Day</th>
-            <th>Shift Type</th>
+            ${isAdmin && !printAsHouseManager ? '<th>Staff</th>' : ''}
+            <th>Shift</th>
             <th>Time</th>
-            <th>Hours</th>
+            <th>Hrs</th>
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
   `;
   
   let totalHours = 0;
-  
-  filteredShifts.forEach(shift => {
+  rows.forEach(({ shift, staffName, tentative }) => {
     const d = new Date(shift.date + 'T12:00:00');
     const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
     const dateFormatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const shiftDef = SHIFT_DEFS[shift.shift_type] || {};
     const hours = shiftDef.hours || 0;
     totalHours += hours;
+    const status = tentative ? '<span class="tentative">Tentative</span>' : staffName === 'OPEN' ? '<span class="open">Unassigned</span>' : 'Assigned';
     
-    html += `
-      <tr>
-        <td>${dateFormatted}</td>
-        <td>${dayName}</td>
-        <td>${shiftDef.label || shift.shift_type}</td>
-        <td>${shift.start_time || shiftDef.time || ''}</td>
-        <td>${hours}</td>
-      </tr>
-    `;
+    html += `<tr>
+      <td>${dateFormatted}</td>
+      <td>${dayName}</td>
+      ${isAdmin && !printAsHouseManager ? `<td>${staffName === 'OPEN' ? '<span class="open">OPEN</span>' : staffName}</td>` : ''}
+      <td>${shiftDef.label || shift.shift_type}</td>
+      <td>${shift.start_time || shiftDef.time || ''}</td>
+      <td>${hours}</td>
+      <td>${status}</td>
+    </tr>`;
   });
   
+  const colspan = (isAdmin && !printAsHouseManager) ? 5 : 4;
   html += `
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="3" style="text-align:right;font-weight:bold;">Total Hours:</td>
-            <td colspan="2" style="font-weight:bold;">${totalHours}</td>
+            <td colspan="${colspan}" style="text-align:right;">Total Hours:</td>
+            <td>${totalHours}</td>
+            <td></td>
           </tr>
         </tfoot>
       </table>
@@ -3505,17 +3543,13 @@ function printListViewSimple() {
     </html>
   `;
   
-  // Open in new window for printing
   const printWindow = window.open('', '_blank');
   printWindow.document.write(html);
   printWindow.document.close();
-  
   setTimeout(() => {
     printWindow.print();
-    setTimeout(() => {
-      printWindow.close();
-    }, 100);
-  }, 250);
+    setTimeout(() => printWindow.close(), 100);
+  }, 300);
 }
 
 // Guest Password Management
