@@ -106,26 +106,26 @@ async function showApp() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('userName').textContent = currentUser.fullName;
-  document.getElementById('roleBadge').textContent = currentUser.role === 'admin' ? 'Admin' : 'Staff';
+  document.getElementById('roleBadge').textContent = 
+    currentUser.role === 'admin' ? 'Admin' : currentUser.role === 'guest' ? 'Guest' : 'Staff';
   
-  // Load shift templates from database
   loadTemplates();
-  
-  // Load staff for all users (needed for contact dialog)
   await loadStaff();
   
   if (currentUser.role === 'admin') {
     document.getElementById('adminPanel').classList.remove('hidden');
     loadPendingApprovals();
-    // Restore any unsent schedule changes from previous session
     loadChangesFromStorage();
     updateNotificationButton();
+    loadShifts();
+  } else if (currentUser.role === 'guest') {
+    document.getElementById('guestDashboard').classList.remove('hidden');
+    loadShifts().then(() => renderGuestCalendars());
   } else {
     document.getElementById('staffDashboard').classList.remove('hidden');
     loadDashboard();
+    loadShifts();
   }
-  
-  loadShifts();
 }
 
 async function handleLogout() {
@@ -3706,7 +3706,109 @@ function printListViewSimple() {
   }, 300);
 }
 
-// Guest Password Management
+// Guest View — anonymous month calendars
+function renderGuestCalendars() {
+  const now = new Date();
+  const month1 = new Date(now.getFullYear(), now.getMonth(), 1);
+  const month2 = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  // Build stable anonymous staff map: real id → "Staff #N"
+  // Sort by id for consistency, exclude _open/admin/guest
+  const realStaff = allStaff
+    .filter(s => s.username !== '_open' && s.role !== 'admin' && s.role !== 'guest')
+    .sort((a, b) => a.id - b.id);
+  const anonMap = {};
+  realStaff.forEach((s, i) => { anonMap[s.id] = `Staff #${i + 1}`; });
+
+  renderGuestMonth('guestCalRoot1', 'guestTitle1', month1, anonMap);
+  renderGuestMonth('guestCalRoot2', 'guestTitle2', month2, anonMap);
+}
+
+function renderGuestMonth(rootId, titleId, monthStart, anonMap) {
+  const root = document.getElementById(rootId);
+  const titleEl = document.getElementById(titleId);
+  if (!root) return;
+
+  const year = monthStart.getFullYear();
+  const month = monthStart.getMonth();
+  titleEl.textContent = monthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const todayStr = formatDate(new Date());
+  const startDay = monthStart.getDay();
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const lastDayDate = new Date(year, month, lastDay);
+  const endDay = lastDayDate.getDay();
+  const startDate = new Date(year, month, 1 - startDay);
+  const endDate = new Date(year, month, lastDay + (endDay === 6 ? 0 : 6 - endDay));
+
+  // Build month grid
+  const grid = document.createElement('div');
+  grid.className = 'month-grid';
+
+  // Day headers
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => {
+    const hdr = document.createElement('div');
+    hdr.className = 'month-day-hdr';
+    hdr.textContent = d;
+    grid.appendChild(hdr);
+  });
+
+  // Days
+  const cur = new Date(startDate);
+  while (cur <= endDate) {
+    const dateStr = formatDate(cur);
+    const isToday = dateStr === todayStr;
+    const isPast = dateStr < todayStr;
+    const isCurrentMonth = cur.getMonth() === month;
+    const isWknd = cur.getDay() === 0 || cur.getDay() === 6;
+
+    const cell = document.createElement('div');
+    cell.className = 'month-day-cell' +
+      (isWknd ? ' wknd' : '') +
+      (isToday ? ' today' : '') +
+      (isPast ? ' past' : '') +
+      (!isCurrentMonth ? ' other-month' : '');
+
+    const dayNum = document.createElement('div');
+    dayNum.className = 'month-day-num';
+    dayNum.textContent = cur.getDate();
+    cell.appendChild(dayNum);
+
+    // Shifts for this day — anonymized, no open shifts shown
+    const dayShifts = allShifts
+      .filter(s => s.date === dateStr && !s.is_open && s.assigned_to)
+      .sort((a, b) => {
+        const order = { morning: 1, afternoon: 2, overnight: 3 };
+        return order[a.shift_type] - order[b.shift_type];
+      });
+
+    dayShifts.forEach(shift => {
+      const def = SHIFT_DEFS[shift.shift_type] || {};
+      const anonName = anonMap[shift.assigned_to] || 'Staff';
+      const staff = allStaff.find(s => s.id === shift.assigned_to);
+      // Use staff tile color but show anon name
+      const bg = staff?.tile_color || '#f0f0f0';
+      const fg = staff?.text_color || 'black';
+
+      const tile = document.createElement('div');
+      tile.className = 'month-shift-tile';
+      tile.style.background = bg;
+      tile.style.color = fg;
+      tile.style.border = `1px solid ${bg}`;
+      tile.innerHTML = `
+        <div class="month-shift-name">${anonName}</div>
+        <div class="month-shift-time">${def.icon || ''} ${def.time || ''}</div>
+      `;
+      cell.appendChild(tile);
+    });
+
+    grid.appendChild(cell);
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  root.innerHTML = '';
+  root.appendChild(grid);
+}
 function copyGuestPassword() {
   const passwordInput = document.getElementById('guestCurrentPassword');
   if (passwordInput && passwordInput.value) {
