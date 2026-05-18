@@ -208,26 +208,42 @@ async function loadStaff() {
 
 function renderStaffList() {
   const list = document.getElementById("staffList");
-  if (!list) return; // Staff tab not visible for non-admin
+  if (!list) return;
   list.innerHTML = "";
   
   allStaff.forEach(staff => {
     const isOpen = staff.username === '_open';
+    const isGuest = staff.role === 'guest';
     const isActive = staff.is_active === 1 || staff.is_active === undefined;
     const item = document.createElement('div');
     item.className = 's-item' + (!isActive ? ' inactive' : '');
+
+    let metaLine = '';
+    if (isOpen) {
+      metaLine = 'Placeholder for unassigned shifts';
+    } else if (isGuest) {
+      metaLine = `@${staff.username} • Guest Viewer`;
+    } else {
+      metaLine = `@${staff.username} • ${staff.job_title}`;
+    }
+
     item.innerHTML = `
       <div class="col-dot" style="background:${staff.tile_color || '#f5f5f5'};${!isActive ? 'opacity:0.5;' : ''}"></div>
       <div class="s-det">
         <div class="s-nm">
           ${staff.full_name}
+          ${isGuest ? '<span class="inactive-badge" style="background:#6c757d;">Guest</span>' : ''}
           ${!isActive ? '<span class="inactive-badge">Inactive</span>' : ''}
         </div>
-        <div class="s-me">${isOpen ? 'Placeholder for unassigned shifts' : `@${staff.username} • ${staff.job_title}`}</div>
+        <div class="s-me">${metaLine}</div>
+        ${isGuest ? `<div id="guestInfoRow_${staff.id}" class="s-me" style="color:#888;font-size:11px;">Loading guest info...</div>` : ''}
       </div>
       <div class="s-act">
-        <button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>
-        ${!isOpen && staff.username !== 'admin' ? `
+        ${isGuest
+          ? `<button class="bsm b-edit" onclick="openGuestModal(${staff.id})">Manage</button>`
+          : `<button class="bsm b-edit" onclick="openEditStaff(${staff.id})">Edit</button>`
+        }
+        ${!isOpen && staff.username !== 'admin' && !isGuest ? `
           <button class="bsm b-rpw" onclick="resetPassword(${staff.id})">Reset PW</button>
           <button class="bsm ${isActive ? 'b-deact' : 'b-act'}" onclick="toggleStaffActive(${staff.id}, ${!isActive})">
             ${isActive ? 'Deactivate' : 'Activate'}
@@ -237,7 +253,105 @@ function renderStaffList() {
       </div>
     `;
     list.appendChild(item);
+
+    // Load guest info inline
+    if (isGuest) {
+      loadGuestInfoRow(staff.id);
+    }
   });
+}
+
+async function loadGuestInfoRow(staffId) {
+  try {
+    const info = await apiCall(`/staff/${staffId}/guest-info`);
+    const row = document.getElementById(`guestInfoRow_${staffId}`);
+    if (!row) return;
+    if (info.currentPassword) {
+      const expiry = info.passwordExpiresAt
+        ? new Date(info.passwordExpiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'Never';
+      const now = new Date();
+      const expDate = info.passwordExpiresAt ? new Date(info.passwordExpiresAt) : null;
+      const expired = expDate && expDate < now;
+      row.innerHTML = `Password: <strong>${info.currentPassword}</strong> &nbsp;|&nbsp; Expires: <strong style="color:${expired ? '#dc3545' : '#28a745'}">${expiry}${expired ? ' ⚠️ EXPIRED' : ''}</strong>`;
+    } else {
+      row.innerHTML = 'No password set — click Manage to generate one.';
+    }
+  } catch (e) {
+    const row = document.getElementById(`guestInfoRow_${staffId}`);
+    if (row) row.innerHTML = 'Could not load guest info.';
+  }
+}
+
+async function openGuestModal(staffId) {
+  try {
+    showLoading();
+    const info = await apiCall(`/staff/${staffId}/guest-info`);
+    hideLoading();
+
+    const expiry = info.passwordExpiresAt
+      ? new Date(info.passwordExpiresAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+      : 'Not set';
+    const now = new Date();
+    const expired = info.passwordExpiresAt && new Date(info.passwordExpiresAt) < now;
+
+    // Build modal
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>👤 Guest Viewer Access</h3>
+        <p style="color:#666;font-size:13px;margin-bottom:16px;">The guest account allows read-only schedule viewing with a rotating password.</p>
+        <div class="fg">
+          <label>Current Password</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="guestPwDisplay" value="${info.currentPassword || 'Not set'}" readonly
+              style="flex:1;padding:8px;border:2px solid #dee2e6;border-radius:8px;font-family:monospace;font-size:15px;letter-spacing:2px;background:#f8f9fa;">
+            <button class="bsm b-edit" onclick="navigator.clipboard.writeText(document.getElementById('guestPwDisplay').value).then(()=>showSuccess('Copied!'))">Copy</button>
+          </div>
+        </div>
+        <div class="fg">
+          <label>Expires</label>
+          <div style="padding:8px 12px;background:${expired ? '#ffe0e0' : '#e8f5e9'};border-radius:8px;font-weight:600;color:${expired ? '#dc3545' : '#2e7d32'};">
+            ${expiry}${expired ? ' — ⚠️ EXPIRED' : ''}
+          </div>
+        </div>
+        <div class="fg">
+          <label>Username</label>
+          <div style="padding:8px 12px;background:#f8f9fa;border-radius:8px;font-family:monospace;">${info.username || 'guest'}</div>
+        </div>
+        <div class="mbtn-row" style="margin-top:20px;">
+          <button class="mc" onclick="this.closest('.modal-overlay').remove()">Close</button>
+          <button class="mok" style="background:#e67e22;" onclick="doResetGuestPassword(${staffId}, this)">🔄 Reset Password</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+  } catch (err) {
+    hideLoading();
+    alert('Error loading guest info: ' + err.message);
+  }
+}
+
+async function doResetGuestPassword(staffId, btn) {
+  if (!confirm('Generate a new guest password? The old password will stop working immediately.')) return;
+  try {
+    showLoading();
+    const result = await apiCall(`/staff/${staffId}/reset-password`, { method: 'POST' });
+    hideLoading();
+
+    // Update display in modal
+    const pwDisplay = document.getElementById('guestPwDisplay');
+    if (pwDisplay) pwDisplay.value = result.tempPassword;
+
+    showSuccess(`New guest password set! Expires in ${result.expiresInDays || 7} days.`);
+
+    // Refresh staff list row
+    await loadStaff();
+  } catch (err) {
+    hideLoading();
+    alert('Error: ' + err.message);
+  }
 }
 
 async function addStaff() {
