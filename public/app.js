@@ -3289,6 +3289,12 @@ async function staffDenyTrade(tradeId, btn) {
 // ═══════════════════════════════════════════════════════════
 
 function openPrintDialog() {
+  // Show House Manager option only for admins
+  const houseManagerSection = document.getElementById('printAsHouseManagerSection');
+  if (houseManagerSection) {
+    houseManagerSection.style.display = currentUser?.role === 'admin' ? 'block' : 'none';
+  }
+  
   const modal = document.getElementById('printDialog');
   if (modal) {
     modal.style.display = 'flex';
@@ -3313,43 +3319,43 @@ function executePrint() {
   }
   
   const printType = printTypeRadio.value;  // 'all', 'myshifts', or 'list'
+  const printAsHouseManager = document.getElementById('printAsHouseManager')?.checked || false;
   
   closePrintDialog();
   
-  // Add print-specific CSS to hide UI elements and fit calendar
-  let printStyleId = 'printHideStyles';
-  if (!document.getElementById(printStyleId)) {
-    const printStyle = document.createElement('style');
-    printStyle.id = printStyleId;
-    printStyle.textContent = `
-      @media print {
-        body { margin: 0; padding: 0; background: white; }
-        * { margin: 0; padding: 0; }
-        #topBar { display: none !important; }
-        #staffDashboard > *:not(#calendarRootStaff) { display: none !important; }
-        #adminPanel > *:not(#calendarRoot) { display: none !important; }
-        .staff-action-buttons { display: none !important; }
-        #printDialog { display: none !important; }
-        .modal-overlay { display: none !important; }
-        #calendarRoot { display: block !important; margin: 0 !important; padding: 0 !important; }
-        #calendarRootStaff { display: block !important; margin: 0 !important; padding: 0 !important; }
-        #calTitle { display: block !important; margin: 0 0 5px 0; text-align: center; font-size: 14px; }
-        #calTitleStaff { display: block !important; margin: 0 0 5px 0; text-align: center; font-size: 14px; }
-        .week-grid { page-break-inside: avoid; margin: 0 !important; }
-        .month-grid { page-break-inside: avoid; margin: 0 !important; gap: 2px !important; }
-        .shift-tile { padding: 2px !important; font-size: 8px !important; margin: 1px 0 !important; }
-        .day-col { padding: 3px !important; }
-      }
-    `;
-    document.head.appendChild(printStyle);
-  }
-  
   // Only print list if that option was selected
   if (printType === 'list') {
-    // For list view, we need to build a custom print document
     printListViewSimple();
   } else {
-    // For calendar views, just print the current calendar view
+    // For calendar views, use the native print with CSS
+    // Add print-specific CSS to hide UI elements and fit calendar
+    let printStyleId = 'printHideStyles';
+    if (!document.getElementById(printStyleId)) {
+      const printStyle = document.createElement('style');
+      printStyle.id = printStyleId;
+      printStyle.textContent = `
+        @media print {
+          body { margin: 0; padding: 0; background: white; }
+          * { margin: 0; padding: 0; }
+          #topBar { display: none !important; }
+          #staffDashboard > *:not(#calendarRootStaff) { display: none !important; }
+          #adminPanel > *:not(#calendarRoot) { display: none !important; }
+          .staff-action-buttons { display: none !important; }
+          #printDialog { display: none !important; }
+          .modal-overlay { display: none !important; }
+          #calendarRoot { display: block !important; margin: 0 !important; padding: 0 !important; }
+          #calendarRootStaff { display: block !important; margin: 0 !important; padding: 0 !important; }
+          #calTitle { display: block !important; margin: 0 0 5px 0; text-align: center; font-size: 14px; }
+          #calTitleStaff { display: block !important; margin: 0 0 5px 0; text-align: center; font-size: 14px; }
+          .week-grid { page-break-inside: avoid; margin: 0 !important; }
+          .month-grid { page-break-inside: avoid; margin: 0 !important; gap: 2px !important; }
+          .shift-tile { padding: 2px !important; font-size: 8px !important; margin: 1px 0 !important; }
+          .day-col { padding: 3px !important; }
+        }
+      `;
+      document.head.appendChild(printStyle);
+    }
+    
     // Trigger native browser print
     setTimeout(() => {
       window.print();
@@ -3358,9 +3364,6 @@ function executePrint() {
 }
 
 function printListViewSimple() {
-  // Determine if showing only my shifts
-  const myShiftsOnly = true; // List view always shows only my shifts
-  
   // Get shifts for current user
   const filteredShifts = allShifts
     .filter(s => s.assigned_to === currentUser.id)
