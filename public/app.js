@@ -1058,6 +1058,11 @@ async function saveReassignment(shiftId) {
     const modal = select.closest('.modal-overlay');
     if (modal) modal.remove();
     
+    // Track the change for notifications
+    if (shift) {
+      trackChange('reassign', shift, oldStaffId, newStaffId);
+    }
+    
     showSuccess('Shift reassigned!');
     
     // Restore view mode and reload
