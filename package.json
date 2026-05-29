@@ -26,5 +26,11 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
+  },
+  {
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   }
 }
